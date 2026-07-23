@@ -1,0 +1,2779 @@
+{
+  "code_commit": "3cd6f71396ceee3dc13c80ab78e0499db647d883",
+  "code_worktree_dirty": true,
+  "dataset_path": "/home/super_user/Dev/intrustionDetect/data/sample/rt_iot2022_sample.csv",
+  "dataset_sha256": "c6140575514927cc50b61d9cb269548feb27b5da717db87a117c6879a2530737",
+  "experiments": {
+    "binary": {
+      "realistic_split": {
+        "available": false,
+        "reason": "No reliable grouping or timestamp exists in canonical RT-IoT2022; chronology was not invented."
+      },
+      "selected_model": {
+        "artifact": "binary-logistic_regression-0fa0d0a15572.joblib",
+        "artifact_sha256": "1032494ff9377fba4c0152604f864e7eaac826dec1aac8bdc66cdf89d65d6dd7",
+        "code_commit": "3cd6f71396ceee3dc13c80ab78e0499db647d883",
+        "code_worktree_dirty": true,
+        "dataset_path": "/home/super_user/Dev/intrustionDetect/data/sample/rt_iot2022_sample.csv",
+        "dataset_sha256": "c6140575514927cc50b61d9cb269548feb27b5da717db87a117c6879a2530737",
+        "feature_order": [
+          "id.orig_p",
+          "id.resp_p",
+          "proto",
+          "service",
+          "flow_duration",
+          "fwd_pkts_tot",
+          "bwd_pkts_tot",
+          "fwd_data_pkts_tot",
+          "bwd_data_pkts_tot",
+          "fwd_pkts_per_sec",
+          "bwd_pkts_per_sec",
+          "flow_pkts_per_sec",
+          "down_up_ratio",
+          "fwd_header_size_tot",
+          "fwd_header_size_min",
+          "fwd_header_size_max",
+          "bwd_header_size_tot",
+          "bwd_header_size_min",
+          "bwd_header_size_max",
+          "flow_FIN_flag_count",
+          "flow_SYN_flag_count",
+          "flow_RST_flag_count",
+          "fwd_PSH_flag_count",
+          "bwd_PSH_flag_count",
+          "flow_ACK_flag_count",
+          "fwd_URG_flag_count",
+          "bwd_URG_flag_count",
+          "flow_CWR_flag_count",
+          "flow_ECE_flag_count",
+          "fwd_pkts_payload.min",
+          "fwd_pkts_payload.max",
+          "fwd_pkts_payload.tot",
+          "fwd_pkts_payload.avg",
+          "fwd_pkts_payload.std",
+          "bwd_pkts_payload.min",
+          "bwd_pkts_payload.max",
+          "bwd_pkts_payload.tot",
+          "bwd_pkts_payload.avg",
+          "bwd_pkts_payload.std",
+          "flow_pkts_payload.min",
+          "flow_pkts_payload.max",
+          "flow_pkts_payload.tot",
+          "flow_pkts_payload.avg",
+          "flow_pkts_payload.std",
+          "fwd_iat.min",
+          "fwd_iat.max",
+          "fwd_iat.tot",
+          "fwd_iat.avg",
+          "fwd_iat.std",
+          "bwd_iat.min",
+          "bwd_iat.max",
+          "bwd_iat.tot",
+          "bwd_iat.avg",
+          "bwd_iat.std",
+          "flow_iat.min",
+          "flow_iat.max",
+          "flow_iat.tot",
+          "flow_iat.avg",
+          "flow_iat.std",
+          "payload_bytes_per_second",
+          "fwd_subflow_pkts",
+          "bwd_subflow_pkts",
+          "fwd_subflow_bytes",
+          "bwd_subflow_bytes",
+          "fwd_bulk_bytes",
+          "bwd_bulk_bytes",
+          "fwd_bulk_packets",
+          "bwd_bulk_packets",
+          "fwd_bulk_rate",
+          "bwd_bulk_rate",
+          "active.min",
+          "active.max",
+          "active.tot",
+          "active.avg",
+          "active.std",
+          "idle.min",
+          "idle.max",
+          "idle.tot",
+          "idle.avg",
+          "idle.std",
+          "fwd_init_window_size",
+          "bwd_init_window_size",
+          "fwd_last_window_size"
+        ],
+        "library_versions": {
+          "joblib": "1.5.3",
+          "numpy": "2.4.6",
+          "pandas": "3.0.5",
+          "python": "3.11.15",
+          "scikit-learn": "1.9.0"
+        },
+        "model_name": "logistic_regression",
+        "model_version": "binary-logistic_regression-0fa0d0a15572",
+        "probability_calibrated": false,
+        "random_seed": 42,
+        "removed_rows": {
+          "duplicate_feature_rows": 0,
+          "reason": "prevent identical flows from crossing split boundaries"
+        },
+        "schema_version": "rt-iot2022-v1",
+        "selection_metric": "validation_macro_f1",
+        "selection_score": 1.0,
+        "target": "binary",
+        "training_configuration": {
+          "random_seed": 42,
+          "test_fraction": 0.2,
+          "validation_fraction": 0.2
+        }
+      },
+      "splits": {
+        "stratified_random": {
+          "definition": {
+            "shuffle": true,
+            "strategy": "stratified random"
+          },
+          "models": {
+            "decision_tree": {
+              "operational": {
+                "benchmark_rows": 7,
+                "median_inference_latency_ms": 5.337633,
+                "p95_inference_latency_ms": 6.6728571,
+                "predictions_per_second": 1344.5582172384068,
+                "serialized_model_size_bytes": 2785
+              },
+              "test": {
+                "accuracy": 1.0,
+                "alert_rate": 0.5714285714285714,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "attack",
+                  "normal"
+                ],
+                "confusion_matrix": [
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    0,
+                    3
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "false_positive_rate": 0.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "attack": 1.0
+                },
+                "per_class": {
+                  "attack": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 4
+                  },
+                  "normal": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 3
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "attack": {
+                    "precision": [
+                      0.5714285714285714,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      1.0
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 3,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              },
+              "training": {
+                "approximate_cpu_utilization_percent": 99.4905692985433,
+                "peak_traced_python_memory_bytes": 307593,
+                "process_cpu_seconds": 0.047817043000000226,
+                "process_peak_rss_kib": 188396,
+                "process_peak_rss_note": "Unix ru_maxrss is process-wide and cumulative, not model-isolated.",
+                "wall_seconds": 0.048061884997878224
+              },
+              "validation": {
+                "accuracy": 1.0,
+                "alert_rate": 0.42857142857142855,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "attack",
+                  "normal"
+                ],
+                "confusion_matrix": [
+                  [
+                    3,
+                    0
+                  ],
+                  [
+                    0,
+                    4
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "false_positive_rate": 0.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "attack": 1.0
+                },
+                "per_class": {
+                  "attack": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 3
+                  },
+                  "normal": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 4
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "attack": {
+                    "precision": [
+                      0.42857142857142855,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      1.0
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 3,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              }
+            },
+            "hist_gradient_boosting": {
+              "operational": {
+                "benchmark_rows": 7,
+                "median_inference_latency_ms": 7.684534,
+                "p95_inference_latency_ms": 8.7013395,
+                "predictions_per_second": 993.2725649455623,
+                "serialized_model_size_bytes": 7079
+              },
+              "test": {
+                "accuracy": 0.5714285714285714,
+                "alert_rate": 1.0,
+                "balanced_accuracy": 0.5,
+                "classes": [
+                  "attack",
+                  "normal"
+                ],
+                "confusion_matrix": [
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    3,
+                    0
+                  ]
+                ],
+                "f1": 0.7272727272727273,
+                "f1_macro": 0.36363636363636365,
+                "f1_weighted": 0.4155844155844156,
+                "false_positive_rate": 1.0,
+                "macro_one_vs_rest_false_positive_rate": 0.5,
+                "matthews_correlation_coefficient": 0.0,
+                "one_vs_rest_pr_auc": {
+                  "attack": 0.5714285714285714
+                },
+                "per_class": {
+                  "attack": {
+                    "f1": 0.7272727272727273,
+                    "one_vs_rest_false_positive_rate": 1.0,
+                    "precision": 0.5714285714285714,
+                    "recall": 1.0,
+                    "support": 4
+                  },
+                  "normal": {
+                    "f1": 0.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "support": 3
+                  }
+                },
+                "precision": 0.5714285714285714,
+                "precision_macro": 0.2857142857142857,
+                "precision_recall_curves": {
+                  "attack": {
+                    "precision": [
+                      0.5714285714285714,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.5
+                    ]
+                  }
+                },
+                "precision_weighted": 0.32653061224489793,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 0.0,
+                "rare_class_test_support": 3,
+                "recall": 1.0,
+                "recall_macro": 0.5,
+                "recall_weighted": 0.5714285714285714
+              },
+              "training": {
+                "approximate_cpu_utilization_percent": 185.0742947683105,
+                "peak_traced_python_memory_bytes": 803363,
+                "process_cpu_seconds": 0.8175167819999993,
+                "process_peak_rss_kib": 190496,
+                "process_peak_rss_note": "Unix ru_maxrss is process-wide and cumulative, not model-isolated.",
+                "wall_seconds": 0.4417235699984303
+              },
+              "validation": {
+                "accuracy": 0.42857142857142855,
+                "alert_rate": 1.0,
+                "balanced_accuracy": 0.5,
+                "classes": [
+                  "attack",
+                  "normal"
+                ],
+                "confusion_matrix": [
+                  [
+                    3,
+                    0
+                  ],
+                  [
+                    4,
+                    0
+                  ]
+                ],
+                "f1": 0.6,
+                "f1_macro": 0.3,
+                "f1_weighted": 0.2571428571428571,
+                "false_positive_rate": 1.0,
+                "macro_one_vs_rest_false_positive_rate": 0.5,
+                "matthews_correlation_coefficient": 0.0,
+                "one_vs_rest_pr_auc": {
+                  "attack": 0.42857142857142855
+                },
+                "per_class": {
+                  "attack": {
+                    "f1": 0.6,
+                    "one_vs_rest_false_positive_rate": 1.0,
+                    "precision": 0.42857142857142855,
+                    "recall": 1.0,
+                    "support": 3
+                  },
+                  "normal": {
+                    "f1": 0.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "support": 4
+                  }
+                },
+                "precision": 0.42857142857142855,
+                "precision_macro": 0.21428571428571427,
+                "precision_recall_curves": {
+                  "attack": {
+                    "precision": [
+                      0.42857142857142855,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.5
+                    ]
+                  }
+                },
+                "precision_weighted": 0.18367346938775508,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 3,
+                "recall": 1.0,
+                "recall_macro": 0.5,
+                "recall_weighted": 0.42857142857142855
+              }
+            },
+            "logistic_regression": {
+              "operational": {
+                "benchmark_rows": 7,
+                "median_inference_latency_ms": 6.379131,
+                "p95_inference_latency_ms": 7.614969799999999,
+                "predictions_per_second": 1391.1517185251093,
+                "serialized_model_size_bytes": 3281
+              },
+              "test": {
+                "accuracy": 1.0,
+                "alert_rate": 0.5714285714285714,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "attack",
+                  "normal"
+                ],
+                "confusion_matrix": [
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    0,
+                    3
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "false_positive_rate": 0.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "attack": 1.0
+                },
+                "per_class": {
+                  "attack": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 4
+                  },
+                  "normal": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 3
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "attack": {
+                    "precision": [
+                      0.5714285714285714,
+                      0.6666666666666666,
+                      0.8,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.75,
+                      0.5,
+                      0.25,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0001428038100952378,
+                      0.009405987156783202,
+                      0.031087317967914307,
+                      0.8773070733249086,
+                      0.9591695400234151,
+                      0.9972972598379882,
+                      0.9983808517933138
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 3,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              },
+              "training": {
+                "approximate_cpu_utilization_percent": 162.15888936216754,
+                "peak_traced_python_memory_bytes": 413749,
+                "process_cpu_seconds": 0.10465898499999993,
+                "process_peak_rss_kib": 187728,
+                "process_peak_rss_note": "Unix ru_maxrss is process-wide and cumulative, not model-isolated.",
+                "wall_seconds": 0.06454101000053925
+              },
+              "validation": {
+                "accuracy": 1.0,
+                "alert_rate": 0.42857142857142855,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "attack",
+                  "normal"
+                ],
+                "confusion_matrix": [
+                  [
+                    3,
+                    0
+                  ],
+                  [
+                    0,
+                    4
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "false_positive_rate": 0.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "attack": 1.0
+                },
+                "per_class": {
+                  "attack": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 3
+                  },
+                  "normal": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 4
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "attack": {
+                    "precision": [
+                      0.42857142857142855,
+                      0.5,
+                      0.6,
+                      0.75,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.6666666666666666,
+                      0.3333333333333333,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0004690045819514266,
+                      0.030251492347687536,
+                      0.11756884152481972,
+                      0.12796419629747868,
+                      0.8105703637403554,
+                      0.8428472114140952,
+                      0.957028044962145
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 3,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              }
+            },
+            "random_forest": {
+              "operational": {
+                "benchmark_rows": 7,
+                "median_inference_latency_ms": 11.482225,
+                "p95_inference_latency_ms": 37.15210399999997,
+                "predictions_per_second": 594.4202114555965,
+                "serialized_model_size_bytes": 6465
+              },
+              "test": {
+                "accuracy": 1.0,
+                "alert_rate": 0.5714285714285714,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "attack",
+                  "normal"
+                ],
+                "confusion_matrix": [
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    0,
+                    3
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "false_positive_rate": 0.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "attack": 1.0
+                },
+                "per_class": {
+                  "attack": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 4
+                  },
+                  "normal": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 3
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "attack": {
+                    "precision": [
+                      0.5714285714285714,
+                      0.8,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      0.0125,
+                      1.0
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 3,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              },
+              "training": {
+                "approximate_cpu_utilization_percent": 99.44926101522296,
+                "peak_traced_python_memory_bytes": 306817,
+                "process_cpu_seconds": 0.8337516090000006,
+                "process_peak_rss_kib": 188780,
+                "process_peak_rss_note": "Unix ru_maxrss is process-wide and cumulative, not model-isolated.",
+                "wall_seconds": 0.8383688329995493
+              },
+              "validation": {
+                "accuracy": 1.0,
+                "alert_rate": 0.42857142857142855,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "attack",
+                  "normal"
+                ],
+                "confusion_matrix": [
+                  [
+                    3,
+                    0
+                  ],
+                  [
+                    0,
+                    4
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "false_positive_rate": 0.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "attack": 1.0
+                },
+                "per_class": {
+                  "attack": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 3
+                  },
+                  "normal": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 4
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "attack": {
+                    "precision": [
+                      0.42857142857142855,
+                      0.6,
+                      0.75,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.3333333333333333,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      0.025,
+                      0.0375,
+                      0.975,
+                      1.0
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 3,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              }
+            }
+          },
+          "partitions": {
+            "test": {
+              "class_counts": {
+                "attack": 4,
+                "normal": 3
+              },
+              "rows": 7
+            },
+            "train": {
+              "class_counts": {
+                "attack": 9,
+                "normal": 9
+              },
+              "rows": 18
+            },
+            "validation": {
+              "class_counts": {
+                "attack": 3,
+                "normal": 4
+              },
+              "rows": 7
+            }
+          }
+        }
+      },
+      "target_definition": {
+        "attack": "all remaining Attack_type labels",
+        "normal": [
+          "Amazon-Alexa",
+          "MQTT",
+          "MQTT_Publish",
+          "Thing_Speak",
+          "Thing_speak",
+          "Wipro_bulb",
+          "Wipro_bulb_Dataset"
+        ]
+      }
+    },
+    "multiclass": {
+      "realistic_split": {
+        "available": false,
+        "reason": "No reliable grouping or timestamp exists in canonical RT-IoT2022; chronology was not invented."
+      },
+      "selected_model": {
+        "artifact": "multiclass-logistic_regression-20a81a60dab3.joblib",
+        "artifact_sha256": "541256776b4cb722e0757b99c0c85cbd615d418b95f262938cc50f4ac7440eb6",
+        "code_commit": "3cd6f71396ceee3dc13c80ab78e0499db647d883",
+        "code_worktree_dirty": true,
+        "dataset_path": "/home/super_user/Dev/intrustionDetect/data/sample/rt_iot2022_sample.csv",
+        "dataset_sha256": "c6140575514927cc50b61d9cb269548feb27b5da717db87a117c6879a2530737",
+        "feature_order": [
+          "id.orig_p",
+          "id.resp_p",
+          "proto",
+          "service",
+          "flow_duration",
+          "fwd_pkts_tot",
+          "bwd_pkts_tot",
+          "fwd_data_pkts_tot",
+          "bwd_data_pkts_tot",
+          "fwd_pkts_per_sec",
+          "bwd_pkts_per_sec",
+          "flow_pkts_per_sec",
+          "down_up_ratio",
+          "fwd_header_size_tot",
+          "fwd_header_size_min",
+          "fwd_header_size_max",
+          "bwd_header_size_tot",
+          "bwd_header_size_min",
+          "bwd_header_size_max",
+          "flow_FIN_flag_count",
+          "flow_SYN_flag_count",
+          "flow_RST_flag_count",
+          "fwd_PSH_flag_count",
+          "bwd_PSH_flag_count",
+          "flow_ACK_flag_count",
+          "fwd_URG_flag_count",
+          "bwd_URG_flag_count",
+          "flow_CWR_flag_count",
+          "flow_ECE_flag_count",
+          "fwd_pkts_payload.min",
+          "fwd_pkts_payload.max",
+          "fwd_pkts_payload.tot",
+          "fwd_pkts_payload.avg",
+          "fwd_pkts_payload.std",
+          "bwd_pkts_payload.min",
+          "bwd_pkts_payload.max",
+          "bwd_pkts_payload.tot",
+          "bwd_pkts_payload.avg",
+          "bwd_pkts_payload.std",
+          "flow_pkts_payload.min",
+          "flow_pkts_payload.max",
+          "flow_pkts_payload.tot",
+          "flow_pkts_payload.avg",
+          "flow_pkts_payload.std",
+          "fwd_iat.min",
+          "fwd_iat.max",
+          "fwd_iat.tot",
+          "fwd_iat.avg",
+          "fwd_iat.std",
+          "bwd_iat.min",
+          "bwd_iat.max",
+          "bwd_iat.tot",
+          "bwd_iat.avg",
+          "bwd_iat.std",
+          "flow_iat.min",
+          "flow_iat.max",
+          "flow_iat.tot",
+          "flow_iat.avg",
+          "flow_iat.std",
+          "payload_bytes_per_second",
+          "fwd_subflow_pkts",
+          "bwd_subflow_pkts",
+          "fwd_subflow_bytes",
+          "bwd_subflow_bytes",
+          "fwd_bulk_bytes",
+          "bwd_bulk_bytes",
+          "fwd_bulk_packets",
+          "bwd_bulk_packets",
+          "fwd_bulk_rate",
+          "bwd_bulk_rate",
+          "active.min",
+          "active.max",
+          "active.tot",
+          "active.avg",
+          "active.std",
+          "idle.min",
+          "idle.max",
+          "idle.tot",
+          "idle.avg",
+          "idle.std",
+          "fwd_init_window_size",
+          "bwd_init_window_size",
+          "fwd_last_window_size"
+        ],
+        "library_versions": {
+          "joblib": "1.5.3",
+          "numpy": "2.4.6",
+          "pandas": "3.0.5",
+          "python": "3.11.15",
+          "scikit-learn": "1.9.0"
+        },
+        "model_name": "logistic_regression",
+        "model_version": "multiclass-logistic_regression-20a81a60dab3",
+        "probability_calibrated": false,
+        "random_seed": 42,
+        "removed_rows": {
+          "duplicate_feature_rows": 0,
+          "reason": "prevent identical flows from crossing split boundaries"
+        },
+        "schema_version": "rt-iot2022-v1",
+        "selection_metric": "validation_macro_f1",
+        "selection_score": 1.0,
+        "target": "multiclass",
+        "training_configuration": {
+          "random_seed": 42,
+          "test_fraction": 0.2,
+          "validation_fraction": 0.2
+        }
+      },
+      "splits": {
+        "stratified_random": {
+          "definition": {
+            "shuffle": true,
+            "strategy": "stratified random"
+          },
+          "models": {
+            "decision_tree": {
+              "operational": {
+                "benchmark_rows": 7,
+                "median_inference_latency_ms": 6.040008,
+                "p95_inference_latency_ms": 7.14185,
+                "predictions_per_second": 1337.0467575786586,
+                "serialized_model_size_bytes": 2910
+              },
+              "test": {
+                "accuracy": 1.0,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "DOS_SYN_Hping",
+                  "MQTT",
+                  "NMAP_TCP_scan",
+                  "Thing_speak"
+                ],
+                "confusion_matrix": [
+                  [
+                    2,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    2,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    0,
+                    2
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "DOS_SYN_Hping": 1.0,
+                  "MQTT": 1.0,
+                  "NMAP_TCP_scan": 1.0,
+                  "Thing_speak": 1.0
+                },
+                "per_class": {
+                  "DOS_SYN_Hping": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "MQTT": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 1
+                  },
+                  "NMAP_TCP_scan": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "Thing_speak": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "DOS_SYN_Hping": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "MQTT": {
+                    "precision": [
+                      0.14285714285714285,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "NMAP_TCP_scan": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "Thing_speak": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      1.0
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 1,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              },
+              "training": {
+                "approximate_cpu_utilization_percent": 99.47093208637693,
+                "peak_traced_python_memory_bytes": 306313,
+                "process_cpu_seconds": 0.05293787700000152,
+                "process_peak_rss_kib": 192828,
+                "process_peak_rss_note": "Unix ru_maxrss is process-wide and cumulative, not model-isolated.",
+                "wall_seconds": 0.05321944400202483
+              },
+              "validation": {
+                "accuracy": 1.0,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "DOS_SYN_Hping",
+                  "MQTT",
+                  "NMAP_TCP_scan",
+                  "Thing_speak"
+                ],
+                "confusion_matrix": [
+                  [
+                    1,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    2,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    2,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    0,
+                    2
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "DOS_SYN_Hping": 1.0,
+                  "MQTT": 1.0,
+                  "NMAP_TCP_scan": 1.0,
+                  "Thing_speak": 1.0
+                },
+                "per_class": {
+                  "DOS_SYN_Hping": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 1
+                  },
+                  "MQTT": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "NMAP_TCP_scan": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "Thing_speak": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "DOS_SYN_Hping": {
+                    "precision": [
+                      0.14285714285714285,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "MQTT": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "NMAP_TCP_scan": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "Thing_speak": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      1.0
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 1,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              }
+            },
+            "hist_gradient_boosting": {
+              "operational": {
+                "benchmark_rows": 7,
+                "median_inference_latency_ms": 10.447681,
+                "p95_inference_latency_ms": 11.1122537,
+                "predictions_per_second": 754.4875842504823,
+                "serialized_model_size_bytes": 8159
+              },
+              "test": {
+                "accuracy": 0.2857142857142857,
+                "balanced_accuracy": 0.25,
+                "classes": [
+                  "DOS_SYN_Hping",
+                  "MQTT",
+                  "NMAP_TCP_scan",
+                  "Thing_speak"
+                ],
+                "confusion_matrix": [
+                  [
+                    2,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    1,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    2,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    2,
+                    0,
+                    0,
+                    0
+                  ]
+                ],
+                "f1": 0.1111111111111111,
+                "f1_macro": 0.1111111111111111,
+                "f1_weighted": 0.12698412698412698,
+                "macro_one_vs_rest_false_positive_rate": 0.25,
+                "matthews_correlation_coefficient": 0.0,
+                "one_vs_rest_pr_auc": {
+                  "DOS_SYN_Hping": 0.2857142857142857,
+                  "MQTT": 0.14285714285714285,
+                  "NMAP_TCP_scan": 0.2857142857142857,
+                  "Thing_speak": 0.2857142857142857
+                },
+                "per_class": {
+                  "DOS_SYN_Hping": {
+                    "f1": 0.4444444444444444,
+                    "one_vs_rest_false_positive_rate": 1.0,
+                    "precision": 0.2857142857142857,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "MQTT": {
+                    "f1": 0.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "support": 1
+                  },
+                  "NMAP_TCP_scan": {
+                    "f1": 0.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "support": 2
+                  },
+                  "Thing_speak": {
+                    "f1": 0.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "support": 2
+                  }
+                },
+                "precision": 0.07142857142857142,
+                "precision_macro": 0.07142857142857142,
+                "precision_recall_curves": {
+                  "DOS_SYN_Hping": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.2777777777777778
+                    ]
+                  },
+                  "MQTT": {
+                    "precision": [
+                      0.14285714285714285,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.2777777777777778
+                    ]
+                  },
+                  "NMAP_TCP_scan": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.22222222222222224
+                    ]
+                  },
+                  "Thing_speak": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.22222222222222224
+                    ]
+                  }
+                },
+                "precision_weighted": 0.08163265306122448,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 0.0,
+                "rare_class_test_support": 1,
+                "recall": 0.25,
+                "recall_macro": 0.25,
+                "recall_weighted": 0.2857142857142857
+              },
+              "training": {
+                "approximate_cpu_utilization_percent": 452.082041912687,
+                "peak_traced_python_memory_bytes": 889728,
+                "process_cpu_seconds": 1.8835725490000002,
+                "process_peak_rss_kib": 193724,
+                "process_peak_rss_note": "Unix ru_maxrss is process-wide and cumulative, not model-isolated.",
+                "wall_seconds": 0.4166439660002652
+              },
+              "validation": {
+                "accuracy": 0.14285714285714285,
+                "balanced_accuracy": 0.25,
+                "classes": [
+                  "DOS_SYN_Hping",
+                  "MQTT",
+                  "NMAP_TCP_scan",
+                  "Thing_speak"
+                ],
+                "confusion_matrix": [
+                  [
+                    1,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    2,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    2,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    2,
+                    0,
+                    0,
+                    0
+                  ]
+                ],
+                "f1": 0.0625,
+                "f1_macro": 0.0625,
+                "f1_weighted": 0.03571428571428571,
+                "macro_one_vs_rest_false_positive_rate": 0.25,
+                "matthews_correlation_coefficient": 0.0,
+                "one_vs_rest_pr_auc": {
+                  "DOS_SYN_Hping": 0.14285714285714285,
+                  "MQTT": 0.2857142857142857,
+                  "NMAP_TCP_scan": 0.2857142857142857,
+                  "Thing_speak": 0.2857142857142857
+                },
+                "per_class": {
+                  "DOS_SYN_Hping": {
+                    "f1": 0.25,
+                    "one_vs_rest_false_positive_rate": 1.0,
+                    "precision": 0.14285714285714285,
+                    "recall": 1.0,
+                    "support": 1
+                  },
+                  "MQTT": {
+                    "f1": 0.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "support": 2
+                  },
+                  "NMAP_TCP_scan": {
+                    "f1": 0.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "support": 2
+                  },
+                  "Thing_speak": {
+                    "f1": 0.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "support": 2
+                  }
+                },
+                "precision": 0.03571428571428571,
+                "precision_macro": 0.03571428571428571,
+                "precision_recall_curves": {
+                  "DOS_SYN_Hping": {
+                    "precision": [
+                      0.14285714285714285,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.2777777777777778
+                    ]
+                  },
+                  "MQTT": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.2777777777777778
+                    ]
+                  },
+                  "NMAP_TCP_scan": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.22222222222222224
+                    ]
+                  },
+                  "Thing_speak": {
+                    "precision": [
+                      0.2857142857142857,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.22222222222222224
+                    ]
+                  }
+                },
+                "precision_weighted": 0.02040816326530612,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 1,
+                "recall": 0.25,
+                "recall_macro": 0.25,
+                "recall_weighted": 0.14285714285714285
+              }
+            },
+            "logistic_regression": {
+              "operational": {
+                "benchmark_rows": 7,
+                "median_inference_latency_ms": 5.985536,
+                "p95_inference_latency_ms": 7.363461299999999,
+                "predictions_per_second": 1258.172278211854,
+                "serialized_model_size_bytes": 3823
+              },
+              "test": {
+                "accuracy": 1.0,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "DOS_SYN_Hping",
+                  "MQTT",
+                  "NMAP_TCP_scan",
+                  "Thing_speak"
+                ],
+                "confusion_matrix": [
+                  [
+                    2,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    2,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    0,
+                    2
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "DOS_SYN_Hping": 1.0,
+                  "MQTT": 1.0,
+                  "NMAP_TCP_scan": 1.0,
+                  "Thing_speak": 1.0
+                },
+                "per_class": {
+                  "DOS_SYN_Hping": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "MQTT": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 1
+                  },
+                  "NMAP_TCP_scan": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "Thing_speak": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "DOS_SYN_Hping": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.3333333333333333,
+                      0.4,
+                      0.5,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      8.356835733405004e-05,
+                      0.011244066848765263,
+                      0.03501455016312465,
+                      0.042695782611917484,
+                      0.08696289698411193,
+                      0.8085088298351301,
+                      0.9031020875390087
+                    ]
+                  },
+                  "MQTT": {
+                    "precision": [
+                      0.14285714285714285,
+                      0.16666666666666666,
+                      0.2,
+                      0.25,
+                      0.3333333333333333,
+                      0.5,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      8.826296295548637e-11,
+                      1.7970978994155095e-09,
+                      0.00011505371036648652,
+                      0.0003879624816582599,
+                      0.11725651133850941,
+                      0.22994589289678183,
+                      0.9608817446308782
+                    ]
+                  },
+                  "NMAP_TCP_scan": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.3333333333333333,
+                      0.4,
+                      0.5,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      6.75515424653034e-11,
+                      1.752636293516775e-05,
+                      4.4103295902174075e-05,
+                      0.0626240524960364,
+                      0.07254051685112856,
+                      0.9127818231513423,
+                      0.9887353547993474
+                    ]
+                  },
+                  "Thing_speak": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.3333333333333333,
+                      0.4,
+                      0.5,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      2.0578263624338913e-05,
+                      0.00025527806744787476,
+                      0.03415880625458837,
+                      0.03903468694423625,
+                      0.11856269083208312,
+                      0.7350220305771584,
+                      0.840003602753671
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 1,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              },
+              "training": {
+                "approximate_cpu_utilization_percent": 551.1652185479331,
+                "peak_traced_python_memory_bytes": 335848,
+                "process_cpu_seconds": 0.9031603210000005,
+                "process_peak_rss_kib": 192828,
+                "process_peak_rss_note": "Unix ru_maxrss is process-wide and cumulative, not model-isolated.",
+                "wall_seconds": 0.16386380900075892
+              },
+              "validation": {
+                "accuracy": 1.0,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "DOS_SYN_Hping",
+                  "MQTT",
+                  "NMAP_TCP_scan",
+                  "Thing_speak"
+                ],
+                "confusion_matrix": [
+                  [
+                    1,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    2,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    2,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    0,
+                    2
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "DOS_SYN_Hping": 1.0,
+                  "MQTT": 1.0,
+                  "NMAP_TCP_scan": 1.0,
+                  "Thing_speak": 1.0
+                },
+                "per_class": {
+                  "DOS_SYN_Hping": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 1
+                  },
+                  "MQTT": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "NMAP_TCP_scan": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "Thing_speak": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "DOS_SYN_Hping": {
+                    "precision": [
+                      0.14285714285714285,
+                      0.16666666666666666,
+                      0.2,
+                      0.25,
+                      0.3333333333333333,
+                      0.5,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      1.985908600930809e-05,
+                      0.0007480675001844785,
+                      0.013307365413769439,
+                      0.04050906940364674,
+                      0.0791891140162443,
+                      0.09347178528420065,
+                      0.8930328335741341
+                    ]
+                  },
+                  "MQTT": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.3333333333333333,
+                      0.4,
+                      0.5,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      4.749593092768515e-10,
+                      3.641811070626437e-09,
+                      0.0006261210032855098,
+                      0.039517586351731894,
+                      0.0658477352301586,
+                      0.8921162019106454,
+                      0.9933784661683505
+                    ]
+                  },
+                  "NMAP_TCP_scan": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.3333333333333333,
+                      0.4,
+                      0.5,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      3.6221795628664065e-11,
+                      2.9522206749501018e-09,
+                      2.819981706934109e-06,
+                      0.00010865552053869006,
+                      0.04661991778945744,
+                      0.9064437629637614,
+                      0.959406298229108
+                    ]
+                  },
+                  "Thing_speak": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.3333333333333333,
+                      0.4,
+                      0.5,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      8.445127707858169e-05,
+                      8.462872543429262e-05,
+                      0.00660167470941864,
+                      0.05972112763312286,
+                      0.10713572763694935,
+                      0.8811846441114851,
+                      0.920842079374365
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 1,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              }
+            },
+            "random_forest": {
+              "operational": {
+                "benchmark_rows": 7,
+                "median_inference_latency_ms": 12.378204,
+                "p95_inference_latency_ms": 13.2790842,
+                "predictions_per_second": 552.1286333842762,
+                "serialized_model_size_bytes": 9622
+              },
+              "test": {
+                "accuracy": 1.0,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "DOS_SYN_Hping",
+                  "MQTT",
+                  "NMAP_TCP_scan",
+                  "Thing_speak"
+                ],
+                "confusion_matrix": [
+                  [
+                    2,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    2,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    0,
+                    2
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "DOS_SYN_Hping": 1.0,
+                  "MQTT": 1.0,
+                  "NMAP_TCP_scan": 1.0,
+                  "Thing_speak": 1.0
+                },
+                "per_class": {
+                  "DOS_SYN_Hping": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "MQTT": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 1
+                  },
+                  "NMAP_TCP_scan": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "Thing_speak": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "DOS_SYN_Hping": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.3333333333333333,
+                      0.5,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      0.029682539682539682,
+                      0.07598571567321569,
+                      0.1062608225108225,
+                      0.9375694444444447,
+                      0.9610069444444447
+                    ]
+                  },
+                  "MQTT": {
+                    "precision": [
+                      0.14285714285714285,
+                      0.3333333333333333,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      0.0330109126984127,
+                      0.9854166666666668
+                    ]
+                  },
+                  "NMAP_TCP_scan": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.5,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      0.013020833333333332,
+                      0.03645833333333333,
+                      0.8937391774891774,
+                      0.9240142843267842
+                    ]
+                  },
+                  "Thing_speak": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.4,
+                      0.5,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      0.014583333333333332,
+                      0.02597222222222222,
+                      0.9373065476190474
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 1,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              },
+              "training": {
+                "approximate_cpu_utilization_percent": 99.28868601495103,
+                "peak_traced_python_memory_bytes": 306329,
+                "process_cpu_seconds": 0.8511888130000003,
+                "process_peak_rss_kib": 192828,
+                "process_peak_rss_note": "Unix ru_maxrss is process-wide and cumulative, not model-isolated.",
+                "wall_seconds": 0.8572868139999628
+              },
+              "validation": {
+                "accuracy": 1.0,
+                "balanced_accuracy": 1.0,
+                "classes": [
+                  "DOS_SYN_Hping",
+                  "MQTT",
+                  "NMAP_TCP_scan",
+                  "Thing_speak"
+                ],
+                "confusion_matrix": [
+                  [
+                    1,
+                    0,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    2,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    2,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    0,
+                    2
+                  ]
+                ],
+                "f1": 1.0,
+                "f1_macro": 1.0,
+                "f1_weighted": 1.0,
+                "macro_one_vs_rest_false_positive_rate": 0.0,
+                "matthews_correlation_coefficient": 1.0,
+                "one_vs_rest_pr_auc": {
+                  "DOS_SYN_Hping": 1.0,
+                  "MQTT": 1.0,
+                  "NMAP_TCP_scan": 1.0,
+                  "Thing_speak": 1.0
+                },
+                "per_class": {
+                  "DOS_SYN_Hping": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 1
+                  },
+                  "MQTT": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "NMAP_TCP_scan": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  },
+                  "Thing_speak": {
+                    "f1": 1.0,
+                    "one_vs_rest_false_positive_rate": 0.0,
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "support": 2
+                  }
+                },
+                "precision": 1.0,
+                "precision_macro": 1.0,
+                "precision_recall_curves": {
+                  "DOS_SYN_Hping": {
+                    "precision": [
+                      0.14285714285714285,
+                      0.2,
+                      0.25,
+                      0.3333333333333333,
+                      0.5,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      0.019265873015873018,
+                      0.029682539682539682,
+                      0.0828233225108225,
+                      0.1062608225108225,
+                      0.8988865995115998
+                    ]
+                  },
+                  "MQTT": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.5,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      0.02259424603174603,
+                      0.0330109126984127,
+                      0.9330109126984126,
+                      0.9854166666666668
+                    ]
+                  },
+                  "NMAP_TCP_scan": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      0.055795940170940174,
+                      0.8937391774891774,
+                      0.9171766774891774
+                    ]
+                  },
+                  "Thing_speak": {
+                    "precision": [
+                      0.2857142857142857,
+                      0.4,
+                      0.5,
+                      0.6666666666666666,
+                      1.0,
+                      1.0,
+                      1.0
+                    ],
+                    "recall": [
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      1.0,
+                      0.5,
+                      0.0
+                    ],
+                    "thresholds": [
+                      0.0,
+                      0.014583333333333332,
+                      0.04531746031746031,
+                      0.06698908730158729,
+                      0.947723214285714,
+                      0.9477232142857142
+                    ]
+                  }
+                },
+                "precision_weighted": 1.0,
+                "probability_note": "Raw predict_proba output; not calibrated and not a guaranteed probability.",
+                "rare_class_recall": 1.0,
+                "rare_class_test_support": 1,
+                "recall": 1.0,
+                "recall_macro": 1.0,
+                "recall_weighted": 1.0
+              }
+            }
+          },
+          "partitions": {
+            "test": {
+              "class_counts": {
+                "DOS_SYN_Hping": 2,
+                "MQTT": 1,
+                "NMAP_TCP_scan": 2,
+                "Thing_speak": 2
+              },
+              "rows": 7
+            },
+            "train": {
+              "class_counts": {
+                "DOS_SYN_Hping": 5,
+                "MQTT": 5,
+                "NMAP_TCP_scan": 4,
+                "Thing_speak": 4
+              },
+              "rows": 18
+            },
+            "validation": {
+              "class_counts": {
+                "DOS_SYN_Hping": 1,
+                "MQTT": 2,
+                "NMAP_TCP_scan": 2,
+                "Thing_speak": 2
+              },
+              "rows": 7
+            }
+          }
+        }
+      },
+      "target_definition": {
+        "classes": [
+          "DOS_SYN_Hping",
+          "MQTT",
+          "NMAP_TCP_scan",
+          "Thing_speak"
+        ]
+      }
+    }
+  },
+  "feature_order": [
+    "id.orig_p",
+    "id.resp_p",
+    "proto",
+    "service",
+    "flow_duration",
+    "fwd_pkts_tot",
+    "bwd_pkts_tot",
+    "fwd_data_pkts_tot",
+    "bwd_data_pkts_tot",
+    "fwd_pkts_per_sec",
+    "bwd_pkts_per_sec",
+    "flow_pkts_per_sec",
+    "down_up_ratio",
+    "fwd_header_size_tot",
+    "fwd_header_size_min",
+    "fwd_header_size_max",
+    "bwd_header_size_tot",
+    "bwd_header_size_min",
+    "bwd_header_size_max",
+    "flow_FIN_flag_count",
+    "flow_SYN_flag_count",
+    "flow_RST_flag_count",
+    "fwd_PSH_flag_count",
+    "bwd_PSH_flag_count",
+    "flow_ACK_flag_count",
+    "fwd_URG_flag_count",
+    "bwd_URG_flag_count",
+    "flow_CWR_flag_count",
+    "flow_ECE_flag_count",
+    "fwd_pkts_payload.min",
+    "fwd_pkts_payload.max",
+    "fwd_pkts_payload.tot",
+    "fwd_pkts_payload.avg",
+    "fwd_pkts_payload.std",
+    "bwd_pkts_payload.min",
+    "bwd_pkts_payload.max",
+    "bwd_pkts_payload.tot",
+    "bwd_pkts_payload.avg",
+    "bwd_pkts_payload.std",
+    "flow_pkts_payload.min",
+    "flow_pkts_payload.max",
+    "flow_pkts_payload.tot",
+    "flow_pkts_payload.avg",
+    "flow_pkts_payload.std",
+    "fwd_iat.min",
+    "fwd_iat.max",
+    "fwd_iat.tot",
+    "fwd_iat.avg",
+    "fwd_iat.std",
+    "bwd_iat.min",
+    "bwd_iat.max",
+    "bwd_iat.tot",
+    "bwd_iat.avg",
+    "bwd_iat.std",
+    "flow_iat.min",
+    "flow_iat.max",
+    "flow_iat.tot",
+    "flow_iat.avg",
+    "flow_iat.std",
+    "payload_bytes_per_second",
+    "fwd_subflow_pkts",
+    "bwd_subflow_pkts",
+    "fwd_subflow_bytes",
+    "bwd_subflow_bytes",
+    "fwd_bulk_bytes",
+    "bwd_bulk_bytes",
+    "fwd_bulk_packets",
+    "bwd_bulk_packets",
+    "fwd_bulk_rate",
+    "bwd_bulk_rate",
+    "active.min",
+    "active.max",
+    "active.tot",
+    "active.avg",
+    "active.std",
+    "idle.min",
+    "idle.max",
+    "idle.tot",
+    "idle.avg",
+    "idle.std",
+    "fwd_init_window_size",
+    "bwd_init_window_size",
+    "fwd_last_window_size"
+  ],
+  "library_versions": {
+    "joblib": "1.5.3",
+    "numpy": "2.4.6",
+    "pandas": "3.0.5",
+    "python": "3.11.15",
+    "scikit-learn": "1.9.0"
+  },
+  "limitations": [
+    "The checked-in fixture is synthetic and only tests the software contract.",
+    "Random-split performance is not evidence of deployment readiness.",
+    "Extractor value compatibility requires controlled PCAP experiments.",
+    "Raw classifier probabilities are uncalibrated.",
+    "CPU and traced-memory results depend on this process and host.",
+    "False alerts per time window are unavailable without reliable timestamps."
+  ],
+  "profile": {
+    "categorical_cardinality": {
+      "proto": 2,
+      "service": 4
+    },
+    "class_frequencies": {
+      "DOS_SYN_Hping": 8,
+      "MQTT": 8,
+      "NMAP_TCP_scan": 8,
+      "Thing_speak": 8
+    },
+    "dataset_path": "/home/super_user/Dev/intrustionDetect/data/sample/rt_iot2022_sample.csv",
+    "dataset_sha256": "c6140575514927cc50b61d9cb269548feb27b5da717db87a117c6879a2530737",
+    "duplicate_feature_rows": 0,
+    "duplicate_rows": 0,
+    "feature_count": 83,
+    "feature_order": [
+      "id.orig_p",
+      "id.resp_p",
+      "proto",
+      "service",
+      "flow_duration",
+      "fwd_pkts_tot",
+      "bwd_pkts_tot",
+      "fwd_data_pkts_tot",
+      "bwd_data_pkts_tot",
+      "fwd_pkts_per_sec",
+      "bwd_pkts_per_sec",
+      "flow_pkts_per_sec",
+      "down_up_ratio",
+      "fwd_header_size_tot",
+      "fwd_header_size_min",
+      "fwd_header_size_max",
+      "bwd_header_size_tot",
+      "bwd_header_size_min",
+      "bwd_header_size_max",
+      "flow_FIN_flag_count",
+      "flow_SYN_flag_count",
+      "flow_RST_flag_count",
+      "fwd_PSH_flag_count",
+      "bwd_PSH_flag_count",
+      "flow_ACK_flag_count",
+      "fwd_URG_flag_count",
+      "bwd_URG_flag_count",
+      "flow_CWR_flag_count",
+      "flow_ECE_flag_count",
+      "fwd_pkts_payload.min",
+      "fwd_pkts_payload.max",
+      "fwd_pkts_payload.tot",
+      "fwd_pkts_payload.avg",
+      "fwd_pkts_payload.std",
+      "bwd_pkts_payload.min",
+      "bwd_pkts_payload.max",
+      "bwd_pkts_payload.tot",
+      "bwd_pkts_payload.avg",
+      "bwd_pkts_payload.std",
+      "flow_pkts_payload.min",
+      "flow_pkts_payload.max",
+      "flow_pkts_payload.tot",
+      "flow_pkts_payload.avg",
+      "flow_pkts_payload.std",
+      "fwd_iat.min",
+      "fwd_iat.max",
+      "fwd_iat.tot",
+      "fwd_iat.avg",
+      "fwd_iat.std",
+      "bwd_iat.min",
+      "bwd_iat.max",
+      "bwd_iat.tot",
+      "bwd_iat.avg",
+      "bwd_iat.std",
+      "flow_iat.min",
+      "flow_iat.max",
+      "flow_iat.tot",
+      "flow_iat.avg",
+      "flow_iat.std",
+      "payload_bytes_per_second",
+      "fwd_subflow_pkts",
+      "bwd_subflow_pkts",
+      "fwd_subflow_bytes",
+      "bwd_subflow_bytes",
+      "fwd_bulk_bytes",
+      "bwd_bulk_bytes",
+      "fwd_bulk_packets",
+      "bwd_bulk_packets",
+      "fwd_bulk_rate",
+      "bwd_bulk_rate",
+      "active.min",
+      "active.max",
+      "active.tot",
+      "active.avg",
+      "active.std",
+      "idle.min",
+      "idle.max",
+      "idle.tot",
+      "idle.avg",
+      "idle.std",
+      "fwd_init_window_size",
+      "bwd_init_window_size",
+      "fwd_last_window_size"
+    ],
+    "identifier_or_leakage_candidates": [],
+    "infinite_values": 0,
+    "limitations": [
+      "Schema validation cannot prove Zeek/Flowmeter and CICFlowMeter value equivalence.",
+      "Feature units are not reliably specified by the UCI variable metadata."
+    ],
+    "metadata_columns": [],
+    "missing_values": {},
+    "observed_dtypes": {
+      "active.avg": "float64",
+      "active.max": "float64",
+      "active.min": "float64",
+      "active.std": "float64",
+      "active.tot": "float64",
+      "bwd_PSH_flag_count": "int64",
+      "bwd_URG_flag_count": "int64",
+      "bwd_bulk_bytes": "float64",
+      "bwd_bulk_packets": "float64",
+      "bwd_bulk_rate": "float64",
+      "bwd_data_pkts_tot": "float64",
+      "bwd_header_size_max": "float64",
+      "bwd_header_size_min": "float64",
+      "bwd_header_size_tot": "float64",
+      "bwd_iat.avg": "float64",
+      "bwd_iat.max": "float64",
+      "bwd_iat.min": "float64",
+      "bwd_iat.std": "float64",
+      "bwd_iat.tot": "float64",
+      "bwd_init_window_size": "int64",
+      "bwd_pkts_payload.avg": "float64",
+      "bwd_pkts_payload.max": "float64",
+      "bwd_pkts_payload.min": "float64",
+      "bwd_pkts_payload.std": "float64",
+      "bwd_pkts_payload.tot": "float64",
+      "bwd_pkts_per_sec": "float64",
+      "bwd_pkts_tot": "float64",
+      "bwd_subflow_bytes": "float64",
+      "bwd_subflow_pkts": "float64",
+      "down_up_ratio": "float64",
+      "flow_ACK_flag_count": "int64",
+      "flow_CWR_flag_count": "int64",
+      "flow_ECE_flag_count": "int64",
+      "flow_FIN_flag_count": "int64",
+      "flow_RST_flag_count": "int64",
+      "flow_SYN_flag_count": "int64",
+      "flow_duration": "float64",
+      "flow_iat.avg": "float64",
+      "flow_iat.max": "float64",
+      "flow_iat.min": "float64",
+      "flow_iat.std": "float64",
+      "flow_iat.tot": "float64",
+      "flow_pkts_payload.avg": "float64",
+      "flow_pkts_payload.max": "float64",
+      "flow_pkts_payload.min": "float64",
+      "flow_pkts_payload.std": "float64",
+      "flow_pkts_payload.tot": "float64",
+      "flow_pkts_per_sec": "float64",
+      "fwd_PSH_flag_count": "int64",
+      "fwd_URG_flag_count": "int64",
+      "fwd_bulk_bytes": "float64",
+      "fwd_bulk_packets": "float64",
+      "fwd_bulk_rate": "float64",
+      "fwd_data_pkts_tot": "float64",
+      "fwd_header_size_max": "float64",
+      "fwd_header_size_min": "float64",
+      "fwd_header_size_tot": "float64",
+      "fwd_iat.avg": "float64",
+      "fwd_iat.max": "float64",
+      "fwd_iat.min": "float64",
+      "fwd_iat.std": "float64",
+      "fwd_iat.tot": "float64",
+      "fwd_init_window_size": "int64",
+      "fwd_last_window_size": "int64",
+      "fwd_pkts_payload.avg": "float64",
+      "fwd_pkts_payload.max": "float64",
+      "fwd_pkts_payload.min": "float64",
+      "fwd_pkts_payload.std": "float64",
+      "fwd_pkts_payload.tot": "float64",
+      "fwd_pkts_per_sec": "float64",
+      "fwd_pkts_tot": "float64",
+      "fwd_subflow_bytes": "float64",
+      "fwd_subflow_pkts": "float64",
+      "id.orig_p": "int64",
+      "id.resp_p": "int64",
+      "idle.avg": "float64",
+      "idle.max": "float64",
+      "idle.min": "float64",
+      "idle.std": "float64",
+      "idle.tot": "float64",
+      "payload_bytes_per_second": "float64",
+      "proto": "str",
+      "service": "str"
+    },
+    "removed_features": [],
+    "row_count": 32,
+    "schema_version": "rt-iot2022-v1",
+    "source_column_count": 84,
+    "target_column": "Attack_type",
+    "valid": true
+  },
+  "random_seed": 42,
+  "removed_rows": {
+    "duplicate_feature_rows": 0,
+    "reason": "prevent identical flows from crossing split boundaries"
+  },
+  "schema_version": "rt-iot2022-v1",
+  "training_configuration": {
+    "random_seed": 42,
+    "test_fraction": 0.2,
+    "validation_fraction": 0.2
+  }
+}

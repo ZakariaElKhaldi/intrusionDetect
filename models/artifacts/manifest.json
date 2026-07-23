@@ -1,0 +1,21 @@
+{
+  "evaluation_report": "evaluation-report.json",
+  "evaluation_report_sha256": "7356724351952ab9ff05de1d36122bce815b98ec2a60d5bc58bef6c5be68a9d9",
+  "models": [
+    {
+      "artifact": "binary-logistic_regression-0fa0d0a15572.joblib",
+      "artifact_sha256": "1032494ff9377fba4c0152604f864e7eaac826dec1aac8bdc66cdf89d65d6dd7",
+      "metadata": "binary-logistic_regression-0fa0d0a15572.metadata.json",
+      "model_version": "binary-logistic_regression-0fa0d0a15572",
+      "target": "binary"
+    },
+    {
+      "artifact": "multiclass-logistic_regression-20a81a60dab3.joblib",
+      "artifact_sha256": "541256776b4cb722e0757b99c0c85cbd615d418b95f262938cc50f4ac7440eb6",
+      "metadata": "multiclass-logistic_regression-20a81a60dab3.metadata.json",
+      "model_version": "multiclass-logistic_regression-20a81a60dab3",
+      "target": "multiclass"
+    }
+  ],
+  "schema_version": "rt-iot2022-v1"
+}

@@ -6,6 +6,59 @@ The system uses machine learning to classify network flows, detect suspicious ac
 
 > Academic and experimental project. It must not be treated as a production security control without additional validation.
 
+## MVP status
+
+Phases 0–4 of the implementation roadmap are implemented: reproducible data
+validation and baseline training, the prediction API and persistence layer, the
+investigation dashboard, and deterministic dataset replay over WebSocket.
+Later explainability, behavior-rule, PCAP-compatibility, drift, and edge phases
+remain research extensions and are not represented as deployment-ready.
+
+The checked-in sample is a deterministic synthetic schema fixture so the
+software can be tested without redistributing the research dataset. Supply the
+original RT-IoT2022 CSV for meaningful evaluation.
+
+## Quick start
+
+Requirements are Python 3.11+, [uv](https://docs.astral.sh/uv/), and Node.js
+20+.
+
+```bash
+make setup
+make validate-data
+make train
+make test
+```
+
+To execute the complete workflow in order and then start both development
+servers:
+
+```bash
+./scripts/run_all.sh
+```
+
+Use `./scripts/run_all.sh --check-only` for validation/CI without starting
+servers, or `--dataset /absolute/path/to/RT_IOT2022.csv` to use the original
+dataset.
+
+Run the API and dashboard in separate terminals:
+
+```bash
+cd backend && uv run uvicorn app.main:app --reload
+cd frontend && npm run dev
+```
+
+Open `http://localhost:5173`; interactive API documentation is available at
+`http://localhost:8000/docs`. Use `make docker-up` for the PostgreSQL-backed
+demonstration stack.
+
+To profile or train on the original dataset:
+
+```bash
+make validate-data DATASET=/absolute/path/to/RT_IOT2022.csv
+make train DATASET=/absolute/path/to/RT_IOT2022.csv
+```
+
 ## Project goals
 
 ### AI and machine learning
@@ -207,6 +260,7 @@ Run a reduced model or quantized anomaly detector on a Raspberry Pi or gateway a
 - [System architecture](docs/system-architecture.md)
 - [Evaluation protocol](docs/evaluation-protocol.md)
 - [Implementation roadmap](docs/implementation-roadmap.md)
+- [Canonical feature schema](docs/feature-schema.md)
 
 ## Repository structure
 

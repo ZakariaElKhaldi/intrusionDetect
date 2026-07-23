@@ -1,0 +1,42 @@
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: iot_ids
+      POSTGRES_USER: iot_ids
+      POSTGRES_PASSWORD: iot_ids
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iot_ids"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      IOT_IDS_DATABASE_URL: postgresql+psycopg://iot_ids:iot_ids@database:5432/iot_ids
+      IOT_IDS_MODEL_DIR: /app/models/artifacts
+      IOT_IDS_CORS_ORIGINS: http://localhost:5173
+    ports:
+      - "8000:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+        VITE_WS_URL: ws://localhost:8000/api/v1/live
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres-data:
