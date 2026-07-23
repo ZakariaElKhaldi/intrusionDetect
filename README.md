@@ -1,619 +1,230 @@
 # IoT Intrusion Detection System
 
-A real-time intrusion detection platform for IoT networks using machine learning.
+A research-backed, real-time intrusion detection platform for IoT networks.
 
-The system analyses network traffic, classifies observations as normal or malicious, identifies possible attack types, and presents results through an interactive monitoring dashboard.
+The system uses machine learning to classify network flows, detect suspicious activity, explain alerts, and present results through a modern React dashboard. The project is based on the **RT-IoT2022** dataset.
 
-The project uses the **RT-IoT2022** dataset from the UCI Machine Learning Repository.
+> Academic and experimental project. It must not be treated as a production security control without additional validation.
 
----
+## Project goals
 
-## Project Objectives
+### AI and machine learning
 
-The project is divided into two main parts:
+- Explore and validate the RT-IoT2022 dataset.
+- Build binary classification: `normal` vs `attack`.
+- Build multiclass classification for attack categories where reliable.
+- Compare simple and advanced models.
+- Measure class-specific performance, not accuracy alone.
+- Add prediction explanations and model-health monitoring.
+- Investigate a lightweight model for edge deployment.
 
-### Machine Learning
+### Software engineering
 
-* Analyse and preprocess the RT-IoT2022 dataset
-* Detect normal and malicious network traffic
-* Compare several classification models
-* Select and save the best-performing model
-* Predict the attack type when possible
-* Explain model predictions using feature importance
+- Build a reproducible traffic-to-prediction pipeline.
+- Replay dataset observations as a real-time stream.
+- Capture and transform network flows using a compatible feature schema.
+- Serve predictions through FastAPI.
+- Stream alerts to a React dashboard.
+- Store alerts, observations, model versions, and analyst feedback.
+- Add a testing harness for normal and malicious scenarios.
+- Package the platform with Docker.
 
-### Software Engineering
-
-* Capture or simulate network traffic
-* Extract features from network flows
-* Send observations to the trained model
-* Display predictions in real time
-* Store detected attacks and alerts
-* Provide an interface for testing individual observations
-* Present model performance and dataset analysis
-
----
-
-## Main Features
-
-* Real-time network monitoring
-* Binary classification: normal or attack
-* Multiclass attack classification
-* Live intrusion alerts
-* Interactive attack timeline
-* IoT network topology visualization
-* Searchable and filterable alert history
-* CSV observation testing
-* Manual observation testing
-* Model comparison dashboard
-* Confusion matrix visualization
-* Feature importance visualization
-* Prediction confidence
-* Dark and light themes
-* Responsive interface
-
----
-
-## System Architecture
+## Research-backed architecture
 
 ```text
-IoT Devices / Traffic Simulator
+Network / PCAP / Dataset Replay
               |
               v
-      Packet Capture Service
+    Flow Feature Extraction
               |
               v
-       Flow Feature Extraction
+ Feature Schema Validation
               |
               v
-      FastAPI Prediction API
-              |
-        Machine Learning Model
+ Preprocessing Pipeline
               |
               v
-       Database and Alerts
+ ML Classifier + Behavior Rules
               |
               v
-        React Web Dashboard
+ Explanation and Severity Engine
+              |
+              v
+ FastAPI + Database + WebSocket/SSE
+              |
+              v
+       React Investigation UI
 ```
 
----
+The feature-extraction stage is a strict compatibility boundary. The UCI page describes Zeek with a Flowmeter plugin, while the introductory paper describes Wireshark PCAP capture followed by CICFlowMeter conversion. The project must verify the actual dataset columns and generated values before choosing a live extractor.
 
-## Technology Stack
+## Recommended stack
 
 ### Frontend
 
-* React
-* TypeScript
-* Vite
-* Tailwind CSS
-* shadcn/ui
-* Radix UI
-* TanStack Query
-* Zustand
-* Apache ECharts
-* Sigma.js
-* TanStack Table
-* TanStack Virtual
-* React Hook Form
-* Zod
-* Motion
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- shadcn/ui and Radix UI
+- TanStack Query
+- Zustand
+- Apache ECharts
+- Sigma.js
+- TanStack Table and TanStack Virtual
+- React Hook Form and Zod
+- Motion
 
 ### Backend
 
-* Python
-* FastAPI
-* Pydantic
-* SQLAlchemy
-* WebSockets or Server-Sent Events
-* Scapy or PyShark
-* PostgreSQL or SQLite
+- Python
+- FastAPI
+- Pydantic
+- SQLAlchemy
+- PostgreSQL for the full version, SQLite for the MVP
+- WebSocket or Server-Sent Events
+- Zeek and/or CICFlowMeter compatibility adapter
+- Scapy for controlled traffic generation and testing
 
-### Machine Learning
+### Machine learning
 
-* Pandas
-* NumPy
-* Scikit-learn
-* XGBoost
-* Imbalanced-learn
-* Matplotlib
-* Joblib
-* SHAP
+- pandas
+- NumPy
+- scikit-learn
+- XGBoost or LightGBM
+- imbalanced-learn
+- SHAP
+- joblib
+- Evidently or custom drift metrics
 
-### Development and Deployment
+## Model candidates
 
-* Docker
-* Docker Compose
-* GitHub Actions
-* Pytest
-* Vitest
-* ESLint
-* Prettier
+Start with models that are fast, explainable, and strong on tabular data:
 
----
+1. Logistic Regression
+2. Decision Tree
+3. Random Forest
+4. HistGradientBoosting
+5. XGBoost or LightGBM
+6. Quantized autoencoder as an optional edge/anomaly baseline
 
-## Machine-Learning Models
+Do not begin with Transformers or a large deep-learning architecture. First establish reliable baselines, realistic evaluation, and a correct feature pipeline.
 
-The project compares several classification algorithms:
+## Evaluation priorities
 
-* Logistic Regression
-* Decision Tree
-* Random Forest
-* HistGradientBoosting
-* XGBoost
+Required metrics:
 
-The models are evaluated using:
+- Precision
+- Recall
+- F1-score
+- Macro F1-score
+- Weighted F1-score
+- Per-class recall
+- False-positive rate
+- Confusion matrix
+- Precision-recall curves
+- Training time
+- Inference latency
+- Model size and memory use
 
-* Accuracy
-* Precision
-* Recall
-* F1-score
-* Macro F1-score
-* Weighted F1-score
-* Confusion matrix
-* Training time
-* Prediction time
+Required evaluation modes:
 
-Accuracy is not used alone because the dataset may contain imbalanced attack classes.
+1. Stratified random split for the initial benchmark.
+2. Group-aware or time-aware split for a more realistic test.
+3. Chronological dataset replay.
+4. Optional cross-dataset or external validation.
 
----
+All resampling, scaling, encoding, and feature selection must be fitted only on training data.
 
-## Application Pages
+## Main application pages
 
-### Live Overview
+### Live overview
 
-Displays:
+- Current traffic rate
+- Active IoT devices
+- Current threat level
+- Attack timeline
+- Protocol distribution
+- Recent critical alerts
+- Model and pipeline health
 
-* Current network status
-* Number of active devices
-* Traffic rate
-* Detected attacks
-* Alert severity
-* Live attack timeline
-* Protocol distribution
+### Alert investigation
 
-### Alerts
+- Virtualized, filterable alert table
+- Attack type and confidence
+- Source and destination
+- Flow features
+- Top SHAP factors
+- Device behavior violations
+- Analyst status and notes
 
-Provides:
+### Network topology
 
-* Searchable alert table
-* Filtering by attack type
-* Filtering by severity
-* Filtering by protocol
-* Filtering by device
-* Alert details
-* Model confidence
-* Feature values
-* Prediction explanation
+- IoT devices and communication edges
+- Suspicious connections
+- Risk levels
+- Device profile violations
+- Time-range filtering
 
-### Network Topology
+### Model analysis
 
-Displays:
+- Model comparison
+- Per-class metrics
+- Confusion matrices
+- Feature importance
+- Error analysis
+- Drift indicators
+- Model version and training metadata
 
-* IoT devices
-* Network connections
-* Suspicious devices
-* Malicious traffic paths
-* Device risk levels
+### Observation testing
 
-### Model Analysis
+- Upload a one-row or batch CSV file
+- Select a saved test observation
+- Replay a traffic scenario
+- View prediction, confidence, severity, and explanation
 
-Displays:
+## Real-time modes
 
-* Model comparison
-* Evaluation metrics
-* Confusion matrices
-* Feature importance
-* Class distribution
-* Training results
+### Phase 1: dataset replay
 
-### Observation Testing
+Replay RT-IoT2022 observations through the same API and event pipeline used by live traffic. This provides a deterministic and safe demonstration.
 
-Allows users to:
+### Phase 2: PCAP replay
 
-* Upload a CSV observation
-* Select an existing test observation
-* Enter observation values manually
-* Run the trained model
-* View the predicted class
-* View confidence scores
-* View the most important features
+Read captured PCAP files, generate compatible flow features, and compare them with known labels.
 
----
+### Phase 3: controlled live capture
 
-## Project Structure
+Capture authorized network traffic and classify completed or periodically updated flows.
+
+### Phase 4: edge deployment
+
+Run a reduced model or quantized anomaly detector on a Raspberry Pi or gateway and forward alerts to the central dashboard.
+
+## Documentation
+
+- [Research foundations](docs/research-foundations.md)
+- [System architecture](docs/system-architecture.md)
+- [Evaluation protocol](docs/evaluation-protocol.md)
+- [Implementation roadmap](docs/implementation-roadmap.md)
+
+## Repository structure
 
 ```text
 iot-intrusion-detection/
 ├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── features/
-│   │   ├── pages/
-│   │   ├── hooks/
-│   │   ├── services/
-│   │   ├── stores/
-│   │   ├── types/
-│   │   └── utils/
-│   ├── package.json
-│   └── vite.config.ts
-│
 ├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   ├── core/
-│   │   ├── database/
-│   │   ├── models/
-│   │   ├── schemas/
-│   │   ├── services/
-│   │   └── main.py
-│   ├── tests/
-│   └── pyproject.toml
-│
 ├── machine-learning/
-│   ├── notebooks/
-│   ├── src/
-│   │   ├── data/
-│   │   ├── preprocessing/
-│   │   ├── training/
-│   │   ├── evaluation/
-│   │   └── inference/
-│   ├── models/
-│   ├── results/
-│   └── tests/
-│
-├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── samples/
-│
+├── collector/
 ├── simulator/
-│   ├── traffic_generator.py
-│   └── attack_scenarios/
-│
+├── data/
+├── models/
+├── tests/
+├── docs/
 ├── docker-compose.yml
-├── .env.example
-├── .gitignore
 └── README.md
 ```
 
----
+## References
 
-## Installation
-
-### Requirements
-
-* Node.js 20 or later
-* Python 3.11 or later
-* Git
-* Docker and Docker Compose, optional
-
-Clone the repository:
-
-```bash
-git clone https://github.com/your-username/iot-intrusion-detection.git
-cd iot-intrusion-detection
-```
-
----
-
-## Backend Setup
-
-```bash
-cd backend
-
-python -m venv .venv
-
-source .venv/bin/activate
-```
-
-On Windows:
-
-```powershell
-.venv\Scripts\activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Start the API:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-The API will be available at:
-
-```text
-http://localhost:8000
-```
-
-Interactive API documentation:
-
-```text
-http://localhost:8000/docs
-```
-
----
-
-## Frontend Setup
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The frontend will be available at:
-
-```text
-http://localhost:5173
-```
-
----
-
-## Machine-Learning Setup
-
-Place the RT-IoT2022 dataset inside:
-
-```text
-data/raw/RT_IOT2022.csv
-```
-
-Run data preprocessing:
-
-```bash
-python machine-learning/src/preprocessing/preprocess.py
-```
-
-Train and compare the models:
-
-```bash
-python machine-learning/src/training/train.py
-```
-
-Evaluate the trained models:
-
-```bash
-python machine-learning/src/evaluation/evaluate.py
-```
-
-The selected model and preprocessing pipeline will be saved inside:
-
-```text
-machine-learning/models/
-```
-
----
-
-## Running with Docker
-
-```bash
-docker compose up --build
-```
-
-The services will be available at:
-
-```text
-Frontend: http://localhost:5173
-Backend:  http://localhost:8000
-API docs: http://localhost:8000/docs
-```
-
----
-
-## API Endpoints
-
-```text
-POST /api/predictions
-```
-
-Predict a single network observation.
-
-```text
-POST /api/predictions/file
-```
-
-Upload a CSV file for prediction.
-
-```text
-GET /api/alerts
-```
-
-Retrieve detected intrusion alerts.
-
-```text
-GET /api/alerts/{id}
-```
-
-Retrieve detailed information about an alert.
-
-```text
-GET /api/dashboard/summary
-```
-
-Retrieve dashboard statistics.
-
-```text
-GET /api/models/metrics
-```
-
-Retrieve model evaluation results.
-
-```text
-WS /api/live
-```
-
-Receive live traffic and intrusion updates.
-
----
-
-## Example Prediction
-
-Request:
-
-```json
-{
-  "proto": "tcp",
-  "service": "http",
-  "duration": 1.45,
-  "src_bytes": 850,
-  "dst_bytes": 320,
-  "packet_rate": 42.6
-}
-```
-
-Response:
-
-```json
-{
-  "prediction": "attack",
-  "attack_type": "NMAP_TCP_scan",
-  "confidence": 0.974,
-  "severity": "high"
-}
-```
-
-The real request schema will contain the features required by the trained preprocessing pipeline.
-
----
-
-## Real-Time Detection Modes
-
-The application can support several data sources.
-
-### Dataset Replay
-
-Replays observations from RT-IoT2022 as a real-time stream.
-
-This is the safest option for development and demonstration.
-
-### Traffic Simulator
-
-Generates simulated normal and malicious traffic scenarios.
-
-### Live Packet Capture
-
-Captures packets from a network interface using Scapy or PyShark.
-
-Live capture may require administrator privileges.
-
-```bash
-sudo python simulator/live_capture.py
-```
-
-The first version of the project should use dataset replay before adding live packet capture.
-
----
-
-## Testing
-
-Run backend tests:
-
-```bash
-cd backend
-pytest
-```
-
-Run frontend tests:
-
-```bash
-cd frontend
-npm run test
-```
-
-Run code quality checks:
-
-```bash
-npm run lint
-```
-
----
-
-## Security and Limitations
-
-This project is designed for educational and experimental purposes.
-
-* It should not be used as the only security system in a production network.
-* Model performance depends on the training dataset.
-* Unknown attacks may not be detected correctly.
-* Network environments can differ from the RT-IoT2022 environment.
-* False positives and false negatives are possible.
-* Live packet capture must only be used on networks where permission has been granted.
-
----
-
-## Development Roadmap
-
-### Phase 1 — Dataset and Models
-
-* Explore the dataset
-* Clean and preprocess the data
-* Train baseline models
-* Compare model performance
-* Save the best model
-
-### Phase 2 — Backend
-
-* Build the FastAPI application
-* Add prediction endpoints
-* Add database storage
-* Add alert management
-* Add live event streaming
-
-### Phase 3 — Frontend
-
-* Build the dashboard layout
-* Add model-analysis charts
-* Add the alert investigation interface
-* Add observation testing
-* Add the network topology view
-
-### Phase 4 — Real-Time System
-
-* Add dataset replay
-* Add the traffic simulator
-* Add live packet capture
-* Add real-time alerts
-
-### Phase 5 — Testing and Deployment
-
-* Add automated tests
-* Add Docker support
-* Measure performance
-* Improve accessibility
-* Write the final report
-
----
-
-## Dataset
-
-**RT-IoT2022**
-
-UCI Machine Learning Repository:
-
-```text
-https://archive.ics.uci.edu/dataset/942/rt-iot2022
-```
-
-The dataset contains normal IoT network traffic and several cyberattack categories.
-
----
-
-## Authors
-
-**Zakaria Elkhaldi**
-
-Computer Science Student
-EMSI Casablanca
-
----
-
-## License
-
-This project is intended for academic and educational use.
-
-A specific open-source license can be added before public distribution.
-
+See [docs/research-foundations.md](docs/research-foundations.md) for the literature review and design implications.
