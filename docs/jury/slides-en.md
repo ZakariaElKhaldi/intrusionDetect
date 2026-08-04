@@ -65,6 +65,13 @@ Show detector and classifier tabs separately. Point to the selection metric, tes
 
 ## 6 — Complete cascade evidence
 
+Seed-42 shared test result:
+
+- 0.9980 accuracy and 0.9865 macro-F1;
+- 18 attacks missed by the detector;
+- 0.9743 mean cascade macro-F1 across three seeds;
+- rarest test family has only 6 observations.
+
 Use the generated ten-class confusion matrix and per-family recall from the production evaluation report.
 
 Say explicitly:
@@ -100,7 +107,10 @@ Show, do not narrate:
 
 ## 9 — End-to-end engineering evidence
 
-Insert the measured normal/attack replay table from `docs/evidence/replay-benchmark.md`.
+| Replay | Rows | Alerts | Failures | Throughput | p95 latency |
+|---|---:|---:|---:|---:|---:|
+| Normal | 200 | 0 | 0 | 75.7 obs/s | 15.98 ms |
+| Attack | 200 | 192 | 0 | 31.25 obs/s | 32.09 ms |
 
 - Real promoted models
 - Disposable database

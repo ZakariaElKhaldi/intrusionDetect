@@ -1,6 +1,8 @@
 # Rapport de projet d'été — Détection d'intrusions IoT par flux réseau
 
-> Version soutenance. Les valeurs numériques définitives doivent être reprises directement de `models/production/evaluation-report.json` et `docs/evidence/replay-benchmark.json` après la dernière promotion des modèles. Ne jamais remplacer un résultat manquant par une estimation.
+> Version soutenance fondée sur le bundle promu le 4 août 2026. Toute nouvelle
+> promotion impose de régénérer les valeurs depuis `models/production/evaluation-report.json`
+> et `docs/evidence/replay-benchmark.json`.
 
 ## Résumé
 
@@ -43,7 +45,24 @@ Quatre familles scikit-learn sont comparées séparément pour chaque tâche: r�
 
 ## 6. Résultats
 
-Les résultats définitifs sont générés, et non recopiés manuellement:
+| Étape | Champion | Macro-F1 validation (moyenne 3 graines) | Macro-F1 test graine 42 |
+|---|---|---:|---:|
+| Détection binaire | HistGradientBoosting | 0,9965 | 0,9955 |
+| Famille d'attaque | HistGradientBoosting | 0,9526 | 0,9853 |
+
+Sur le test commun de la graine 42, la cascade complète atteint une exactitude de
+0,9980 et une macro-F1 de 0,9865, avec 18 attaques manquées par le détecteur. La
+macro-F1 moyenne de la cascade sur les trois graines est 0,9743. La classe la plus
+rare du test ne compte que six observations: les scores élevés de ces familles
+restent donc fragiles.
+
+Le rejeu mesuré de 200 lignes normales produit 200 prédictions, aucune alerte et
+aucun échec, à 75,7 observations/s avec une latence p95 de 15,98 ms. Le rejeu de
+200 attaques produit 200 prédictions, 192 alertes et aucun échec, à 31,25
+observations/s avec une latence p95 de 32,09 ms. Il s'agit d'une mesure locale,
+pas d'un test de capacité de production.
+
+Les résultats détaillés restent générés et vérifiables:
 
 - candidats et agrégats sur trois graines: `GET /evaluation?stage=binary|multiclass`;
 - matrices de confusion, supports et métriques test: `models/production/evaluation-report.json`;

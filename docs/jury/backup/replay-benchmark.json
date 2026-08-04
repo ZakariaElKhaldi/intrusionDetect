@@ -1,0 +1,59 @@
+{
+  "schema_version": "jury-replay-benchmark-v1",
+  "recorded_at": "2026-08-04T22:44:00.921355+00:00",
+  "environment": "local single-process FastAPI, promoted models, disposable SQLite",
+  "dataset_checksum": "956956c09c1764584fa08acd0f6876475626bcedcd6a6b1f8c492c2e9a2089ea",
+  "detector_model_version": "binary-hist_gradient_boosting-fbc864a2f90c",
+  "classifier_model_version": "multiclass-hist_gradient_boosting-43e33432abfc",
+  "fallback_active": false,
+  "measurement_notes": [
+    "WebSocket counts are observed from one client connected before replay starts.",
+    "Scores are uncalibrated and this benchmark does not establish production capacity."
+  ],
+  "scenarios": [
+    {
+      "scenario": "normal",
+      "requested_limit": 200,
+      "interval_ms": 0,
+      "replay_status": "completed",
+      "replay_error": null,
+      "processed": 200,
+      "persisted_observations": 200,
+      "persisted_predictions": 200,
+      "persisted_alerts": 0,
+      "prediction_event_count": 200,
+      "alert_event_count": 0,
+      "failures": 0,
+      "wall_time_seconds": 2.641988,
+      "throughput_observations_per_second": 75.701,
+      "end_to_end_latency_ms": {
+        "count": 200,
+        "mean": 12.518061,
+        "p50": 11.763722,
+        "p95": 15.982981
+      }
+    },
+    {
+      "scenario": "attack",
+      "requested_limit": 200,
+      "interval_ms": 0,
+      "replay_status": "completed",
+      "replay_error": null,
+      "processed": 200,
+      "persisted_observations": 200,
+      "persisted_predictions": 200,
+      "persisted_alerts": 192,
+      "prediction_event_count": 200,
+      "alert_event_count": 192,
+      "failures": 0,
+      "wall_time_seconds": 6.400978,
+      "throughput_observations_per_second": 31.245,
+      "end_to_end_latency_ms": {
+        "count": 200,
+        "mean": 29.701044,
+        "p50": 30.126766,
+        "p95": 32.088397
+      }
+    }
+  ]
+}

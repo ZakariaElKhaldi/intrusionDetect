@@ -88,4 +88,20 @@ test.describe.serial("jury path with promoted models", () => {
     await page.getByRole("table", { name: "Security alerts" }).getByRole("row").first().click();
     await expect(page.getByText("resolved", { exact: true }).first()).toBeVisible();
   });
+
+  test("core dashboard stays within desktop, projector, tablet, and mobile viewports", async ({ page }) => {
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 1280, height: 720 },
+      { width: 768, height: 1024 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/");
+      await expect(page.locator("#main-content")).toBeVisible();
+      expect(await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      )).toBeTruthy();
+    }
+  });
 });
