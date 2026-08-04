@@ -14,6 +14,8 @@ import type {
   EvaluationReport,
   ReplayOptions,
   ReplayStatus,
+  DashboardSummary,
+  AlertPage,
 } from "./types";
 
 const configuredApi = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
@@ -281,6 +283,17 @@ export async function getAlerts(): Promise<Alert[]> {
   return value.map(alertFromWire);
 }
 
+export async function getAlertsPage(filters: { severity?: string; status?: string; family?: string; q?: string; from?: string; to?: string; limit?: number; offset?: number }): Promise<AlertPage> {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "" && value !== "all") query.set(key, String(value)); });
+  const value = await request<{ items: AlertWire[]; total: number; limit: number; offset: number; has_more: boolean }>(`/alerts/page?${query.toString()}`);
+  return { ...value, items: value.items.map(alertFromWire) };
+}
+
+export async function getDashboardSummary(range: DashboardSummary["range"] = "24h"): Promise<DashboardSummary> {
+  return request<DashboardSummary>(`/dashboard/summary?range=${range}`);
+}
+
 export async function getAlert(id: string): Promise<Alert> {
   return alertFromWire(await request<AlertWire>(`/alerts/${encodeURIComponent(id)}`));
 }
@@ -450,8 +463,8 @@ function explanationStage(value: unknown): AlertExplanationStage | null {
           : typeof contribution.feature === "string" ? contribution.feature : undefined,
         raw_value: typeof contribution.raw_value === "string" || typeof contribution.raw_value === "number"
           ? contribution.raw_value : null,
-        transformed_value: typeof contribution.transformed_value === "string" || typeof contribution.transformed_value === "number"
-          ? contribution.transformed_value : null,
+        ...(typeof contribution.transformed_value === "string" || typeof contribution.transformed_value === "number"
+          ? { transformed_value: contribution.transformed_value } : {}),
         impact: Number(contribution.impact ?? contribution.shap_value ?? contribution.contribution ?? 0),
       };
     }),

@@ -82,7 +82,7 @@ export function aggregateTopology(alerts: Alert[]): TopologyGraph {
     const normalized = endpoint.trim() || "Unknown endpoint";
     const id = nodeId(normalized);
     const current = nodes.get(id);
-    const unresolved = alert.status !== "resolved" ? 1 : 0;
+    const unresolved = !["resolved", "false_positive"].includes(alert.status) ? 1 : 0;
     if (!current) {
       nodes.set(id, {
         id,
@@ -114,7 +114,7 @@ export function aggregateTopology(alerts: Alert[]): TopologyGraph {
     const targetEndpoint = alert.destination_ip.trim() || "Unknown endpoint";
     const id = edgeId(sourceEndpoint, targetEndpoint);
     const current = edges.get(id);
-    const unresolved = alert.status !== "resolved" ? 1 : 0;
+    const unresolved = !["resolved", "false_positive"].includes(alert.status) ? 1 : 0;
     if (!current) {
       edges.set(id, {
         id,
@@ -161,4 +161,3 @@ export function topologyMembership(graph: TopologyGraph): string {
     ...graph.edges.map((edge) => edge.id),
   ].sort().join("|");
 }
-

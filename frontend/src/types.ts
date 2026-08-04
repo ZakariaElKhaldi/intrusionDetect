@@ -60,6 +60,37 @@ export interface HealthInfo {
   fallback_active?: boolean;
   fallback?: boolean;
   fallback_status?: string | { active: boolean; detector: boolean; classifier: boolean };
+  readiness?: "ready" | "degraded" | "blocked";
+  checked_at?: string;
+  instance_id?: string;
+  dataset_checksum_matches_training?: boolean | null;
+  dataset_error?: string | null;
+  components?: Record<string, { status: string; reason?: string; [key: string]: unknown }>;
+}
+
+export interface DashboardSummary {
+  range: "15m" | "1h" | "24h" | "7d" | "all";
+  checked_at: string;
+  generated_at: string;
+  window: { from: string | null; to: string };
+  scope: { source: string; time_field: string; range: string; from: string | null; to: string; bucket_minutes: number; includes: string[] };
+  persisted_totals: { predictions: number; alerts: number; unresolved_alerts: number };
+  predictions: { total: number; attack: number; normal: number };
+  alerts: { total: number; open: number; unresolved: number; critical_open: number; resolved: number; false_positive: number };
+  median_detection_score: number | null;
+  status_counts: Record<string, number>;
+  severity_counts: Record<string, number>;
+  family_counts: Record<string, number>;
+  protocol_counts: Record<string, number>;
+  severity_timeline: { bucket_start: string; total: number; critical: number; high: number; medium: number; low: number }[];
+}
+
+export interface AlertPage {
+  items: Alert[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
 }
 
 export type ReplayScenario = "attack" | "normal" | "all" | `class:${string}`;

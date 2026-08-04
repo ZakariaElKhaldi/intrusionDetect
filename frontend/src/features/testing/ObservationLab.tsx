@@ -2,7 +2,7 @@ import { AlertTriangle, CheckCircle2, FileSearch, RotateCcw, Upload } from "luci
 import { useMemo, useState } from "react";
 import { predict } from "../../api";
 import { PanelHeading } from "../../components/PanelHeading";
-import { savedObservationCsv } from "../../sampleObservation";
+import { datasetExampleProvenance, verifiedAttackObservationCsv, verifiedNormalObservationCsv } from "../../sampleObservation";
 import { parseCsv } from "../../utils";
 
 interface PredictionResult {
@@ -18,7 +18,7 @@ interface PredictionResult {
   alert_id?: string | null;
 }
 
-const sampleRow = parseCsv(savedObservationCsv)[0];
+const sampleRow = parseCsv(verifiedNormalObservationCsv)[0];
 const canonicalHeaders = Object.keys(sampleRow).filter((header) => header !== "Attack_type");
 
 function normalizeResults(value: unknown): PredictionResult[] {
@@ -35,6 +35,8 @@ export function ObservationLab() {
   const [error, setError] = useState("");
   const [response, setResponse] = useState<unknown>();
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const pageSize = 25;
 
   const schema = useMemo(() => {
     if (!rows.length) return { missing: [] as string[], extra: [] as string[], valid: false };
@@ -47,6 +49,8 @@ export function ObservationLab() {
     };
   }, [rows]);
   const results = useMemo(() => normalizeResults(response), [response]);
+  const pageCount = Math.max(1, Math.ceil(results.length / pageSize));
+  const visibleResults = results.slice(page * pageSize, (page + 1) * pageSize);
   const attackCount = results.filter((result) => result.binary_prediction === "attack").length;
   const averageConfidence = results.length
     ? results.reduce((total, result) => total + (result.detection_score ?? result.confidence ?? 0), 0) / results.length
@@ -57,8 +61,10 @@ export function ObservationLab() {
     setResponse(undefined);
     try {
       const parsed = parseCsv(text);
+      if (parsed.length > 10_000) throw new Error(`This file contains ${parsed.length.toLocaleString()} rows. The inference limit is 10,000 rows per request.`);
       setRows(parsed);
       setFilename(name);
+      setPage(0);
     } catch (caught) {
       setRows([]);
       setFilename("");
@@ -101,17 +107,20 @@ export function ObservationLab() {
         <span className="eyebrow">Observation workflow</span>
         <h2>Validate traffic features</h2>
         <p>Inspect the schema before sending one observation or a batch to the active model.</p>
+        <p className="sample-note">Batch inference is all-or-nothing: one invalid row rejects the complete request.</p>
 
         <div className="step-label"><b>1</b> Select observations</div>
         <label className="dropzone">
           <input type="file" accept=".csv,text/csv" onChange={(event) => loadFile(event.target.files?.[0])} />
           <Upload aria-hidden="true" />
           <b>Choose an RT-IoT2022 CSV</b>
-          <small>Canonical 83-feature order · maximum 10 MB</small>
+          <small>Canonical 83-feature order · maximum 10 MB and 10,000 rows</small>
         </label>
-        <button className="secondary-button" onClick={() => loadText(savedObservationCsv, "saved-normal-observation.csv")}>
-          Load the saved fixture
-        </button>
+        <div className="example-buttons">
+          <button className="secondary-button" onClick={() => loadText(verifiedNormalObservationCsv, "rt-iot2022-line-2-normal.csv")}>Load verified normal example</button>
+          <button className="secondary-button" onClick={() => loadText(verifiedAttackObservationCsv, "rt-iot2022-line-12509-attack.csv")}>Load verified attack example</button>
+        </div>
+        <p className="sample-note">RT-IoT2022 extracted SHA-256 <span className="mono">{datasetExampleProvenance.extractedSha256}</span>. Source lines 2 (MQTT_Publish → normal) and 12,509 (ARP_poisioning → attack); the leading dataset index is intentionally removed.</p>
 
         <div className="step-label"><b>2</b> Validate schema</div>
         {rows.length ? (
@@ -169,13 +178,15 @@ export function ObservationLab() {
             </div>
             <div className="preview-scroll">
               <table>
-                <thead><tr><th>Row</th><th>Prediction</th><th>Class</th><th>Detection score</th><th>Class score</th><th>Serving models</th><th>Alert</th></tr></thead>
+                <thead><tr><th>Row</th><th>Prediction</th><th>Class</th><th>Ground truth</th><th>Match?</th><th>Detection score</th><th>Class score</th><th>Serving models</th><th>Alert</th></tr></thead>
                 <tbody>
-                  {results.map((result, index) => (
+                  {visibleResults.map((result, index) => (
                     <tr key={result.event_id ?? index}>
-                      <td>{index + 1}</td>
+                      <td>{page * pageSize + index + 1}</td>
                       <td>{result.binary_prediction ?? "Unknown"}</td>
                       <td>{result.attack_class ?? "—"}</td>
+                      <td>{String(rows[page * pageSize + index]?.Attack_type ?? rows[page * pageSize + index]?.ground_truth ?? "Not provided")}</td>
+                      <td>{(() => { const truth=String(rows[page*pageSize+index]?.Attack_type??rows[page*pageSize+index]?.ground_truth??""); if(!truth)return "—"; const predicted=result.binary_prediction==="normal"?"normal":result.attack_class??"attack"; return predicted.toLowerCase()===truth.toLowerCase()?"Yes":"No"; })()}</td>
                       <td>{typeof (result.detection_score ?? result.confidence) === "number" ? `${((result.detection_score ?? result.confidence ?? 0) * 100).toFixed(1)}%` : "—"}</td>
                       <td>{typeof result.attack_class_score === "number" ? `${(result.attack_class_score * 100).toFixed(1)}%` : "—"}</td>
                       <td className="mono">
@@ -188,6 +199,7 @@ export function ObservationLab() {
                 </tbody>
               </table>
             </div>
+            {pageCount > 1 ? <nav className="pagination" aria-label="Prediction result pages"><button className="secondary-button" disabled={page===0} onClick={()=>setPage((value)=>Math.max(0,value-1))}>Previous</button><span>Page {page+1} of {pageCount}</span><button className="secondary-button" disabled={page>=pageCount-1} onClick={()=>setPage((value)=>Math.min(pageCount-1,value+1))}>Next</button></nav> : null}
             <details className="raw-details">
               <summary>Inspect raw response</summary>
               <pre>{JSON.stringify(response, null, 2)}</pre>

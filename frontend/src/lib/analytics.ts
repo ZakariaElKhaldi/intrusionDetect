@@ -134,7 +134,7 @@ export function aggregateDetections(alerts: Alert[]): DetectionAggregate[] {
     const detection = cleanLabel(alert.attack_type, "Unclassified");
     const group = groups.get(detection) ?? { count: 0, unresolvedCount: 0, confidence: [] };
     group.count += 1;
-    if (alert.status !== "resolved") group.unresolvedCount += 1;
+    if (!["resolved", "false_positive"].includes(alert.status)) group.unresolvedCount += 1;
     if (Number.isFinite(alert.confidence)) group.confidence.push(alert.confidence);
     groups.set(detection, group);
   }

@@ -34,7 +34,7 @@ async function waitForReplay(
 
 async function waitForConnectedPage(page: Page, view = "overview") {
   await page.goto(`/?view=${view}`);
-  await expect(page.getByText("System connected")).toBeVisible();
+  await expect(page.getByText("Live stream connected", { exact: true })).toBeVisible();
   await expect(page.locator(".system-status small")).toContainText("stream live", {
     timeout: 10_000,
   });
@@ -65,10 +65,19 @@ async function attachViewport(page: Page, name: string) {
 function runtimeIssues(page: Page) {
   const issues: string[] = [];
   page.on("console", (message) => {
-    if (message.type() === "error") issues.push(`console: ${message.text()}`);
+    if (message.type() === "error") {
+      const location = message.location();
+      if (location.url.endsWith("/favicon.ico")) return;
+      issues.push(`console: ${message.text()} ${location.url || "unknown source"}`);
+    }
   });
   page.on("requestfailed", (request) => {
     issues.push(`request: ${request.method()} ${request.url()} ${request.failure()?.errorText}`);
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400) {
+      issues.push(`response: ${response.status()} ${response.url()}`);
+    }
   });
   return issues;
 }
@@ -93,7 +102,7 @@ test.describe.serial("production-preview jury path", () => {
     const issues = runtimeIssues(page);
     await waitForConnectedPage(page);
     await startReplayFromBrowser(page, "normal", 8);
-    await expect(page.getByText("Replay completed", { exact: true })).toBeVisible({
+    await expect(page.locator('[data-replay-status="completed"]')).toBeVisible({
       timeout: 15_000,
     });
     await expect(
@@ -108,14 +117,14 @@ test.describe.serial("production-preview jury path", () => {
     const issues = runtimeIssues(page);
     await waitForConnectedPage(page);
     await startReplayFromBrowser(page, "attack", 8);
-    await expect(page.getByText("Replay completed", { exact: true })).toBeVisible({
+    await expect(page.locator('[data-replay-status="completed"]')).toBeVisible({
       timeout: 20_000,
     });
     const newAlerts = page.getByLabel(/new alerts/);
     await expect(newAlerts).toBeVisible();
-    await page.getByRole("button", { name: "Alerts", exact: true }).click();
-    const firstRow = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
-    await expect(firstRow).toBeVisible();
+    await page.getByRole("button", { name: "Triage alerts", exact: true }).click();
+    const firstAlert = page.getByRole("row", { name: /^Open .* alert / }).first();
+    await expect(firstAlert).toBeVisible();
     const alerts = await apiJson<Record<string, unknown>[]>(request, "/alerts");
     expect(alerts.length).toBeGreaterThan(0);
     expect(alerts[0].detector_model_version).toBeTruthy();
@@ -126,17 +135,20 @@ test.describe.serial("production-preview jury path", () => {
 
   test("reload hydrates alerts, SHAP works, feedback persists, and focus is restored", async ({ page }) => {
     await waitForConnectedPage(page, "alerts");
-    const row = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
+    const row = page.getByRole("row", { name: /^Open .* alert / }).first();
     await expect(row).toBeVisible();
     await row.focus();
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(page.getByRole("button", { name: "Close alert details" })).toBeFocused();
-    const explanationStages = dialog.locator(".explanation-stage");
-    await expect(explanationStages).toHaveCount(2, { timeout: 15_000 });
-    await expect(explanationStages.nth(0)).toContainText("Detector");
-    await expect(explanationStages.nth(1)).toContainText("Classifier");
+    const detectorTab = dialog.getByRole("tab", { name: "Detector" });
+    const classifierTab = dialog.getByRole("tab", { name: "Classifier" });
+    await expect(detectorTab).toHaveAttribute("aria-selected", "true", { timeout: 15_000 });
+    await expect(dialog.locator(".explanation-stage")).toBeVisible();
+    await classifierTab.click();
+    await expect(classifierTab).toHaveAttribute("aria-selected", "true");
+    await expect(dialog.locator(".explanation-stage")).toBeVisible();
     await page.getByRole("button", { name: "Resolve" }).click();
     await expect(page.getByText("Saved as resolved.", { exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
@@ -144,9 +156,11 @@ test.describe.serial("production-preview jury path", () => {
     await expect(row).toBeFocused();
 
     await page.reload();
-    const hydratedRow = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
+    const hydratedRow = page.getByRole("row", { name: /^Open .* alert / }).first();
     await hydratedRow.click();
-    await expect(page.getByText("resolved", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByRole("dialog").locator(".summary-grid").getByText("resolved", { exact: true }),
+    ).toBeVisible();
   });
 
   test("pause, resume, and stop use browser controls and preserve progress", async ({ page, request }) => {
@@ -155,16 +169,16 @@ test.describe.serial("production-preview jury path", () => {
     await expect(page.getByRole("button", { name: "Pause replay" })).toBeVisible();
     await page.waitForTimeout(500);
     await page.getByRole("button", { name: "Pause replay" }).click();
-    await expect(page.getByText("Replay paused", { exact: true })).toBeVisible();
+    await expect(page.locator('[data-replay-status="paused"]')).toBeVisible();
     const paused = await apiJson<ReplayStatus>(request, "/replay/status");
     await page.waitForTimeout(800);
     expect((await apiJson<ReplayStatus>(request, "/replay/status")).processed).toBe(
       paused.processed,
     );
     await page.getByRole("button", { name: "Resume replay" }).click();
-    await expect(page.getByText("Replay running", { exact: true })).toBeVisible();
+    await expect(page.locator('[data-replay-status="running"]')).toBeVisible();
     await page.getByRole("button", { name: "Stop replay" }).click();
-    await expect(page.getByText("Replay stopped", { exact: true })).toBeVisible();
+    await expect(page.locator('[data-replay-status="stopped"]')).toBeVisible();
     expect((await waitForReplay(request, "stopped")).processed).toBeGreaterThanOrEqual(
       paused.processed,
     );
@@ -210,11 +224,11 @@ test.describe.serial("production-preview jury path", () => {
 
   test("navigation and alert investigation remain keyboard operable", async ({ page }) => {
     await waitForConnectedPage(page);
-    const alertsButton = page.getByRole("button", { name: "Alerts", exact: true });
+    const alertsButton = page.getByRole("button", { name: "Triage alerts", exact: true });
     await alertsButton.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { level: 1, name: "Alert investigation" })).toBeVisible();
-    const row = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
+    const row = page.getByRole("row", { name: /^Open .* alert / }).first();
     await row.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("dialog")).toBeVisible();
@@ -247,7 +261,7 @@ test.describe.serial("production-preview jury path", () => {
       ), `${view} at mobile width`).toBeTruthy();
     }
     await waitForConnectedPage(page, "alerts");
-    const row = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
+    const row = page.locator(".alert-card").first();
     await expect(row).toBeVisible();
     const rowFits = await row.evaluate((element) => {
       const rowRect = element.getBoundingClientRect();

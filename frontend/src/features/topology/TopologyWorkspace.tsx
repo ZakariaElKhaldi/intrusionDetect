@@ -58,7 +58,7 @@ function filteredAlerts(
     const timestamp = Date.parse(alert.timestamp);
     if (cutoff !== null && (Number.isNaN(timestamp) || timestamp < cutoff)) return false;
     if (protocol !== "all" && alert.protocol !== protocol) return false;
-    if (elevatedOnly && (!isElevated(alert.severity) || alert.status === "resolved")) return false;
+    if (elevatedOnly && (!isElevated(alert.severity) || ["resolved", "false_positive"].includes(alert.status))) return false;
     if (normalizedQuery && ![
       alert.id,
       alert.source_ip,

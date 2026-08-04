@@ -43,7 +43,9 @@ export function ReplayPanel({
   onRetry,
 }: ReplayPanelProps) {
   const active = replay && ["running", "paused"].includes(replay.status);
-  const progress = replay?.total ? Math.min(100, replay.processed / replay.total * 100) : 0;
+  const processed = Number.isFinite(replay?.processed) ? Number(replay?.processed) : 0;
+  const total = Number.isFinite(replay?.total) ? Number(replay?.total) : 0;
+  const progress = total ? Math.min(100, processed / total * 100) : 0;
   const primaryLabel = replay?.status === "running" ? "Pause replay" : replay?.status === "paused" ? "Resume replay" : "Start replay";
 
   return (
@@ -85,8 +87,8 @@ export function ReplayPanel({
       </div>
       {replay ? (
         <div className={`replay-progress replay-progress--${replay.status}`} aria-live="polite" data-replay-status={replay.status}>
-          <span><b>{replay.status}</b> · {replay.processed} of {replay.total} observations · {replay.scenario}</span>
-          <progress value={replay.processed} max={Math.max(1, replay.total)} aria-label="Replay progress">{progress.toFixed(0)}%</progress>
+          <span><b>{replay.status}</b> · {processed} of {total} observations · {replay.scenario}</span>
+          <progress value={processed} max={Math.max(1, total)} aria-label="Replay progress">{progress.toFixed(0)}%</progress>
         </div>
       ) : null}
       {error ? <div className="state-message state-message--error" role="alert">{error}</div> : null}

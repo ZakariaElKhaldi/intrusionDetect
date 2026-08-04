@@ -2,9 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 import { getEvaluation } from "../../api";
 import { ConfusionMatrixChart, ModelComparisonChart } from "../../components/charts";
 import { PanelHeading } from "../../components/PanelHeading";
-import type { EvaluationReport, ModelInfo } from "../../types";
+import type { EvaluationReport, ModelInfo, ThresholdAnalysis } from "../../types";
 
 type Stage = "binary" | "multiclass";
+
+function ThresholdCurve({ analysis }: { analysis: ThresholdAnalysis }) {
+  const width = 720, height = 280, left = 54, top = 20, right = 18, bottom = 42;
+  const plotWidth = width-left-right, plotHeight=height-top-bottom;
+  const points=[...analysis.points].sort((a,b)=>a.threshold-b.threshold);
+  const x=(value:number)=>left+Math.max(0,Math.min(1,value))*plotWidth;
+  const y=(value:number)=>top+(1-Math.max(0,Math.min(1,value)))*plotHeight;
+  const line=(key: "recall"|"precision"|"false_positive_rate"|"alert_rate")=>points.map((p)=>`${x(p.threshold)},${y(p[key])}`).join(" ");
+  return <figure className="threshold-curve"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby="threshold-chart-title threshold-chart-desc"><title id="threshold-chart-title">Detector validation metrics across thresholds</title><desc id="threshold-chart-desc">Recall, precision, false-positive rate and alert rate between zero and one, with the serving threshold marked.</desc>
+    {[0,.25,.5,.75,1].map(value=><g key={value}><line x1={left} x2={width-right} y1={y(value)} y2={y(value)} className="threshold-grid"/><text x={left-8} y={y(value)+4} textAnchor="end">{Math.round(value*100)}%</text><text x={x(value)} y={height-14} textAnchor="middle">{value.toFixed(2)}</text></g>)}
+    <line x1={x(analysis.operating_threshold)} x2={x(analysis.operating_threshold)} y1={top} y2={height-bottom} className="threshold-operating"/><text x={x(analysis.operating_threshold)+5} y={top+12}>Serving {analysis.operating_threshold.toFixed(3)}</text>
+    <polyline points={line("recall")} className="threshold-line threshold-line--recall"/><polyline points={line("precision")} className="threshold-line threshold-line--precision"/><polyline points={line("false_positive_rate")} className="threshold-line threshold-line--fpr"/><polyline points={line("alert_rate")} className="threshold-line threshold-line--alert"/>
+  </svg><figcaption><span className="legend-recall">Recall</span><span className="legend-precision">Precision</span><span className="legend-fpr">False-positive rate</span><span className="legend-alert">Alert rate</span></figcaption></figure>;
+}
 
 function fallbackReport(stage: Stage, models: ModelInfo[]): EvaluationReport {
   const role = stage === "binary" ? "detector" : "classifier";
@@ -15,11 +29,13 @@ function fallbackReport(stage: Stage, models: ModelInfo[]): EvaluationReport {
   };
 }
 
-export function ModelAnalysis({ models, fixtureMode = false }: { models: ModelInfo[]; fixtureMode?: boolean }) {
+export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading = false, descriptorError = "" }: { models: ModelInfo[]; fixtureMode?: boolean; descriptorLoading?: boolean; descriptorError?: string }) {
   const [stage, setStage] = useState<Stage>("binary");
   const [reports, setReports] = useState<Partial<Record<Stage, EvaluationReport>>>({});
   const [loading, setLoading] = useState(!fixtureMode);
   const [error, setError] = useState("");
+  const [matrixMode, setMatrixMode] = useState<"raw" | "normalized">("raw");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (fixtureMode || reports[stage]) return;
@@ -34,7 +50,7 @@ export function ModelAnalysis({ models, fixtureMode = false }: { models: ModelIn
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [fixtureMode, reports, stage]);
+  }, [fixtureMode, reload, reports, stage]);
 
   const report = reports[stage] ?? fallbackReport(stage, models);
   const candidates = report.candidates;
@@ -58,7 +74,9 @@ export function ModelAnalysis({ models, fixtureMode = false }: { models: ModelIn
       </div>
 
       {loading ? <div className="panel data-state" role="status">Loading {taskName.toLowerCase()} evidence…</div> : null}
-      {error && !candidates.length ? <div className="panel data-state data-state--error" role="alert">{error}</div> : null}
+      {descriptorLoading ? <div className="panel data-state" role="status">Loading serving model descriptors…</div> : null}
+      {descriptorError ? <div className="panel data-state data-state--error" role="alert">Serving descriptors: {descriptorError}</div> : null}
+      {error && !candidates.length ? <div className="panel data-state data-state--error" role="alert"><span>{error}</span><button className="secondary-button" onClick={() => { setReports((current) => ({ ...current, [stage]: undefined })); setReload((value) => value + 1); }}>Retry evaluation</button></div> : null}
 
       {!loading && candidates.length ? (
         <div className="models-grid">
@@ -88,6 +106,7 @@ export function ModelAnalysis({ models, fixtureMode = false }: { models: ModelIn
               action={<span className="panel-heading-meta">{candidates.length} candidates</span>}
             />
             <ModelComparisonChart models={candidates} height={420} />
+            <div className="preview-scroll"><table><caption>Exact held-out candidate metrics</caption><thead><tr><th>Candidate</th><th>Macro F1</th><th>Weighted F1</th>{stage === "binary" ? <th>FPR</th> : null}<th>Median latency</th></tr></thead><tbody>{candidates.map((candidate) => <tr key={candidate.name}><th scope="row">{candidate.name}{candidate.selected ? " · selected" : ""}</th><td>{candidate.macro_f1 == null ? "—" : `${(candidate.macro_f1 * 100).toFixed(2)}%`}</td><td>{candidate.weighted_f1 == null ? "—" : `${(candidate.weighted_f1 * 100).toFixed(2)}%`}</td>{stage === "binary" ? <td>{candidate.false_positive_rate == null ? "Not measured" : `${(candidate.false_positive_rate * 100).toFixed(2)}%`}</td> : null}<td>{candidate.inference_ms == null ? "—" : `${candidate.inference_ms.toFixed(2)} ms`}</td></tr>)}</tbody></table></div>
           </section>
 
           <section className="panel matrix-panel">
@@ -96,9 +115,11 @@ export function ModelAnalysis({ models, fixtureMode = false }: { models: ModelIn
               title="Champion confusion matrix"
               description="Rows are actual classes; columns are predictions. Each cell reports count and actual-class percentage."
             />
+            <div className="matrix-toggle" role="group" aria-label="Confusion matrix values"><button className="secondary-button" aria-pressed={matrixMode === "raw"} onClick={() => setMatrixMode("raw")}>Raw counts</button><button className="secondary-button" aria-pressed={matrixMode === "normalized"} onClick={() => setMatrixMode("normalized")}>Row percentages</button></div>
             {active?.confusion_matrix?.length
               ? <ConfusionMatrixChart matrix={active.confusion_matrix} classes={active.classes} height={410} />
               : <div className="chart-empty">No confusion matrix was returned for this stage.</div>}
+            {active?.confusion_matrix?.length ? <div className="preview-scroll"><table><caption>{matrixMode === "raw" ? "Exact confusion counts" : "Percent within each actual class"}</caption><thead><tr><th>Actual \ predicted</th>{active.classes?.map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>{active.confusion_matrix.map((row, rowIndex) => { const total = row.reduce((sum, value) => sum + value, 0); return <tr key={active.classes?.[rowIndex] ?? rowIndex}><th scope="row">{active.classes?.[rowIndex] ?? `Class ${rowIndex + 1}`}</th>{row.map((value, column) => <td key={column}>{matrixMode === "raw" ? value : `${(total ? value / total * 100 : 0).toFixed(1)}%`}</td>)}</tr>; })}</tbody></table></div> : null}
           </section>
 
           <section className="panel seed-panel">
@@ -146,6 +167,8 @@ export function ModelAnalysis({ models, fixtureMode = false }: { models: ModelIn
               ]).map((note) => <p key={note}>{note}</p>)}
             </div>
           </section>
+          {stage === "binary" && report.threshold_analysis ? <section className="panel threshold-panel"><PanelHeading eyebrow="Operating policy" title="Detector threshold analysis" description="Validation-set behavior across detector thresholds; outputs remain uncalibrated."/><div className="fact-list threshold-facts"><div><span>Serving threshold</span><b>{report.threshold_analysis.operating_threshold.toFixed(3)}</b></div><div><span>Policy</span><b>{report.threshold_analysis.selection_policy ?? "Current threshold retained"}</b></div><div><span>Validation rows</span><b>{report.threshold_analysis.partition_rows ?? "Not reported"}</b></div></div><ThresholdCurve analysis={report.threshold_analysis}/><div className="preview-scroll"><table><caption>Recall, precision, false-positive and alert rates by threshold</caption><thead><tr><th>Threshold</th><th>Recall</th><th>Precision</th><th>FPR</th><th>Alert rate</th></tr></thead><tbody>{report.threshold_analysis.points.map((point) => <tr className={Math.abs(point.threshold - report.threshold_analysis!.operating_threshold) < 1e-8 ? "operating-row" : ""} key={point.threshold}><td>{point.threshold.toFixed(3)}</td><td>{(point.recall*100).toFixed(1)}%</td><td>{(point.precision*100).toFixed(1)}%</td><td>{(point.false_positive_rate*100).toFixed(1)}%</td><td>{(point.alert_rate*100).toFixed(1)}%</td></tr>)}</tbody></table></div></section> : null}
+          {stage === "binary" && report.cascade_evaluation ? <section className="panel cascade-panel"><PanelHeading eyebrow="Complete serving path" title="Binary → family cascade" description={report.cascade_evaluation.protocol ?? "Shared held-out split evaluation"}/><div className="result-summary"><div><span>Test rows</span><b>{report.cascade_evaluation.test_rows ?? "—"}</b></div><div><span>Detector false negatives</span><b>{report.cascade_evaluation.detector_false_negatives ?? "—"}</b></div><div><span>Cascade macro F1</span><b>{report.cascade_evaluation.metrics?.macro_f1 == null ? "—" : `${(report.cascade_evaluation.metrics.macro_f1*100).toFixed(2)}%`}</b></div></div>{report.cascade_evaluation.confusion_matrix.length ? <ConfusionMatrixChart matrix={report.cascade_evaluation.confusion_matrix} classes={report.cascade_evaluation.classes} height={430}/> : null}<div className="preview-scroll"><table><caption>Per-class cascade recall and support, including detector misses</caption><thead><tr><th>Actual class</th><th>Correct</th><th>Support</th><th>Recall</th></tr></thead><tbody>{report.cascade_evaluation.classes.map((label,index)=>{const row=report.cascade_evaluation!.confusion_matrix[index]??[];const support=report.cascade_evaluation!.class_support?.[label]??row.reduce((sum,value)=>sum+value,0);const correct=row[index]??0;return <tr key={label}><th scope="row">{label}</th><td>{correct}</td><td>{support}</td><td>{support?`${(correct/support*100).toFixed(2)}%`:"—"}</td></tr>})}</tbody></table></div></section> : null}
         </div>
       ) : null}
 
