@@ -1,223 +1,246 @@
-# Research Foundations
-
-This document connects the literature directly to implementation decisions.
-
-## 1. RT-IoT2022 dataset
-
-RT-IoT2022 is a tabular, sequential, multivariate dataset containing **123,117 instances** and **83 features**. It contains normal IoT traffic and adversarial scenarios involving devices and services such as ThingSpeak, MQTT, smart bulbs, Amazon Alexa, SSH brute force, DDoS, Slowloris, Hping, and Nmap activity.
-
-### Design implications
-
-- Treat the target as both a binary problem and a multiclass problem.
-- Inspect class counts before training.
-- Use macro F1 and per-class recall because rare classes can be hidden by overall accuracy.
-- Save the exact feature order, data types, units, categorical mappings, and preprocessing version.
-- Build a schema-validation layer before every prediction.
-
-### Important extraction discrepancy
-
-The UCI dataset page states that bidirectional features were captured with **Zeek and a Flowmeter plugin**. The introductory paper describes packet capture with **Wireshark**, conversion to PCAP, and feature extraction with **CICFlowMeter**.
-
-These descriptions are not identical. Therefore:
-
-1. Do not assume Zeek, CICFlowMeter, and a custom Scapy extractor generate equivalent values.
-2. Inspect the downloaded dataset and original metadata.
-3. Generate controlled PCAP traffic.
-4. Compare candidate extractor outputs against the expected columns.
-5. Freeze a canonical internal schema and document every transformation.
-
-### Sources
-
-- UCI Machine Learning Repository, RT-IoT2022:  
-  https://archive.ics.uci.edu/dataset/942/rt-iot2022
-- Sharmila and Nagapadma, 2023:  
-  https://doi.org/10.1186/s42400-023-00178-5
-
----
-
-## 2. Lightweight and edge-compatible detection
-
-The introductory RT-IoT2022 paper proposes quantized autoencoder variants for constrained IoT edge devices. It reports substantial reductions in memory size, average memory use, and peak CPU use for its uint8 variant compared with the unoptimized autoencoder.
-
-### Design implications
-
-The project should compare two deployment tracks:
-
-#### Central classifier
-
-- Random Forest, HistGradientBoosting, XGBoost, or LightGBM
-- Full multiclass output
-- SHAP explanations
-- Runs on the backend server
-
-#### Edge detector
-
-- Reduced-feature tree model, ONNX model, or quantized autoencoder
-- Binary anomaly output
-- Strict latency and memory targets
-- Runs on Raspberry Pi or gateway hardware
-
-Record:
-
-- Serialized model size
-- Peak RAM
-- Average CPU
-- Median and p95 inference latency
-- Throughput
-- F1 and false-positive rate
-
-### Source
-
-- Quantized autoencoder IDS using RT-IoT2022:  
-  https://doi.org/10.1186/s42400-023-00178-5
-
----
-
-## 3. Generalization is a core risk
-
-Cross-dataset NIDS studies show that models can perform extremely well when trained and tested on one dataset but degrade heavily when evaluated on traffic from a different network or collection process.
-
-### Design implications
-
-- Never describe a high random-split score as proof of real-world effectiveness.
-- Separate dataset performance from deployment readiness.
-- Add grouped, temporal, and replay-based evaluation.
-- Keep an optional external-dataset experiment.
-- Show a clear limitations panel in the UI and report.
-- Monitor real traffic distributions after deployment.
-
-### Sources
-
-- Cantone, Marrocco, and Bria, cross-dataset generalization study:  
-  https://doi.org/10.1109/ACCESS.2024.3472907
-- Preprint version:  
-  https://arxiv.org/abs/2402.10974
-- Layeghy et al., explainable cross-domain evaluation:  
-  https://doi.org/10.1016/j.compeleceng.2023.108648
-
----
-
-## 4. Device behavior profiles
-
-NIST IR 8349 presents a methodology for capturing and documenting the expected network communication behavior of IoT devices. It connects this behavior characterization to Manufacturer Usage Description, or MUD, policies.
-
-### Design implications
-
-The platform should not rely only on a machine-learning label. Add a behavior-rule layer:
-
-```text
-Final risk =
-    model prediction
-  + confidence
-  + device profile violation
-  + destination reputation or policy
-  + alert recurrence
-```
-
-Example profile:
-
-```yaml
-device_type: smart-bulb
-allowed_protocols:
-  - dns
-  - ntp
-  - https
-allowed_destinations:
-  - vendor-cloud.example
-forbidden_services:
-  - ssh
-  - telnet
-```
-
-A smart bulb opening an SSH session should raise severity even when the classifier confidence is moderate.
-
-### Source
-
-- NIST IR 8349, final publication, August 2025:  
-  https://doi.org/10.6028/NIST.IR.8349
-
----
-
-## 5. Explainability
-
-Explainability is useful for IDS error analysis and analyst trust, but it must not be presented as proof that the prediction is correct.
-
-### Design implications
-
-For each important alert, display:
-
-- Predicted class
-- Confidence or calibrated probability
-- Top positive and negative feature contributions
-- Raw feature values
-- Comparison with normal ranges
-- Device-profile violations
-- Model version
-
-Use:
-
-- Global permutation importance for model analysis
-- TreeSHAP for supported tree models
-- Local SHAP explanations for individual alerts
-- Error analysis grouped by class and traffic source
-
-Avoid exposing only a generic feature-importance chart. Analysts need a local explanation for the selected alert.
-
-### Suggested reading
-
-- Explainable AI for comparative analysis of intrusion detection models:  
-  https://arxiv.org/abs/2406.09684
-- Explainable cross-domain evaluation of ML-based NIDS:  
-  https://doi.org/10.1016/j.compeleceng.2023.108648
-
----
-
-## 6. Concept drift and model health
-
-IoT networks change when firmware, cloud endpoints, user behavior, topology, and attack techniques change. A static model may lose accuracy even when the software remains operational.
-
-### Design implications
-
-Monitor:
-
-- Missing or invalid feature rate
-- Feature distribution shift
-- Unseen categorical values
-- Prediction distribution
-- Confidence distribution
-- Alert rate per device
-- Analyst-confirmed false positives
-- Inference latency and errors
-
-Suggested drift signals:
-
-- Population Stability Index
-- Jensen-Shannon divergence
-- Kolmogorov-Smirnov test for selected numeric features
-- ADWIN for streaming statistics
-- Alert when several signals move together
-
-Do not automatically replace the production model. Retraining should produce a candidate model that is evaluated and promoted explicitly.
-
----
-
-## 7. Research questions for the report
-
-1. Which tabular classifier gives the best balance of macro F1, latency, and model size?
-2. How much does performance change between random and time/group-aware splits?
-3. Which attack classes are consistently confused?
-4. How many features are required to retain acceptable performance?
-5. Can a lightweight edge model maintain useful recall?
-6. Do device behavior rules reduce false negatives or improve alert prioritization?
-7. How stable are predictions under dataset replay and PCAP-derived features?
-8. Which features drift most between training data and live or simulated traffic?
-
----
-
-## 8. Final research-backed scope
-
-The recommended final system is:
-
-> A real-time, explainable, behavior-aware, and drift-monitored IoT intrusion detection platform with a reproducible feature pipeline and an optional lightweight edge detector.
-
-This scope is more defensible than claiming that a notebook classifier with high accuracy is a complete IDS.
+# Research Foundations and Source Audit
+
+Research and implementation status reviewed on 2026-08-04. This document uses
+primary sources where possible and separates source claims, locally verified
+facts, implementation decisions, and untested hypotheses.
+
+## 1. Evidence hierarchy
+
+For this project, evidence is ordered as follows:
+
+1. the checksum-verified downloaded CSV for row-level experimental facts;
+2. generated profiles, evaluation reports, and executable tests for repository
+   behavior;
+3. the UCI record and introductory paper for provenance and collection context;
+4. external research for risks and candidate methods; and
+5. future design proposals, which must not be described as implemented results.
+
+This ordering matters because the public metadata and the downloaded file are
+not fully consistent.
+
+## 2. RT-IoT2022: source claims versus verified artifact
+
+The [UCI repository record](https://archive.ics.uci.edu/dataset/942/rt-iot2022)
+describes RT-IoT2022 as tabular, sequential, and multivariate, with 123,117
+instances and 83 features. It lists IoT traffic and attacks including MQTT,
+ThingSpeak, a Wipro bulb, SSH brute force, Hping/Slowloris, ARP poisoning, and
+Nmap activity. The dataset DOI is
+[10.24432/C5P338](https://doi.org/10.24432/C5P338), and UCI publishes it under
+CC BY 4.0.
+
+The repository verified the official archive and extracted file:
+
+| Artifact | SHA-256 |
+|---|---|
+| UCI ZIP | `bcaa24d62abbb1215be576d5cf9c02dfcb0bb7c4c2f5a00e03055afaa1ed109e` |
+| Extracted CSV | `956956c09c1764584fa08acd0f6876475626bcedcd6a6b1f8c492c2e9a2089ea` |
+
+Observed class counts in that CSV are:
+
+| Label | Rows | Role |
+|---|---:|---|
+| `DOS_SYN_Hping` | 94,659 | attack |
+| `Thing_Speak` | 8,108 | normal |
+| `ARP_poisioning` | 7,750 | attack |
+| `MQTT_Publish` | 4,146 | normal |
+| `NMAP_UDP_SCAN` | 2,590 | attack |
+| `NMAP_XMAS_TREE_SCAN` | 2,010 | attack |
+| `NMAP_OS_DETECTION` | 2,000 | attack |
+| `NMAP_TCP_scan` | 1,002 | attack |
+| `DDOS_Slowloris` | 534 | attack |
+| `Wipro_bulb` | 253 | normal |
+| `Metasploit_Brute_Force_SSH` | 37 | attack |
+| `NMAP_FIN_SCAN` | 28 | attack |
+
+The verified table therefore contains 12,507 normal and 110,610 attack rows;
+attacks are 89.84% of the source data. No `Amazon-Alexa` label occurs in the
+file. The UCI prose and class list mention Alexa and show counts that do not
+reconcile with the stated total, so this project records that discrepancy
+instead of silently repeating it.
+
+The table also contains 5,202 duplicate feature vectors. Exact duplicates are
+removed before splitting, but near-duplicate or scenario-specific signatures
+may remain. Combined with the extreme `DOS_SYN_Hping` concentration, this is a
+major reason not to interpret random-split scores as generalization.
+
+## 3. Extraction provenance is unresolved
+
+The UCI page says bidirectional attributes were captured with Zeek and a
+Flowmeter plugin. The
+[introductory RT-IoT2022 paper](https://doi.org/10.1186/s42400-023-00178-5)
+describes Wireshark capture to PCAP followed by CICFlowMeter CSV extraction.
+These are materially different accounts, and the UCI variable table leaves most
+feature units blank.
+
+Consequences:
+
+- matching 83 column names is insufficient;
+- Zeek, CICFlowMeter, and custom code must not be assumed equivalent;
+- source/destination addresses and FlowID were removed before publication, so
+  the table cannot reconstruct device identity or a physical topology; and
+- there is no trustworthy timestamp, device, or capture-session column for a
+  temporal or group-aware split.
+
+The next ingestion research must generate controlled PCAPs and compare values,
+units, direction rules, timeout behavior, TCP flags, and counters before one
+adapter is selected.
+
+## 4. What the current benchmark establishes
+
+The repository compares four tabular pipelines over three stratified seeds and
+serves a binary HistGradientBoosting detector followed by an attack-only Random
+Forest family classifier. It demonstrates:
+
+- reproducible preparation and packaging;
+- strong within-dataset separation after exact-duplicate removal;
+- a functioning two-stage software contract; and
+- local feasibility of the selected artifact sizes and latency.
+
+It does not establish:
+
+- accuracy on another network, extractor, device population, or time period;
+- the end-to-end attack-family recall of the complete cascade;
+- calibrated probabilities or an operationally optimized threshold;
+- resilience to evasion, poisoning, label error, or drift; or
+- production availability and security.
+
+The multiclass stage's test score is conditional on attack rows already reaching
+that stage. A detector false negative has no family prediction, so future work
+must report end-to-end cascade metrics in addition to standalone stage metrics.
+
+## 5. Generalization is the central validity risk
+
+[Cantone, Marrocco, and Bria (2024)](https://doi.org/10.1109/ACCESS.2024.3472907)
+evaluate four classifiers across four network-intrusion datasets. Their
+cross-dataset study reports nearly perfect within-dataset results but performance
+near random chance for many cross-dataset combinations, linked to dataset
+heterogeneity and artifacts.
+
+That study is not an evaluation of RT-IoT2022 itself, but its finding directly
+challenges the assumption that this project's 0.996 binary test macro-F1 implies
+real-network effectiveness.
+
+Research implications:
+
+- prioritize feature compatibility and external validation over more complex
+  classifiers;
+- preserve support counts and confusion structure, especially for rare classes;
+- obtain reliable session/device/time metadata for realistic splitting;
+- evaluate unseen categorical values and distribution changes; and
+- keep in-dataset performance visibly separate from deployment readiness.
+
+## 6. Edge detection remains a separate experiment
+
+The RT-IoT2022 paper proposes an autoencoder trained on normal traffic and
+post-training quantization for constrained IoT devices. That supports studying
+a lightweight anomaly detector, but it does not show that this repository's
+83-feature extraction can run correctly on a gateway or that the current
+cascade should be quantized.
+
+An edge experiment must include the cost of flow generation, not just model
+inference, and measure on actual target hardware:
+
+- model and runtime storage;
+- peak and sustained RAM/CPU;
+- energy or power where practical;
+- median/p95 latency and throughput; and
+- recall, false-positive rate, and disagreement with the central model.
+
+Until those measurements exist, “edge compatible” is a research direction, not
+a current system property.
+
+## 7. Device behavior and MUD
+
+[NIST IR 8349](https://doi.org/10.6028/NIST.IR.8349), finalized in August 2025,
+defines a methodology for capturing and documenting expected IoT network
+behavior and using it to support Manufacturer Usage Description policies.
+[RFC 8520](https://www.rfc-editor.org/info/rfc8520/) specifies MUD as a way for
+devices/manufacturers to describe intended network access.
+
+These sources support a policy layer that is separate from statistical attack
+classification. They do not justify inventing device profiles from ports or
+claiming that a policy violation proves compromise.
+
+A defensible implementation needs:
+
+- a trustworthy device identity outside the 83-feature vector;
+- sourced and versioned expected-communication profiles;
+- explicit allow/deny and uncertainty semantics;
+- separate model and policy evidence in alerts; and
+- analyst feedback measuring whether policy evidence improves prioritization.
+
+The current `device_profiles.py` hook is not such a system and is unreachable
+through the strict canonical feature map.
+
+## 8. Explainability
+
+[Lundberg and Lee (2017)](https://proceedings.neurips.cc/paper_files/paper/2017/hash/8a20a8621978632d76c43dfd28b67767-Abstract.html)
+define SHAP as an additive feature-attribution framework assigning importance
+values to features for a prediction. Attribution can help inspect model
+behavior, but it is not causal evidence and does not prove the prediction is
+correct.
+
+The current backend returns the largest raw numeric feature values. The UI
+correctly labels these as highlighted values, not contributions. Future work
+should add:
+
+- permutation importance on held-out data for global analysis;
+- local TreeSHAP for the selected tree models;
+- the transformed/model feature name alongside the original field;
+- direction and baseline/reference value; and
+- tests that prevent raw values from being presented as attribution.
+
+## 9. Drift and operational monitoring
+
+Drift cannot be evaluated until compatible observations and stable identity/time
+windows exist. A useful first version should monitor data quality before adding
+a composite health score:
+
+- schema rejection and missing/non-finite rates;
+- unseen categorical values;
+- selected feature distributions against a fixed training reference;
+- prediction, alert, and score distributions;
+- latency and error rates; and
+- analyst-confirmed false positives by model version.
+
+Population Stability Index, Jensen-Shannon divergence, KS tests, or streaming
+change detectors are candidate signals—not interchangeable proof of harmful
+drift. Thresholds must be validated against known changes, and model promotion
+must remain explicit rather than automatic.
+
+The current `drift.py` response (`not_enough_data`) is an honest placeholder.
+
+## 10. Updated research questions
+
+1. How much do cascade metrics degrade under capture-session, device, temporal,
+   or external-network splits?
+2. Can a validated extractor reproduce the published feature values within
+   defined tolerances?
+3. Which errors arise from the binary gate versus the family classifier?
+4. How stable are rare-class results when test support is only 6–7 examples?
+5. What threshold meets an explicit false-alert budget after calibration?
+6. Do sourced device/MUD policies improve analyst prioritization beyond the ML
+   score alone?
+7. Which data-quality or drift signals predict confirmed performance loss?
+8. What is the full extraction-plus-inference cost on server and edge hardware?
+
+## 11. Current defensible scope
+
+The project is best described as:
+
+> A reproducible, two-stage RT-IoT2022 network-flow classification and replay
+> prototype with strict artifact provenance, persistence, live investigation,
+> and an explicit path toward extractor, generalization, behavior-policy,
+> explanation, and drift validation.
+
+It should not yet be described as a live, explainable, behavior-aware,
+drift-monitored, or edge-deployed IDS.
+
+## Primary sources
+
+- [UCI RT-IoT2022 record and dataset DOI](https://archive.ics.uci.edu/dataset/942/rt-iot2022)
+- [Sharmila and Nagapadma, RT-IoT2022/QAE paper (2023)](https://doi.org/10.1186/s42400-023-00178-5)
+- [Cantone, Marrocco, and Bria, cross-dataset NIDS study (2024)](https://doi.org/10.1109/ACCESS.2024.3472907)
+- [NIST IR 8349, IoT device network behavior methodology (2025)](https://doi.org/10.6028/NIST.IR.8349)
+- [IETF RFC 8520, Manufacturer Usage Description](https://www.rfc-editor.org/info/rfc8520/)
+- [Lundberg and Lee, SHAP (2017)](https://proceedings.neurips.cc/paper_files/paper/2017/hash/8a20a8621978632d76c43dfd28b67767-Abstract.html)
