@@ -136,6 +136,10 @@ export function Overview({
             <div><span>Schema</span><b className="mono">{health?.schema_version ?? "Not reported"}</b></div>
             <div><span>Detector</span><b className="mono">{health?.detector_model_version ?? health?.model_version ?? "Not reported"}</b></div>
             <div><span>Classifier</span><b className="mono">{health?.classifier_model_version ?? "Not reported"}</b></div>
+            <div><span>Dataset</span><b>{health?.dataset_ready === undefined ? "Not reported" : health.dataset_ready ? "Ready" : "Unavailable"}</b></div>
+            <div><span>Dataset SHA-256</span><b className="mono checksum">{health?.dataset_checksum ?? "Not reported"}</b></div>
+            <div><span>Production bundle</span><b>{health?.production_bundle_valid === undefined ? "Not reported" : health.production_bundle_valid ? "Verified" : "Invalid"}</b></div>
+            <div><span>Fallback</span><b>{(health?.fallback_active ?? health?.fallback) === undefined ? "Not reported" : (health?.fallback_active ?? health?.fallback) ? "Active" : "Inactive"}</b></div>
             <div><span>Last update</span><b>{formatTime(lastUpdate.toISOString())}</b></div>
           </div>
         </section>

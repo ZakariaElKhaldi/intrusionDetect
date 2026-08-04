@@ -211,11 +211,16 @@ class ModelRegistry:
         allow_fallback: bool = False,
     ):
         self.model_dir = Path(model_dir).expanduser().resolve() if model_dir else None
+        self.bundle_dir = self.model_dir
         self.artifact_paths: dict[str, str | None] = {"binary": None, "multiclass": None}
+        self.production_bundle_valid = False
+        self.evaluation_report: dict[str, Any] | None = None
+        self.manifest: dict[str, Any] | None = None
 
         discovered: dict[str, tuple[Path, Path]] | None = None
         if artifact_path:
             artifact = Path(artifact_path).expanduser().resolve()
+            self.bundle_dir = artifact.parent
             # A legacy explicit binary override still needs the sibling production
             # manifest so the cascade cannot silently lose attack classification.
             discovered = _discover_from_manifest(artifact.parent)
@@ -234,13 +239,22 @@ class ModelRegistry:
             self.classifier = ArtifactPredictor(*discovered["multiclass"], "multiclass")
             for target, (artifact, _) in discovered.items():
                 self.artifact_paths[target] = str(artifact)
-            if self.model_dir:
+            if self.bundle_dir:
+                self.manifest = json.loads(
+                    (self.bundle_dir / "manifest.json").read_text(encoding="utf-8")
+                )
+                self.evaluation_report = json.loads(
+                    (self.bundle_dir / self.manifest["evaluation_report"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
                 self.detector.metadata["metrics"] = _serving_metrics(
-                    self.model_dir, self.detector.model_type, "binary"
+                    self.bundle_dir, self.detector.model_type, "binary"
                 )
                 self.classifier.metadata["metrics"] = _serving_metrics(
-                    self.model_dir, self.classifier.model_type, "multiclass"
+                    self.bundle_dir, self.classifier.model_type, "multiclass"
                 )
+            self.production_bundle_valid = True
         elif allow_fallback:
             self.detector = DeterministicFallback()
             self.classifier = FallbackAttackClassifier()
@@ -271,3 +285,72 @@ class ModelRegistry:
     @property
     def descriptors(self) -> list[ModelDescriptor]:
         return [self._descriptor(self.detector), self._descriptor(self.classifier)]
+
+    def evaluation(self, stage: str) -> dict[str, Any]:
+        """Return a compact, task-specific view of the promoted evaluation evidence."""
+        if stage not in {"binary", "multiclass"}:
+            raise ValueError("stage must be binary or multiclass")
+        if self.evaluation_report is None:
+            raise RuntimeError("evaluation evidence is unavailable for fallback models")
+
+        experiment = self.evaluation_report.get("experiments", {}).get(stage, {})
+        split = experiment.get("splits", {}).get("stratified_random", {})
+        selected = experiment.get("selected_model", {})
+        selected_name = selected.get("model_name")
+        candidates = []
+        for model_name, evidence in sorted(split.get("models", {}).items()):
+            test = evidence.get("test", {})
+            aggregate = evidence.get("selection_aggregate", {})
+            operational = dict(evidence.get("operational", {}))
+            operational.setdefault(
+                "inference_ms", operational.get("median_inference_latency_ms")
+            )
+            candidates.append(
+                {
+                    "model_name": model_name,
+                    "model_version": (
+                        selected.get("model_version")
+                        if model_name == selected_name
+                        else "evaluation-only"
+                    ),
+                    "selected": model_name == selected_name,
+                    "selection_metric": "mean validation macro-F1 across declared seeds",
+                    "selection_value": aggregate.get("mean_validation_macro_f1"),
+                    "three_seed_aggregate": aggregate,
+                    "validation_metrics": _compact_metrics(evidence.get("validation", {})),
+                    "test_metrics": _compact_metrics(test),
+                    "confusion_matrix": test.get("confusion_matrix", []),
+                    "classes": test.get("classes", []),
+                    "class_support": {
+                        label: values.get("support", 0)
+                        for label, values in test.get("per_class", {}).items()
+                    },
+                    "operational": operational,
+                }
+            )
+
+        notes = list(self.evaluation_report.get("limitations", []))
+        notes.extend(
+            [
+                "Candidate selection aggregates the declared random seeds; "
+                "displayed test metrics use the promoted seed.",
+                "Random-split evidence is not deployment validation.",
+                "Reported classifier scores are uncalibrated probabilities.",
+            ]
+        )
+        return {
+            "stage": stage,
+            "evaluation_seeds": self.evaluation_report.get("evaluation_seeds", []),
+            "split_definition": split.get("definition", {}),
+            "candidates": candidates,
+            "selected_champion": selected,
+            "measurement_notes": list(dict.fromkeys(notes)),
+        }
+
+
+def _compact_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    excluded = {"confusion_matrix", "per_class", "pr_curves", "roc_curves"}
+    compact = {key: value for key, value in metrics.items() if key not in excluded}
+    compact.setdefault("macro_f1", metrics.get("f1_macro"))
+    compact.setdefault("weighted_f1", metrics.get("f1_weighted"))
+    return {key: value for key, value in compact.items() if value is not None}

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import csv
+import hashlib
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,9 +12,43 @@ from app.api import alerts, live, models, predictions, replay
 from app.config import Settings
 from app.database.models import Base, ModelVersion
 from app.database.session import create_engine_and_session
+from app.features.canonical_schema import FEATURE_ORDER
 from app.inference.model_registry import ModelRegistry
+from app.inference.shap_explanations import ExplanationService
 from app.ingestion.dataset_replay import DatasetReplay
 from app.live import LiveConnectionManager
+
+
+def _dataset_status(
+    dataset_path: str | None, registry: ModelRegistry
+) -> dict[str, bool | str | None]:
+    path = Path(dataset_path).expanduser().resolve() if dataset_path else None
+    if path is None or not path.is_file():
+        return {
+            "ready": False,
+            "checksum": None,
+            "matches_training": None,
+            "error": "dataset file is unavailable",
+        }
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    checksum = digest.hexdigest()
+    expected = registry.detector.metadata.get("dataset_sha256")
+    try:
+        with path.open(newline="", encoding="utf-8") as handle:
+            fields = set(csv.DictReader(handle).fieldnames or ())
+        missing = [name for name in (*FEATURE_ORDER, "Attack_type") if name not in fields]
+        error = f"dataset schema mismatch; missing={missing}" if missing else None
+    except (OSError, UnicodeError, csv.Error) as exc:
+        error = f"dataset cannot be read: {exc}"
+    return {
+        "ready": error is None,
+        "checksum": checksum,
+        "matches_training": checksum == expected if expected else None,
+        "error": error,
+    }
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -22,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.model_dir,
         allow_fallback=settings.allow_fallback,
     )
+    dataset_status = _dataset_status(settings.replay_dataset_path, registry)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -53,6 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.registry = registry
     app.state.live = LiveConnectionManager()
     app.state.replay = DatasetReplay(settings.replay_dataset_path)
+    app.state.explanations = ExplanationService(registry)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
@@ -71,6 +110,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "detector_model_version": registry.detector.version,
             "classifier_model_version": registry.classifier.version,
             "fallback": bool(registry.detector.metadata.get("fallback")),
+            "fallback_status": {
+                "active": bool(registry.detector.metadata.get("fallback")),
+                "detector": bool(registry.detector.metadata.get("fallback")),
+                "classifier": bool(registry.classifier.metadata.get("fallback")),
+            },
+            "dataset_ready": dataset_status["ready"],
+            "dataset_checksum": dataset_status["checksum"],
+            "dataset_checksum_matches_training": dataset_status["matches_training"],
+            "dataset_error": dataset_status["error"],
+            "production_bundle_valid": registry.production_bundle_valid,
             "live_connections": len(app.state.live.connections),
         }
 

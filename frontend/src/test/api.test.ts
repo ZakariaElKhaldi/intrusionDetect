@@ -3,6 +3,8 @@ import {
   ApiError,
   checkHealth,
   getAlerts,
+  getAlertExplanation,
+  getEvaluation,
   liveEventFromSocketMessage,
   startReplay,
   submitAlertFeedback,
@@ -170,7 +172,7 @@ describe("frontend API adapter", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: "running" }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await startReplay(4);
+    await startReplay({ scenario: "attack", speed: 4, limit: 40 });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/replay/start",
@@ -178,14 +180,72 @@ describe("frontend API adapter", () => {
         method: "POST",
         body: JSON.stringify({
           mode: "dataset",
-          scenario: "all",
+          scenario: "attack",
           offset: 0,
-          limit: 100,
-          interval_ms: 1000,
+          limit: 40,
+          interval_ms: 250,
           speed: 4,
         }),
       }),
     );
+  });
+
+  it("normalizes task-specific evaluation evidence without mixing stages", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      stage: "binary",
+      selected_champion: { model_name: "hist_gradient_boosting" },
+      candidates: [{
+        model_name: "hist_gradient_boosting",
+        selected: true,
+        test_metrics: { macro_f1: 0.98, weighted_f1: 0.99, false_positive_rate: 0.01 },
+        confusion_matrix: [[80, 1], [2, 90]],
+        classes: ["normal", "attack"],
+        class_support: { normal: 81, attack: 92 },
+      }],
+      measurement_notes: ["Random split is not deployment validation."],
+    })));
+
+    const report = await getEvaluation("binary");
+    expect(report.selected_champion).toBe("hist_gradient_boosting");
+    expect(report.candidates[0]).toMatchObject({
+      name: "hist_gradient_boosting",
+      selected: true,
+      macro_f1: 0.98,
+      support: { normal: 81, attack: 92 },
+    });
+  });
+
+  it("preserves transformed and raw feature names in signed explanations", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      alert_id: "alert-1",
+      explanations: [{
+        stage: "binary",
+        model_version: "detector-v2",
+        explained_class: "attack",
+        base_value: -1.2,
+        output_value: 0.8,
+        method: "SHAP TreeExplainer",
+        contributions: [{
+          feature: "proto",
+          transformed_feature: "categorical__proto_tcp",
+          raw_value: "tcp",
+          impact: 0.42,
+        }],
+      }],
+    })));
+
+    await expect(getAlertExplanation("alert-1")).resolves.toEqual([
+      expect.objectContaining({
+        stage: "binary",
+        explained_class: "attack",
+        contributions: [{
+          feature: "categorical__proto_tcp",
+          raw_feature: "proto",
+          raw_value: "tcp",
+          impact: 0.42,
+        }],
+      }),
+    ]);
   });
 
   it("posts analyst feedback with the backend wire contract", async () => {

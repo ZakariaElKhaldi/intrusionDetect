@@ -10,6 +10,10 @@ async def test_health_models_and_packaged_prediction(client: httpx.AsyncClient) 
     health = await client.get("/health")
     assert health.status_code == 200
     assert health.json()["model_version"].startswith("binary-")
+    assert health.json()["dataset_ready"] is False
+    assert health.json()["dataset_checksum"] is None
+    assert health.json()["production_bundle_valid"] is True
+    assert health.json()["fallback_status"]["active"] is False
 
     models = await client.get("/models")
     assert models.status_code == 200
@@ -32,6 +36,85 @@ async def test_health_models_and_packaged_prediction(client: httpx.AsyncClient) 
     assert len(body["raw_features"]) == 83
     assert body["end_to_end_latency_ms"] >= body["latency_ms"]
     assert body["total_latency_ms"] == body["end_to_end_latency_ms"]
+
+
+@pytest.mark.anyio
+async def test_stage_evaluation_is_compact_and_requires_filter(
+    client: httpx.AsyncClient,
+) -> None:
+    missing = await client.get("/evaluation")
+    assert missing.status_code == 422
+
+    response = await client.get("/evaluation", params={"stage": "binary"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stage"] == "binary"
+    assert len(body["evaluation_seeds"]) == 3
+    assert len(body["candidates"]) == 4
+    assert sum(candidate["selected"] for candidate in body["candidates"]) == 1
+    assert body["selected_champion"]["target"] == "binary"
+    assert all("test_metrics" in candidate for candidate in body["candidates"])
+    champion = next(candidate for candidate in body["candidates"] if candidate["selected"])
+    assert champion["test_metrics"]["macro_f1"] > 0
+    assert champion["class_support"]["normal"] > 0
+    assert champion["selection_value"] > 0
+    assert "Random-split evidence is not deployment validation." in body[
+        "measurement_notes"
+    ]
+
+
+@pytest.mark.anyio
+async def test_alert_shap_explanations_cover_both_cascade_stages_and_are_additive(
+    client: httpx.AsyncClient,
+) -> None:
+    prediction = await client.post("/predict", json=observation(attack=True))
+    assert prediction.status_code == 201
+    predicted = prediction.json()
+    assert predicted["binary_prediction"] == "attack"
+
+    first = await client.get(f"/alerts/{predicted['alert_id']}/explanation")
+    second = await client.get(f"/alerts/{predicted['alert_id']}/explanation")
+    assert first.status_code == 200
+    assert second.json() == first.json()
+    explanations = first.json()["explanations"]
+    assert {item["stage"] for item in explanations} == {"binary", "multiclass"}
+    assert next(item for item in explanations if item["stage"] == "binary")[
+        "explained_class"
+    ] == "attack"
+    assert next(item for item in explanations if item["stage"] == "multiclass")[
+        "explained_class"
+    ] == predicted["attack_class"]
+    for explanation in explanations:
+        assert explanation["method"] == "SHAP TreeExplainer"
+        assert explanation["causal"] is False
+        reconstructed = explanation["base_value"] + sum(
+            item["impact"] for item in explanation["contributions"]
+        )
+        assert reconstructed == pytest.approx(explanation["output_value"], abs=1e-8)
+        assert all("raw_value" in item for item in explanation["contributions"])
+
+
+@pytest.mark.anyio
+async def test_fallback_exposes_status_but_not_false_shap_claims(
+    fallback_client: httpx.AsyncClient,
+) -> None:
+    health = (await fallback_client.get("/health")).json()
+    assert health["fallback"] is True
+    assert health["fallback_status"]["detector"] is True
+    assert health["production_bundle_valid"] is False
+    assert health["dataset_ready"] is True
+    assert len(health["dataset_checksum"]) == 64
+    assert health["dataset_checksum_matches_training"] is None
+    assert (await fallback_client.get("/evaluation", params={"stage": "binary"})).status_code == 503
+
+    payload = observation()
+    payload["features"]["flow_SYN_flag_count"] = 100
+    predicted = (await fallback_client.post("/predict", json=payload)).json()
+    explanation = await fallback_client.get(
+        f"/alerts/{predicted['alert_id']}/explanation"
+    )
+    assert explanation.status_code == 503
+    assert "promoted tree model artifacts" in explanation.text
 
 
 @pytest.mark.anyio

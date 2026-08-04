@@ -67,8 +67,13 @@ rows only.
 
 | Stage | Champion | Validation macro-F1, 3-seed mean | Seed-42 test macro-F1 | Test FPR | Serialized size |
 |---|---|---:|---:|---:|---:|
-| Binary detector | HistGradientBoosting | 0.9960 | 0.9961 | 0.8739% | 123,471 B |
-| Attack-family classifier | Random Forest | 0.9681 | 0.9842 | 0.0076% macro one-vs-rest | 547,454 B |
+| Binary detector | HistGradientBoosting | 0.9965 | 0.9955 | 0.8739% | 123,465 B |
+| Attack-family classifier | HistGradientBoosting | 0.9526 | 0.9853 | 0.0087% macro one-vs-rest | 262,289 B |
+
+The untouched shared seed-42 test partition produces a complete cascade macro-F1
+of **0.9865**, with 18 detector false negatives. Across the three declared seeds,
+mean cascade macro-F1 is **0.9743**. These are random-split results, not deployment
+validation.
 
 These are stratified random-split results from one dataset. The unusually high
 scores are useful as a reproducible in-dataset baseline, but they are not
@@ -117,6 +122,18 @@ Start the already-promoted model without retraining:
 ```bash
 ./scripts/run_all.sh --skip-setup
 ```
+
+For the jury, run the complete acceptance gate and then start a clean,
+disposable demonstration (also without retraining):
+
+```bash
+make jury-preflight
+make demo
+```
+
+`make benchmark` records the fixed normal/attack replay evidence in
+`docs/evidence/`. Jury materials and recovery instructions are in
+[`docs/jury`](docs/jury).
 
 Intentionally rerun the complete benchmark and atomically replace production:
 

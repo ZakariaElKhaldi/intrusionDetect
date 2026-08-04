@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "tsc -b --pretty false",
     "test": "vitest run",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "test:e2e:headed": "playwright test -c e2e/playwright.config.ts --headed",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -21,6 +23,7 @@
     "vite": "^6.0.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",

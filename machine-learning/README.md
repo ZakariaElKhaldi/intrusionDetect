@@ -61,8 +61,13 @@ most 256 points without changing PR-AUC or classification metrics.
 
 | Stage | Model | Mean validation macro-F1 | Seed-42 test macro-F1 | Test FPR | Artifact size |
 |---|---|---:|---:|---:|---:|
-| Binary | HistGradientBoosting | 0.9960 | 0.9961 | 0.8739% | 123,471 B |
-| Attack family | Random Forest | 0.9681 | 0.9842 | 0.0076% macro OvR | 547,454 B |
+| Binary | HistGradientBoosting | 0.9965 | 0.9955 | 0.8739% | 123,465 B |
+| Attack family | HistGradientBoosting | 0.9526 | 0.9853 | 0.0087% macro OvR | 262,289 B |
+
+Both stages now use one split per seed stratified on the original 12 labels. The
+family learner receives only attack rows inside those partitions. The complete
+seed-42 cascade has macro-F1 0.9865 and 18 detector false negatives; its three-seed
+mean macro-F1 is 0.9743.
 
 Exact metrics live in
 [`../models/production/evaluation-report.json`](../models/production/evaluation-report.json).

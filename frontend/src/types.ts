@@ -54,6 +54,70 @@ export interface HealthInfo {
   detector_model_version?: string;
   classifier_model_version?: string | null;
   live_connections: number;
+  dataset_ready?: boolean;
+  dataset_checksum?: string | null;
+  production_bundle_valid?: boolean;
+  fallback_active?: boolean;
+  fallback?: boolean;
+  fallback_status?: string | { active: boolean; detector: boolean; classifier: boolean };
+}
+
+export type ReplayScenario = "attack" | "normal" | "all" | `class:${string}`;
+export type ReplayLifecycle = "idle" | "running" | "paused" | "completed" | "stopped" | "failed";
+
+export interface ReplayOptions {
+  scenario: ReplayScenario;
+  speed: number;
+  limit: number;
+  interval_ms?: number;
+}
+
+export interface ReplayStatus {
+  status: ReplayLifecycle;
+  processed: number;
+  total: number;
+  error: string | null;
+  speed: number;
+  scenario: string;
+  mode: string;
+  offset: number;
+  limit: number | null;
+}
+
+export interface ExplanationContribution {
+  feature: string;
+  raw_feature?: string;
+  raw_value?: string | number | null;
+  impact: number;
+}
+
+export interface AlertExplanationStage {
+  stage: "binary" | "multiclass" | "detector" | "classifier";
+  model_version: string;
+  explained_class: string;
+  base_value: number;
+  output_value: number;
+  method: string;
+  output_units?: string;
+  contributions: ExplanationContribution[];
+}
+
+export interface EvaluationCandidate extends ModelInfo {
+  selected?: boolean;
+  selection_metric?: string;
+  selection_value?: number;
+  test_metrics?: Record<string, number>;
+  seed_metrics?: Record<string, number>[];
+  selection_summary?: Record<string, number>;
+  support?: Record<string, number>;
+}
+
+export interface EvaluationReport {
+  stage: "binary" | "multiclass";
+  candidates: EvaluationCandidate[];
+  selected_champion?: string;
+  measurement_notes: string[];
+  split_notes?: string;
 }
 
 export interface AnalystFeedbackRequest {

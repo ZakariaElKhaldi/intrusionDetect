@@ -1,10 +1,10 @@
 import { ArrowRight, CheckCircle2, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { submitAlertFeedback } from "../../api";
+import { getAlertExplanation, submitAlertFeedback } from "../../api";
 import { EvidenceChart } from "../../components/charts";
 import { PanelHeading } from "../../components/PanelHeading";
 import { SeverityLabel } from "../../components/SeverityLabel";
-import type { Alert, AlertStatus } from "../../types";
+import type { Alert, AlertExplanationStage, AlertStatus } from "../../types";
 import { formatTime } from "../../utils";
 
 const rangeMilliseconds: Record<string, number> = {
@@ -150,7 +150,13 @@ export function AlertWorkspace({
         aria-label="Security alerts"
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
-        <div style={{ height: filtered.length * rowHeight, position: "relative" }}>
+        <div style={{ height: Math.max(filtered.length * rowHeight, filtered.length ? 0 : viewportHeight), position: "relative" }}>
+          {!filtered.length ? (
+            <div className="alert-empty">
+              <b>{alerts.length ? "No alerts match these filters" : "No alerts recorded"}</b>
+              <span>{alerts.length ? "Adjust the filters to widen the investigation window." : "Run an attack replay to create real alert records."}</span>
+            </div>
+          ) : null}
           {filtered.slice(start, end).map((alert, index) => (
             <button
               className={`alert-row ${alert.severity === "critical" ? "alert-row--critical" : ""}`}
@@ -180,14 +186,18 @@ export function AlertDrawer({
   alert,
   onClose,
   onStatusChange,
+  loadExplanation = true,
 }: {
   alert: Alert;
   onClose: () => void;
   onStatusChange: (id: string, status: AlertStatus) => void;
+  loadExplanation?: boolean;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const [feedbackState, setFeedbackState] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [explanations, setExplanations] = useState<AlertExplanationStage[]>([]);
+  const [explanationState, setExplanationState] = useState<"loading" | "ready" | "empty" | "error">("loading");
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -195,6 +205,25 @@ export function AlertDrawer({
     addEventListener("keydown", close);
     return () => removeEventListener("keydown", close);
   }, [onClose]);
+
+  useEffect(() => {
+    if (!loadExplanation) {
+      setExplanationState("empty");
+      setExplanations([]);
+      return;
+    }
+    let cancelled = false;
+    setExplanationState("loading");
+    setExplanations([]);
+    void getAlertExplanation(alert.id).then((stages) => {
+      if (cancelled) return;
+      setExplanations(stages);
+      setExplanationState(stages.length ? "ready" : "empty");
+    }).catch(() => {
+      if (!cancelled) setExplanationState("error");
+    });
+    return () => { cancelled = true; };
+  }, [alert.id, loadExplanation]);
 
   const updateStatus = async (status: AlertStatus) => {
     setSubmitting(true);
@@ -262,15 +291,35 @@ export function AlertDrawer({
         </section>
 
         <section className="drawer-section">
-          <h3>{contributionEvidence ? "Model contribution" : "Highlighted feature values"}</h3>
+          <h3>Model explanation</h3>
           <p>
-            {contributionEvidence
-              ? "Signed values show relative model evidence. They do not establish causality."
-              : "The API supplied ranked raw values, not SHAP contributions. They are shown without implying direction or causality."}
+            Signed SHAP impacts explain this output relative to its base value. They are model attributions, not causal proof.
           </p>
-          {contributionEvidence && alert.explanations?.length ? (
+          {explanationState === "loading" ? <div className="explanation-state" role="status">Computing explanation…</div> : null}
+          {explanationState === "error" ? <div className="explanation-state" role="status">On-demand explanation is unavailable.</div> : null}
+          {explanations.map((stage) => (
+            <article className="explanation-stage" key={`${stage.stage}-${stage.model_version}`}>
+              <div className="explanation-meta">
+                <div><span>Stage</span><b>{stage.stage === "binary" || stage.stage === "detector" ? "Detector" : "Classifier"}</b></div>
+                <div><span>Explained class</span><b>{stage.explained_class}</b></div>
+                <div><span>Base → output</span><b>{stage.base_value.toFixed(3)} → {stage.output_value.toFixed(3)}</b></div>
+                <div><span>Method</span><b>{stage.method}</b></div>
+              </div>
+              <EvidenceChart
+                evidence={stage.contributions.map((item) => ({
+                  feature: item.feature,
+                  impact: item.impact,
+                  value: item.raw_value ?? undefined,
+                  evidence_type: "model_contribution",
+                }))}
+                height={Math.max(220, Math.min(340, stage.contributions.length * 27 + 70))}
+              />
+            </article>
+          ))}
+          {explanationState === "empty" && contributionEvidence && alert.explanations?.length ? (
             <EvidenceChart evidence={alert.explanations} height={260} />
-          ) : (
+          ) : null}
+          {explanationState === "empty" && !contributionEvidence ? (
             <div className="evidence-list">
               {(alert.explanations ?? []).map((item) => (
                 <div className="evidence-row" key={item.feature}>
@@ -280,7 +329,7 @@ export function AlertDrawer({
               ))}
               {!alert.explanations?.length && <span className="panel-heading-meta">No feature evidence was returned.</span>}
             </div>
-          )}
+          ) : null}
         </section>
 
         {!!alert.reasons?.length && (

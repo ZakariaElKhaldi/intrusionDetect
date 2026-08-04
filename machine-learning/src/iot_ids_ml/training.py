@@ -29,7 +29,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.tree import DecisionTreeClassifier
 
-from .evaluation import classification_metrics, operational_metrics
+from .evaluation import (
+    classification_metrics,
+    detector_threshold_curve,
+    metrics_from_predictions,
+    operational_metrics,
+)
 from .schema import (
     CATEGORICAL_FEATURES,
     FEATURE_COLUMNS,
@@ -295,6 +300,23 @@ def _assert_no_feature_overlap(x: pd.DataFrame, split: dict[str, np.ndarray]) ->
         raise ValueError(f"Duplicate flows cross split boundaries: {overlaps}")
 
 
+def _attack_only_partitions(
+    split: dict[str, np.ndarray], source_labels: pd.Series
+) -> dict[str, np.ndarray]:
+    """Filter shared full-population indices without creating a second split."""
+
+    is_attack = ~source_labels.astype(str).isin(NORMAL_LABELS).to_numpy()
+    return {
+        name: np.asarray(indices)[is_attack[np.asarray(indices)]]
+        for name, indices in split.items()
+    }
+
+
+def _partition_fingerprint(indices: np.ndarray) -> str:
+    canonical = ",".join(str(int(index)) for index in sorted(indices.tolist()))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def _fit_one(
     estimator: Pipeline,
     x: pd.DataFrame,
@@ -429,11 +451,16 @@ def train_baselines(
         frame = frame.drop_duplicates(subset=list(FEATURE_COLUMNS), keep="first").reset_index(
             drop=True
         )
-    attack_mask = ~frame[TARGET_COLUMN].astype(str).isin(NORMAL_LABELS)
-    experiment_frames = {
-        "binary": frame,
-        "multiclass": frame.loc[attack_mask].reset_index(drop=True),
-    }
+    source_labels = frame[TARGET_COLUMN].astype(str)
+    attack_mask = ~source_labels.isin(NORMAL_LABELS)
+    x_all = frame[list(FEATURE_COLUMNS)]
+    shared_partitions_by_seed: dict[int, dict[str, np.ndarray]] = {}
+    for evaluation_seed in evaluation_seeds:
+        shared = stratified_split(
+            source_labels, TrainingConfig(random_seed=evaluation_seed)
+        )
+        _assert_no_feature_overlap(x_all, shared)
+        shared_partitions_by_seed[evaluation_seed] = shared
     final_output = Path(output_dir).expanduser().resolve()
     final_output.parent.mkdir(parents=True, exist_ok=True)
     output = Path(
@@ -456,6 +483,10 @@ def train_baselines(
         "training_configuration": {
             **asdict(TrainingConfig(random_seed=evaluation_seeds[0])),
             "evaluation_seeds": list(evaluation_seeds),
+            "split_stratification_target": "original 12-label Attack_type",
+            "cascade_partition_policy": (
+                "one shared partition per seed; multiclass uses attack rows within it"
+            ),
         },
         "removed_rows": {
             "duplicate_feature_rows": duplicate_count,
@@ -471,6 +502,16 @@ def train_baselines(
             if "data/sample" in csv_path.as_posix() or validated.profile["row_count"] <= 1000
             else "production_training"
         ),
+        "shared_split_audit": {
+            str(run_seed): {
+                name: {
+                    "rows": int(len(indices)),
+                    "index_sha256": _partition_fingerprint(indices),
+                }
+                for name, indices in shared_partitions_by_seed[run_seed].items()
+            }
+            for run_seed in evaluation_seeds
+        },
         "limitations": [
             "Small fixture runs only test the software contract and cannot be promoted.",
             "Random-split performance is not evidence of deployment readiness.",
@@ -481,20 +522,27 @@ def train_baselines(
         ],
     }
     saved_models: list[dict[str, Any]] = []
+    selected_estimators: dict[str, Pipeline] = {}
+    selected_estimators_by_seed: dict[str, dict[int, Pipeline]] = {}
 
-    for target_name, experiment_frame in experiment_frames.items():
-        x = experiment_frame[list(FEATURE_COLUMNS)]
+    for target_name in ("binary", "multiclass"):
+        x = x_all
         y = (
-            experiment_frame[TARGET_COLUMN].map(
+            source_labels.map(
                 lambda value: "normal" if str(value) in NORMAL_LABELS else "attack"
             )
             if target_name == "binary"
-            else experiment_frame[TARGET_COLUMN].astype(str)
+            else source_labels
+        )
+        population_mask = (
+            np.ones(len(frame), dtype=bool)
+            if target_name == "binary"
+            else attack_mask.to_numpy()
         )
         primary_config = TrainingConfig(random_seed=evaluation_seeds[0])
         realistic_partitions, realistic_definition = realistic_split(
-            experiment_frame,
-            y,
+            frame,
+            source_labels,
             group_column=selected_group,
             time_column=selected_time,
             config=primary_config,
@@ -507,18 +555,24 @@ def train_baselines(
                 }
                 if target_name == "binary"
                 else {
-                    "classes": sorted(y.unique().tolist()),
+                    "classes": sorted(source_labels.loc[attack_mask].unique().tolist()),
                     "population": "attack rows only; normal flows are gated by binary detection",
                 }
             ),
-            "training_row_count": int(len(experiment_frame)),
+            "training_row_count": int(np.sum(population_mask)),
             "realistic_split": realistic_definition,
             "splits": {
                 "stratified_random": {
                     "definition": {
-                        "strategy": "repeated stratified random",
+                        "strategy": "shared repeated stratified random",
                         "shuffle": True,
                         "seeds": list(evaluation_seeds),
+                        "stratified_by": "original 12-label Attack_type",
+                        "population": (
+                            "all rows"
+                            if target_name == "binary"
+                            else "attack rows selected from the same full-data partitions"
+                        ),
                     },
                     "models": {},
                 }
@@ -529,8 +583,12 @@ def train_baselines(
         }
         primary_partitions: dict[str, np.ndarray] | None = None
         for evaluation_seed in evaluation_seeds:
-            config = TrainingConfig(random_seed=evaluation_seed)
-            partitions = stratified_split(y, config)
+            shared_partitions = shared_partitions_by_seed[evaluation_seed]
+            partitions = (
+                shared_partitions
+                if target_name == "binary"
+                else _attack_only_partitions(shared_partitions, source_labels)
+            )
             _assert_no_feature_overlap(x, partitions)
             if primary_partitions is None:
                 primary_partitions = partitions
@@ -592,6 +650,10 @@ def train_baselines(
             "selection_aggregate"
         ]
         if realistic_partitions is not None:
+            if target_name == "multiclass":
+                realistic_partitions = _attack_only_partitions(
+                    realistic_partitions, source_labels
+                )
             _assert_no_feature_overlap(x, realistic_partitions)
             _, realistic_evaluation = _fit_one(
                 model_candidates(evaluation_seeds[0])[best_name],
@@ -617,6 +679,7 @@ def train_baselines(
                 "target": target_name,
                 "model": best_name,
                 "seeds": list(evaluation_seeds),
+                "split_policy": "shared-original-label-stratified-v1",
                 "configuration": common_metadata["training_configuration"],
                 "code_commit": code_commit,
             },
@@ -642,7 +705,7 @@ def train_baselines(
             ],
             "selection_aggregate": best_aggregate,
             "dataset_role": report["dataset_role"],
-            "training_row_count": int(len(experiment_frame)),
+            "training_row_count": int(np.sum(population_mask)),
             "training_population": (
                 "all deduplicated flows"
                 if target_name == "binary"
@@ -669,6 +732,70 @@ def train_baselines(
         )
         target_report["selected_model"] = model_metadata
         report["experiments"][target_name] = target_report
+        selected_estimators[target_name] = best_estimator
+        selected_estimators_by_seed[target_name] = {
+            run_seed: seed_evaluations[best_name][run_seed][0]
+            for run_seed in evaluation_seeds
+        }
+
+    cascade_seed_evaluations: dict[str, Any] = {}
+    for run_seed in evaluation_seeds:
+        cascade_test = shared_partitions_by_seed[run_seed]["test"]
+        true_families = source_labels.iloc[cascade_test].map(
+            lambda value: "normal" if str(value) in NORMAL_LABELS else str(value)
+        ).to_numpy()
+        detector_predictions = selected_estimators_by_seed["binary"][run_seed].predict(
+            x_all.iloc[cascade_test]
+        )
+        cascade_predictions = np.full(len(cascade_test), "normal", dtype=object)
+        routed_positions = np.flatnonzero(detector_predictions == "attack")
+        if len(routed_positions):
+            cascade_predictions[routed_positions] = selected_estimators_by_seed[
+                "multiclass"
+            ][run_seed].predict(x_all.iloc[cascade_test[routed_positions]])
+        attack_truth = true_families != "normal"
+        cascade_seed_evaluations[str(run_seed)] = {
+            "test_rows": int(len(cascade_test)),
+            "detector_false_negatives": int(
+                np.sum(attack_truth & (detector_predictions == "normal"))
+            ),
+            "detector_routed_rows": int(len(routed_positions)),
+            "metrics": metrics_from_predictions(true_families, cascade_predictions),
+        }
+    primary_cascade = cascade_seed_evaluations[str(evaluation_seeds[0])]
+    report["cascade_evaluation"] = {
+        "protocol": (
+            "Binary detector followed by attack-family classifier on the untouched shared "
+            "test partition; detector misses remain final normal predictions."
+        ),
+        "split_seed": evaluation_seeds[0],
+        **primary_cascade,
+        "seed_evaluations": cascade_seed_evaluations,
+        "aggregate": {
+            "mean_macro_f1": float(
+                np.mean(
+                    [item["metrics"]["f1_macro"] for item in cascade_seed_evaluations.values()]
+                )
+            ),
+            "mean_detector_false_negatives": float(
+                np.mean(
+                    [
+                        item["detector_false_negatives"]
+                        for item in cascade_seed_evaluations.values()
+                    ]
+                )
+            ),
+        },
+    }
+    primary_shared = shared_partitions_by_seed[evaluation_seeds[0]]
+    binary_validation = primary_shared["validation"]
+    report["experiments"]["binary"]["threshold_analysis"] = detector_threshold_curve(
+        selected_estimators["binary"],
+        x_all.iloc[binary_validation],
+        source_labels.iloc[binary_validation].map(
+            lambda value: "normal" if str(value) in NORMAL_LABELS else "attack"
+        ),
+    )
 
     report_path = output / "evaluation-report.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

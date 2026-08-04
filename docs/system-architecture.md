@@ -76,7 +76,7 @@ standalone multiclass metrics do not measure the complete cascade.
   "event_id": "uuid",
   "model_version": "binary-hist_gradient_boosting-...",
   "detector_model_version": "binary-hist_gradient_boosting-...",
-  "classifier_model_version": "multiclass-random_forest-... or null",
+  "classifier_model_version": "multiclass-hist_gradient_boosting-... or null",
   "binary_prediction": "attack",
   "attack_class": "NMAP_TCP_scan",
   "confidence": 0.94,

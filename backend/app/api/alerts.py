@@ -90,6 +90,35 @@ async def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
         )
 
 
+@router.get("/alerts/{alert_id}/explanation")
+async def get_alert_explanation(alert_id: UUID, request: Request) -> dict:
+    with request.app.state.SessionLocal() as session:
+        alert = session.get(Alert, str(alert_id))
+        if not alert:
+            raise HTTPException(status_code=404, detail="alert not found")
+        prediction = session.get(Prediction, alert.prediction_id)
+        observation = session.get(Observation, alert.event_id)
+        if not prediction.attack_class:
+            raise HTTPException(
+                status_code=409, detail="classifier explanation is unavailable for this alert"
+            )
+        registry = request.app.state.registry
+        if (
+            prediction.detector_model_version != registry.detector.version
+            or prediction.classifier_model_version != registry.classifier.version
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="the model artifacts used for this alert are no longer active",
+            )
+        try:
+            return request.app.state.explanations.explain_alert(
+                alert.alert_id, observation.raw_features, prediction.attack_class
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post(
     "/alerts/{alert_id}/feedback",
     response_model=FeedbackResponse,

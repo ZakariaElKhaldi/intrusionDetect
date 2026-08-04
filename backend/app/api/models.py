@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(tags=["models"])
@@ -27,3 +29,14 @@ async def list_models(request: Request) -> list[ModelResponse]:
             .order_by(ModelVersion.active.desc(), ModelVersion.created_at.desc())
             .all()
         )
+
+
+@router.get("/evaluation")
+async def get_evaluation(
+    request: Request,
+    stage: Literal["binary", "multiclass"] = Query(...),
+) -> dict:
+    try:
+        return request.app.state.registry.evaluation(stage)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

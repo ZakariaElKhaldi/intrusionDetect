@@ -39,6 +39,9 @@ def test_training_creates_reproducible_reports_and_loadable_models(fixture_csv, 
 
     assert report["schema_version"] == "rt-iot2022-v1"
     assert set(report["experiments"]) == {"binary", "multiclass"}
+    assert report["cascade_evaluation"]["test_rows"] > 0
+    assert report["cascade_evaluation"]["metrics"]["confusion_matrix"]
+    assert report["experiments"]["binary"]["threshold_analysis"]["curve"]
     assert report["experiments"]["binary"]["realistic_split"]["available"] is False
     for target in ("binary", "multiclass"):
         models = report["experiments"][target]["splits"]["stratified_random"]["models"]
@@ -78,6 +81,12 @@ def test_default_training_aggregates_three_validation_seeds(fixture_csv, tmp_pat
     report = json.loads((tmp_path / "evaluation-report.json").read_text())
 
     assert report["evaluation_seeds"] == [42, 1337, 2026]
+    assert set(report["shared_split_audit"]) == {"42", "1337", "2026"}
+    assert set(report["cascade_evaluation"]["seed_evaluations"]) == {
+        "42",
+        "1337",
+        "2026",
+    }
     for target in ("binary", "multiclass"):
         experiment = report["experiments"][target]
         models = experiment["splits"]["stratified_random"]["models"]

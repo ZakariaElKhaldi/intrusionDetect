@@ -31,7 +31,7 @@ export const sampleAlerts: Alert[] = Array.from({ length: 180 }, (_, index) => {
 });
 
 export const sampleModels: ModelInfo[] = [
-  { name: "Random Forest", version: "1.4.2", status: "active", macro_f1: 0.947, weighted_f1: 0.982, false_positive_rate: 0.013, inference_ms: 3.8, trained_at: "2026-07-18" },
-  { name: "HistGradientBoosting", version: "1.3.0", status: "candidate", macro_f1: 0.953, weighted_f1: 0.979, false_positive_rate: 0.017, inference_ms: 5.2, trained_at: "2026-07-17" },
-  { name: "Logistic Regression", version: "1.1.1", status: "baseline", macro_f1: 0.811, weighted_f1: 0.923, false_positive_rate: 0.041, inference_ms: 0.7, trained_at: "2026-07-12" },
+  { name: "Random Forest", version: "1.4.2", status: "active", role: "detector", macro_f1: 0.947, weighted_f1: 0.982, false_positive_rate: 0.013, inference_ms: 3.8, trained_at: "2026-07-18" },
+  { name: "HistGradientBoosting", version: "1.3.0", status: "candidate", role: "detector", macro_f1: 0.953, weighted_f1: 0.979, false_positive_rate: 0.017, inference_ms: 5.2, trained_at: "2026-07-17" },
+  { name: "Logistic Regression", version: "1.1.1", status: "baseline", role: "detector", macro_f1: 0.811, weighted_f1: 0.923, false_positive_rate: 0.041, inference_ms: 0.7, trained_at: "2026-07-12" },
 ];

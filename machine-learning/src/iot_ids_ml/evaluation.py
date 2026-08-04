@@ -42,12 +42,17 @@ def _compact_pr_curve(
     }
 
 
-def classification_metrics(estimator: Any, x: Any, y: Any) -> dict[str, Any]:
-    predictions = estimator.predict(x)
-    labels = sorted(
-        set(estimator.classes_) | set(np.asarray(y).tolist()) | set(predictions.tolist()),
-        key=str,
-    )
+def metrics_from_predictions(
+    y: Any,
+    predictions: Any,
+    *,
+    labels: list[Any] | None = None,
+) -> dict[str, Any]:
+    """Calculate classification evidence from already-produced predictions."""
+
+    predictions = np.asarray(predictions)
+    y = np.asarray(y)
+    labels = labels or sorted(set(y.tolist()) | set(predictions.tolist()), key=str)
     classes = [str(item) for item in labels]
     precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
         y, predictions, average="macro", zero_division=0
@@ -126,6 +131,16 @@ def classification_metrics(estimator: Any, x: Any, y: Any) -> dict[str, Any]:
         result["f1"] = attack_metrics["f1"]
         result["alert_rate"] = float(np.mean(predictions == "attack"))
 
+    return result
+
+
+def classification_metrics(estimator: Any, x: Any, y: Any) -> dict[str, Any]:
+    predictions = estimator.predict(x)
+    labels = sorted(
+        set(estimator.classes_) | set(np.asarray(y).tolist()) | set(predictions.tolist()),
+        key=str,
+    )
+    result = metrics_from_predictions(y, predictions, labels=labels)
     estimator_labels = list(estimator.classes_)
     estimator_classes = [str(item) for item in estimator_labels]
     if hasattr(estimator, "predict_proba"):
@@ -168,6 +183,43 @@ def classification_metrics(estimator: Any, x: Any, y: Any) -> dict[str, Any]:
             "Raw predict_proba output; not calibrated and not a guaranteed probability."
         )
     return result
+
+
+def detector_threshold_curve(
+    estimator: Any, x: Any, y: Any, *, points: int = 101
+) -> dict[str, Any]:
+    """Measure detector operating behavior across explicit score thresholds."""
+
+    classes = [str(item) for item in estimator.classes_]
+    if set(classes) != {"attack", "normal"} or not hasattr(estimator, "predict_proba"):
+        raise ValueError("Threshold analysis requires a binary probabilistic detector")
+    attack_index = classes.index("attack")
+    scores = estimator.predict_proba(x)[:, attack_index]
+    truth = np.asarray(y) == "attack"
+    thresholds = np.linspace(0.0, 1.0, points)
+    curve: list[dict[str, float]] = []
+    for threshold in thresholds:
+        predicted = scores >= threshold
+        tp = int(np.sum(predicted & truth))
+        fp = int(np.sum(predicted & ~truth))
+        fn = int(np.sum(~predicted & truth))
+        tn = int(np.sum(~predicted & ~truth))
+        curve.append(
+            {
+                "threshold": float(threshold),
+                "recall": float(tp / (tp + fn)) if tp + fn else 0.0,
+                "precision": float(tp / (tp + fp)) if tp + fp else 0.0,
+                "false_positive_rate": float(fp / (fp + tn)) if fp + tn else 0.0,
+                "alert_rate": float(np.mean(predicted)),
+            }
+        )
+    return {
+        "operating_threshold": 0.5,
+        "selection_policy": "Threshold unchanged; validation curve is evidence, not calibration.",
+        "score_note": "Raw predict_proba output; uncalibrated score.",
+        "partition_rows": int(len(truth)),
+        "curve": curve,
+    }
 
 
 def operational_metrics(

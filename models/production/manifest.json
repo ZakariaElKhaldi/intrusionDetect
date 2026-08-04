@@ -1,21 +1,21 @@
 {
   "evaluation_report": "evaluation-report.json",
-  "evaluation_report_sha256": "aeaf0f89adea0bc0a0121e86dcea0e7bbc08f7f7d89e39a1d9d533f8ce085b3a",
+  "evaluation_report_sha256": "ab36d2a5eacdd600e6c79d9ad8889fac2affccc138c7a9841f6e0ff6c731efcc",
   "models": [
     {
-      "artifact": "binary-hist_gradient_boosting-5a27200c4fcc.joblib",
-      "artifact_sha256": "6235bb5a1577a425b585250a7e46dbc8f1ec8090982f23b1d53846640bcca297",
-      "metadata": "binary-hist_gradient_boosting-5a27200c4fcc.metadata.json",
-      "metadata_sha256": "d3e40db9eb93a1011164da5e918b79a81c891e0f788ed58c6fd601273a39493e",
-      "model_version": "binary-hist_gradient_boosting-5a27200c4fcc",
+      "artifact": "binary-hist_gradient_boosting-fbc864a2f90c.joblib",
+      "artifact_sha256": "6156e4ad8876b78e36e8267621a62514fc4eb6204d349a45f4e78195606c2000",
+      "metadata": "binary-hist_gradient_boosting-fbc864a2f90c.metadata.json",
+      "metadata_sha256": "fc72cabf385c31ac450d3c84e4e7df5f972f766af2c0cecfbff2546db10b29e0",
+      "model_version": "binary-hist_gradient_boosting-fbc864a2f90c",
       "target": "binary"
     },
     {
-      "artifact": "multiclass-random_forest-df3f5d0cd53c.joblib",
-      "artifact_sha256": "c484228d64f6712df15119e88a12f37b24fd03ae31a6b1aa3a0e40779092d14a",
-      "metadata": "multiclass-random_forest-df3f5d0cd53c.metadata.json",
-      "metadata_sha256": "0b1cadc0865dc20a5a31bb9ce5173fa15852b959f418a9e2e67281b2d7a57e0e",
-      "model_version": "multiclass-random_forest-df3f5d0cd53c",
+      "artifact": "multiclass-hist_gradient_boosting-43e33432abfc.joblib",
+      "artifact_sha256": "1711d0adc4225751ce140c15639ed9570df1ed6b6522ca7ddf16d1dc5176257f",
+      "metadata": "multiclass-hist_gradient_boosting-43e33432abfc.metadata.json",
+      "metadata_sha256": "c2a95fa195757c4c9870d2744c2d7a862162ab8e92fd1c8ad18ee939c2ae9b81",
+      "model_version": "multiclass-hist_gradient_boosting-43e33432abfc",
       "target": "multiclass"
     }
   ],

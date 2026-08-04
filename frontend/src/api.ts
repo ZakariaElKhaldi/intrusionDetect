@@ -9,6 +9,11 @@ import type {
   LiveEvent,
   LivePrediction,
   ModelInfo,
+  AlertExplanationStage,
+  EvaluationCandidate,
+  EvaluationReport,
+  ReplayOptions,
+  ReplayStatus,
 } from "./types";
 
 const configuredApi = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
@@ -319,6 +324,111 @@ export async function getModels(): Promise<ModelInfo[]> {
   });
 }
 
+function numericRecord(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter((entry): entry is [string, number] => typeof entry[1] === "number");
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
+function evaluationCandidate(value: unknown, champion?: string): EvaluationCandidate | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const test = (row.test_metrics ?? row.test ?? row.metrics ?? {}) as Record<string, unknown>;
+  const operational = (row.operational ?? {}) as Record<string, unknown>;
+  const name = String(row.name ?? row.model_name ?? row.model_type ?? row.candidate ?? "Candidate");
+  const matrix = test.confusion_matrix ?? row.confusion_matrix;
+  const classes = test.classes ?? row.classes;
+  const support = test.class_support ?? test.support ?? row.class_support ?? row.support;
+  const seedValues = row.seed_metrics ?? row.seeds ?? row.runs;
+  return {
+    name,
+    version: String(row.version ?? row.model_version ?? "evaluation-only"),
+    status: Boolean(row.selected) || champion === name ? "active" : "candidate",
+    role: "candidate",
+    selected: Boolean(row.selected) || champion === name,
+    macro_f1: Number(test.macro_f1 ?? row.macro_f1 ?? 0),
+    weighted_f1: Number(test.weighted_f1 ?? row.weighted_f1 ?? 0),
+    false_positive_rate: Number(test.false_positive_rate ?? test.fpr ?? row.false_positive_rate ?? 0),
+    inference_ms: Number(operational.median_inference_latency_ms ?? operational.p50_latency_ms ?? operational.inference_ms ?? row.inference_ms ?? 0),
+    classes: Array.isArray(classes) ? classes.map(String) : undefined,
+    confusion_matrix: Array.isArray(matrix) ? matrix as number[][] : undefined,
+    evaluation_scope: typeof row.evaluation_scope === "string" ? row.evaluation_scope : "shared random test split",
+    selection_metric: typeof row.selection_metric === "string" ? row.selection_metric : undefined,
+    selection_value: typeof row.selection_value === "number" ? row.selection_value : undefined,
+    test_metrics: numericRecord(test),
+    seed_metrics: Array.isArray(seedValues)
+      ? seedValues.map(numericRecord).filter((item): item is Record<string, number> => Boolean(item))
+      : undefined,
+    selection_summary: numericRecord(row.three_seed_aggregate ?? row.selection_aggregate),
+    support: numericRecord(support),
+  };
+}
+
+export async function getEvaluation(stage: "binary" | "multiclass"): Promise<EvaluationReport> {
+  const payload = await request<unknown>(`/evaluation?stage=${stage}`);
+  const body = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+  const championValue = body.selected_champion ?? body.champion ?? body.selected_model;
+  const champion = championValue && typeof championValue === "object"
+    ? String((championValue as Record<string, unknown>).model_name ?? (championValue as Record<string, unknown>).name ?? "") || undefined
+    : championValue == null ? undefined : String(championValue) || undefined;
+  const rawCandidates = Array.isArray(body.candidates)
+    ? body.candidates
+    : Array.isArray(body.models) ? body.models : Array.isArray(payload) ? payload : [];
+  const notes = body.measurement_notes ?? body.notes;
+  return {
+    stage,
+    candidates: rawCandidates
+      .map((candidate) => evaluationCandidate(candidate, champion))
+      .filter((candidate): candidate is EvaluationCandidate => candidate !== null),
+    selected_champion: champion,
+    measurement_notes: Array.isArray(notes) ? notes.map(String) : [],
+    split_notes: typeof body.split_notes === "string"
+      ? body.split_notes
+      : typeof body.evaluation_scope === "string" ? body.evaluation_scope : undefined,
+  };
+}
+
+function explanationStage(value: unknown): AlertExplanationStage | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const contributions = row.contributions ?? row.features ?? row.attributions;
+  if (!Array.isArray(contributions)) return null;
+  const stage = String(row.stage ?? "binary");
+  if (!["binary", "multiclass", "detector", "classifier"].includes(stage)) return null;
+  return {
+    stage: stage as AlertExplanationStage["stage"],
+    model_version: String(row.model_version ?? "not reported"),
+    explained_class: String(row.explained_class ?? row.output_class ?? row.class ?? "prediction"),
+    base_value: Number(row.base_value ?? 0),
+    output_value: Number(row.output_value ?? 0),
+    method: String(row.method ?? "SHAP"),
+    output_units: typeof row.output_units === "string" ? row.output_units : undefined,
+    contributions: contributions.map((item) => {
+      const contribution = item as Record<string, unknown>;
+      return {
+        feature: String(contribution.transformed_feature ?? contribution.feature ?? contribution.name ?? "feature"),
+        raw_feature: typeof contribution.raw_feature === "string"
+          ? contribution.raw_feature
+          : typeof contribution.feature === "string" ? contribution.feature : undefined,
+        raw_value: typeof contribution.raw_value === "string" || typeof contribution.raw_value === "number"
+          ? contribution.raw_value : null,
+        impact: Number(contribution.impact ?? contribution.shap_value ?? contribution.contribution ?? 0),
+      };
+    }),
+  };
+}
+
+export async function getAlertExplanation(alertId: string): Promise<AlertExplanationStage[]> {
+  const payload = await request<unknown>(`/alerts/${encodeURIComponent(alertId)}/explanation`);
+  const body = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const raw = Array.isArray(payload)
+    ? payload
+    : Array.isArray(body.explanations) ? body.explanations
+      : Array.isArray(body.stages) ? body.stages : [payload];
+  return raw.map(explanationStage).filter((item): item is AlertExplanationStage => item !== null);
+}
+
 function observationsFromRows(rows: Record<string, string | number>[]) {
   return rows.map((row) => {
     const ended = new Date();
@@ -353,22 +463,29 @@ export async function predict(rows: Record<string, string | number>[]) {
   });
 }
 
-export async function startReplay(speed: number) {
-  return request<unknown>("/replay/start", {
+export async function startReplay(options: ReplayOptions): Promise<ReplayStatus> {
+  return request<ReplayStatus>("/replay/start", {
     method: "POST",
     body: JSON.stringify({
       mode: "dataset",
-      scenario: "all",
+      scenario: options.scenario,
       offset: 0,
-      limit: 100,
-      interval_ms: 1000,
-      speed,
+      limit: options.limit,
+      interval_ms: options.interval_ms ?? 250,
+      speed: options.speed,
     }),
   });
 }
 
-export async function replayAction(action: "pause" | "resume", speed: number) {
-  return request<unknown>(`/replay/${action}`, {
+export async function getReplayStatus(): Promise<ReplayStatus> {
+  return request<ReplayStatus>("/replay/status");
+}
+
+export async function replayAction(
+  action: "pause" | "resume" | "stop",
+  speed: number,
+): Promise<ReplayStatus> {
+  return request<ReplayStatus>(`/replay/${action}`, {
     method: "POST",
     body: JSON.stringify(action === "resume" ? { speed } : {}),
   });
