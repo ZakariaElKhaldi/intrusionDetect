@@ -10,11 +10,10 @@ import { useMemo } from "react";
 import {
   DetectionRankingChart,
   ProtocolDistributionChart,
-  SeverityTimelineChart,
 } from "../../components/charts";
 import { PanelHeading } from "../../components/PanelHeading";
 import { SeverityLabel } from "../../components/SeverityLabel";
-import type { Alert, HealthInfo } from "../../types";
+import type { Alert, DashboardSummary, HealthInfo } from "../../types";
 import { formatTime } from "../../utils";
 
 function median(values: number[]) {
@@ -46,6 +45,16 @@ function Metric({
   );
 }
 
+function CountBars({ values, label }: { values: Record<string, number>; label: string }) {
+  const rows=Object.entries(values).sort((a,b)=>b[1]-a[1]); const max=Math.max(...rows.map(([,value])=>value),1);
+  return <div className="count-bars" aria-label={label}>{rows.length?rows.map(([name,value])=><div key={name}><span>{name}</span><i style={{width:`${value/max*100}%`}} aria-hidden="true"/><b>{value}</b></div>):<div className="chart-empty">No persisted records in this range.</div>}</div>;
+}
+
+function PersistedTimeline({ summary, onSelect }: { summary: DashboardSummary; onSelect: (start:string, bucketMinutes?:number)=>void }) {
+  const max=Math.max(...summary.severity_timeline.map((row)=>row.total),1);
+  return <div className="summary-timeline" aria-label="Persisted alerts by severity and time"><div className="timeline-bars">{summary.severity_timeline.map((row)=><button key={row.bucket_start} onClick={()=>onSelect(row.bucket_start,summary.scope.bucket_minutes)} aria-label={`${row.total} alerts at ${new Date(row.bucket_start).toLocaleString()}`} style={{height:`${Math.max(2,row.total/max*100)}%`}}><span className="sr-only">{row.total}</span></button>)}</div><div className="preview-scroll"><table><caption>Exact persisted alert buckets · {summary.scope.bucket_minutes}-minute intervals</caption><thead><tr><th>Bucket</th><th>Total</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th></tr></thead><tbody>{summary.severity_timeline.map((row)=><tr key={row.bucket_start}><td><button className="text-button" onClick={()=>onSelect(row.bucket_start,summary.scope.bucket_minutes)}>{new Date(row.bucket_start).toLocaleString()}</button></td><td>{row.total}</td><td>{row.critical}</td><td>{row.high}</td><td>{row.medium}</td><td>{row.low}</td></tr>)}</tbody></table></div></div>;
+}
+
 export function Overview({
   alerts,
   health,
@@ -55,6 +64,10 @@ export function Overview({
   alertsLoading,
   alertsError,
   onRetry,
+  summary,
+  summaryError,
+  summaryRange,
+  onSummaryRange,
   onOpenAlert,
   onTimeBucket,
 }: {
@@ -66,8 +79,12 @@ export function Overview({
   alertsLoading?: boolean;
   alertsError?: string;
   onRetry?: () => void;
+  summary?: DashboardSummary | null;
+  summaryError?: string;
+  summaryRange?: DashboardSummary["range"];
+  onSummaryRange?: (range: DashboardSummary["range"]) => void;
   onOpenAlert: (alert: Alert) => void;
-  onTimeBucket: (start: string) => void;
+  onTimeBucket: (start: string, bucketMinutes?: number) => void;
 }) {
   const openAlerts = alerts.filter((alert) => !["resolved", "false_positive"].includes(alert.status));
   const critical = openAlerts.filter((alert) => alert.severity === "critical");
@@ -83,17 +100,18 @@ export function Overview({
 
   return (
     <div className="overview-grid">
+      <div className="summary-scope"><span>Persisted database evidence</span><label>Evidence window <select value={summaryRange ?? "24h"} onChange={(event)=>onSummaryRange?.(event.target.value as DashboardSummary["range"])}><option value="15m">15 minutes</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="all">All persisted</option></select></label>{summary ? <small>Generated {new Date(summary.generated_at).toLocaleString()} · {summary.scope.bucket_minutes}-minute buckets · time field {summary.scope.time_field}</small> : null}</div>
       <section className="metrics-grid" aria-label="Current alert posture">
         <Metric
-          label="Live predictions"
-          value={String(livePredictionCount)}
-          detail="Predictions received since this page opened"
+          label={summary ? "Persisted predictions" : "Live predictions"}
+          value={String(summary?.predictions.total ?? livePredictionCount)}
+          detail={summary ? `${summary.range} window: ${summary.predictions.attack} attack / ${summary.predictions.normal} normal · ${livePredictionCount} live this session` : "Live events received since this page opened"}
           icon={Radio}
         />
         <Metric
           label="Open critical"
-          value={String(critical.length)}
-          detail={`${openAlerts.length} unresolved across all severities`}
+          value={String(summary?.alerts.critical_open ?? critical.length)}
+          detail={`${summary?.alerts.unresolved ?? openAlerts.length} persisted unresolved across all severities`}
           icon={CircleAlert}
           attention={critical.length > 0}
         />
@@ -105,7 +123,7 @@ export function Overview({
         />
         <Metric
           label="Median detector score"
-          value={`${(medianConfidence * 100).toFixed(1)}%`}
+          value={summary?.median_detection_score == null ? `${(medianConfidence * 100).toFixed(1)}%` : `${(summary.median_detection_score * 100).toFixed(1)}%`}
           detail="Detector output; not a calibrated probability"
           icon={Crosshair}
         />
@@ -118,7 +136,7 @@ export function Overview({
           description="Five-minute buckets. Select a bar to inspect alerts from that interval."
           action={<span className="panel-heading-meta">{alerts.length} observations</span>}
         />
-        {alertsLoading ? <div className="data-state" role="status">Loading alert timeline…</div> : alertsError ? <div className="data-state data-state--error" role="alert"><span>{alertsError}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry alerts</button> : null}</div> : alerts.length ? <SeverityTimelineChart alerts={alerts} bucketMinutes={5} height={290} onBucketSelect={onTimeBucket} /> : <div className="chart-empty">No alert records yet. Run an attack replay to populate this evidence.</div>}
+        {summary ? <PersistedTimeline summary={summary} onSelect={onTimeBucket}/> : alertsLoading ? <div className="data-state" role="status">Loading persisted timeline…</div> : (summaryError || alertsError) ? <div className="data-state data-state--error" role="alert"><span>{summaryError || alertsError}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry summary</button> : null}</div> : <div className="chart-empty">No persisted summary is available.</div>}
       </section>
 
       <div className="overview-side">
@@ -128,7 +146,7 @@ export function Overview({
             title="Protocols among alerts"
             description="Distribution within alert records, not all network traffic."
           />
-          {alerts.length ? <ProtocolDistributionChart alerts={alerts} height={225} /> : <div className="chart-empty">No alert protocols recorded.</div>}
+          {summary ? <CountBars values={summary.protocol_counts} label="Persisted alert protocols"/> : alerts.length ? <ProtocolDistributionChart alerts={alerts} height={225} /> : <div className="chart-empty">No alert protocols recorded.</div>}
         </section>
         <section className="panel">
           <PanelHeading
@@ -138,6 +156,8 @@ export function Overview({
           />
           <div className="pipeline-facts">
             <div><span>API</span><b>{health ? health.status : "Unavailable"}</b></div>
+            <div><span>Readiness</span><b>{health?.readiness ?? "Not reported"}</b></div>
+            <div><span>Instance</span><b className="mono">{health?.instance_id ?? "Not reported"}</b></div>
             <div><span>Stream</span><b>{socketState}</b></div>
             <div><span>Schema</span><b className="mono">{health?.schema_version ?? "Not reported"}</b></div>
             <div><span>Detector</span><b className="mono">{health?.detector_model_version ?? health?.model_version ?? "Not reported"}</b></div>
@@ -146,6 +166,7 @@ export function Overview({
             <div><span>Dataset SHA-256</span><b className="mono checksum">{health?.dataset_checksum ?? "Not reported"}</b></div>
             <div><span>Production bundle</span><b>{health?.production_bundle_valid === undefined ? "Not reported" : health.production_bundle_valid ? "Verified" : "Invalid"}</b></div>
             <div><span>Fallback</span><b>{(health?.fallback_active ?? health?.fallback) === undefined ? "Not reported" : (health?.fallback_active ?? health?.fallback) ? "Active" : "Inactive"}</b></div>
+            {Object.entries(health?.components ?? {}).map(([name,component])=><div key={name}><span>{name}</span><b title={component.reason}>{component.status}{component.reason ? ` · ${component.reason}` : ""}</b></div>)}
             <div><span>Last live event</span><b>{lastUpdate ? formatTime(lastUpdate.toISOString()) : "Not received"}</b></div>
           </div>
         </section>
@@ -157,7 +178,7 @@ export function Overview({
           title="Detection families"
           description="Total alerts split into resolved and unresolved work."
         />
-        {alerts.length ? <DetectionRankingChart alerts={alerts} height={340} /> : <div className="chart-empty">No detection families recorded.</div>}
+        {summary ? <CountBars values={summary.family_counts} label="Persisted detection families"/> : alerts.length ? <DetectionRankingChart alerts={alerts} height={340} /> : <div className="chart-empty">No detection families recorded.</div>}
       </section>
 
       <section className="panel">

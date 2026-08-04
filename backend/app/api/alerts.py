@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from app.api.schemas import (
     AlertDetail,
     AlertPage,
+    AlertPageFilters,
     AlertResponse,
     FeedbackRequest,
     FeedbackResponse,
@@ -143,6 +144,14 @@ async def page_alerts(
             limit=limit,
             offset=offset,
             has_more=offset + len(items) < total,
+            filters=AlertPageFilters(
+                severity=severity or None,
+                status=alert_status or None,
+                family=family or None,
+                q=query.strip() if query and query.strip() else None,
+                from_time=from_time,
+                to_time=to_time,
+            ),
         )
 
 

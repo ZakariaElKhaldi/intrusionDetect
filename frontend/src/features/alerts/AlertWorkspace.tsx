@@ -1,6 +1,6 @@
 import { ArrowRight, CheckCircle2, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getAlertExplanation, submitAlertFeedback } from "../../api";
+import { getAlertExplanation, getAlertsPage, submitAlertFeedback } from "../../api";
 import { SeverityLabel } from "../../components/SeverityLabel";
 import type { Alert, AlertExplanationStage, AlertStatus } from "../../types";
 import { formatTime } from "../../utils";
@@ -20,9 +20,9 @@ function WaterfallChart({ base, output, evidence, units }: { base: number; outpu
   </svg></figure>;
 }
 
-export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loading = false, error = "", onRetry }: {
+export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loading = false, error = "", onRetry, fixtureMode = false }: {
   alerts: Alert[]; pending: number; onSelect: (alert: Alert) => void; applyPending: () => void;
-  loading?: boolean; error?: string; onRetry?: () => void;
+  loading?: boolean; error?: string; onRetry?: () => void; fixtureMode?: boolean;
 }) {
   const params = new URLSearchParams(location.search);
   const [query, setQuery] = useState(params.get("q") ?? "");
@@ -32,10 +32,18 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
   const [range, setRange] = useState(params.get("range") ?? "all");
   const [from, setFrom] = useState(params.get("from") ?? "");
   const [to, setTo] = useState(params.get("to") ?? "");
+  const [pageOffset, setPageOffset] = useState(0);
+  const [pageItems, setPageItems] = useState<Alert[] | null>(null);
+  const [pageTotal, setPageTotal] = useState(0);
+  const [pageHasMore, setPageHasMore] = useState(false);
+  const [pageLoading, setPageLoading] = useState(false);
+  const [pageError, setPageError] = useState("");
+  const pageLimit = 50;
+  const sourceAlerts = fixtureMode ? alerts : pageItems ?? alerts;
   const families = useMemo(() => [...new Set(alerts.map((alert) => alert.attack_type))].sort(), [alerts]);
   const filtered = useMemo(() => {
     const needle = query.toLowerCase().trim();
-    return alerts.filter((alert) => {
+    return sourceAlerts.filter((alert) => {
       const timestamp = Date.parse(alert.timestamp);
       const inRange = range === "all" || (Number.isFinite(timestamp) && timestamp >= Date.now() - rangeMilliseconds[range]);
       return (!needle || [alert.id, alert.attack_type, alert.source_ip, alert.destination_ip, alert.protocol].some((value) => value.toLowerCase().includes(needle)))
@@ -44,7 +52,23 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
         && (family === "all" || alert.attack_type === family)
         && inRange && (!from || timestamp >= Date.parse(from)) && (!to || timestamp < Date.parse(to));
     });
-  }, [alerts, family, from, query, range, severity, status, to]);
+  }, [family, from, query, range, severity, sourceAlerts, status, to]);
+
+  useEffect(() => { setPageOffset(0); }, [family, from, query, range, severity, status, to]);
+
+  useEffect(() => {
+    if (fixtureMode) return;
+    let cancelled=false;
+    const timer=window.setTimeout(() => {
+      setPageLoading(true); setPageError("");
+      const relativeFrom = range === "all" ? from : new Date(Date.now()-rangeMilliseconds[range]).toISOString();
+      void getAlertsPage({ q: query, severity, status, family, from: relativeFrom || undefined, to: to || undefined, limit: pageLimit, offset: pageOffset })
+        .then((result)=>{if(!cancelled){setPageItems(result.items);setPageTotal(result.total);setPageHasMore(result.has_more);}})
+        .catch((reason)=>{if(!cancelled)setPageError(reason instanceof Error?reason.message:"Alert page could not be loaded.");})
+        .finally(()=>{if(!cancelled)setPageLoading(false);});
+    },200);
+    return ()=>{cancelled=true;window.clearTimeout(timer);};
+  },[alerts[0]?.id,family,fixtureMode,from,pageOffset,query,range,severity,status,to]);
 
   useEffect(() => {
     const next = new URLSearchParams(location.search);
@@ -66,15 +90,16 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
       <label><span className="sr-only">Severity</span><select value={severity} onChange={(e) => setSeverity(e.target.value)}><option value="all">All severities</option>{["critical","high","medium","low","normal"].map((v)=><option key={v}>{v[0].toUpperCase()+v.slice(1)}</option>)}</select></label>
       <label><span className="sr-only">Status</span><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">All statuses</option>{["new","investigating","confirmed","false_positive","resolved"].map((v)=><option key={v} value={v}>{v.replace("_"," ")}</option>)}</select></label>
       {hasFilters ? <button type="button" className="secondary-button filter-reset" onClick={reset}>Reset filters</button> : null}
-      <span className="result-count">{filtered.length} results</span>
+      <span className="result-count">{fixtureMode ? filtered.length : pageTotal} results</span>
     </div>
     {(from || to) ? <div className="active-filter">Timeline interval: {from ? new Date(from).toLocaleString() : "start"} – {to ? new Date(to).toLocaleString() : "now"}<button type="button" onClick={() => { setFrom(""); setTo(""); }}>Clear interval</button></div> : null}
     {pending > 0 ? <button className="pending-banner" onClick={applyPending}>{pending} new alert{pending === 1 ? "" : "s"} received — show updates</button> : null}
-    {loading ? <div className="data-state" role="status" data-state="loading">Loading alerts…</div> : error ? <div className="data-state data-state--error" role="status" data-state="error"><span>{error}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry alerts</button> : null}</div> : !filtered.length ? <div className="alert-empty" data-state="empty"><b>{alerts.length ? "No alerts match these filters" : "No alerts recorded"}</b><span>{alerts.length ? "Reset filters to widen the investigation window." : "Run an attack replay to create real alert records."}</span>{hasFilters ? <button className="secondary-button" onClick={reset}>Clear all filters</button> : null}</div> : <>
+    {(loading || pageLoading) ? <div className="data-state" role="status" data-state="loading">Loading alerts…</div> : (pageError || error) ? <div className="data-state data-state--error" role="status" data-state="error"><span>{pageError || error}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry alerts</button> : null}</div> : !filtered.length ? <div className="alert-empty" data-state="empty"><b>{alerts.length ? "No alerts match these filters" : "No alerts recorded"}</b><span>{alerts.length ? "Reset filters to widen the investigation window." : "Run an attack replay to create real alert records."}</span>{hasFilters ? <button className="secondary-button" onClick={reset}>Clear all filters</button> : null}</div> : <>
       <div className="alert-table-wrap"><table className="alert-table" aria-label="Security alerts"><thead><tr role="presentation"><th>Severity</th><th>Detection</th><th>Route</th><th>Protocol</th><th>Detector score</th><th>Status</th><th>Time</th></tr></thead><tbody>{filtered.map((alert) => <tr key={alert.id} data-alert-id={alert.id} onClick={() => onSelect(alert)} tabIndex={0} aria-label={`Open ${alert.attack_type} alert ${alert.id}`} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(alert); } }}><td><SeverityLabel severity={alert.severity}/></td><td><span className="alert-open"><b>{alert.attack_type}</b><small>{alert.id}</small></span></td><td><b>{alert.source_ip}</b><small>to {alert.destination_ip}</small></td><td>{alert.protocol}</td><td>{(alert.confidence*100).toFixed(1)}%</td><td className={`status-text status-text--${alert.status}`}>{alert.status.replace("_"," ")}</td><td><time dateTime={alert.timestamp}>{formatTime(alert.timestamp)}</time></td></tr>)}</tbody></table></div>
       <div className="alert-cards" aria-label="Security alerts">{filtered.map((alert)=><article className="alert-card" key={alert.id}><div><SeverityLabel severity={alert.severity}/><span className={`status-text status-text--${alert.status}`}>{alert.status.replace("_"," ")}</span></div><h3>{alert.attack_type}</h3><p>{alert.source_ip} → {alert.destination_ip}</p><dl><div><dt>Protocol</dt><dd>{alert.protocol}</dd></div><div><dt>Detector score</dt><dd>{(alert.confidence*100).toFixed(1)}%</dd></div><div><dt>Observed</dt><dd>{formatTime(alert.timestamp)}</dd></div></dl><button className="secondary-button" onClick={() => onSelect(alert)} aria-label={`Open ${alert.attack_type} alert ${alert.id}`}>Inspect alert</button></article>)}</div>
     </>}
-    {!loading && !filtered.length ? <table className="sr-only" aria-label="Security alerts"><tbody><tr><td>No alerts recorded</td></tr></tbody></table> : null}
+    {!loading && !pageLoading && !filtered.length ? <table className="sr-only" aria-label="Security alerts"><tbody><tr><td>No alerts recorded</td></tr></tbody></table> : null}
+    {!fixtureMode && pageTotal > pageLimit ? <nav className="pagination" aria-label="Alert pages"><button className="secondary-button" disabled={pageOffset===0||pageLoading} onClick={()=>setPageOffset((value)=>Math.max(0,value-pageLimit))}>Previous</button><span>{pageOffset+1}–{Math.min(pageTotal,pageOffset+pageLimit)} of {pageTotal}</span><button className="secondary-button" disabled={!pageHasMore||pageLoading} onClick={()=>setPageOffset((value)=>value+pageLimit)}>Next</button></nav> : null}
     {alerts.length >= 500 ? <p className="window-note">Showing the latest 500 alert records returned by the API.</p> : null}
   </section>;
 }
@@ -126,7 +151,7 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
 
   return <div className="drawer-layer" role="presentation" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><aside ref={dialogRef} className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
     <div className="drawer-header"><div><SeverityLabel severity={alert.severity}/><h2 id="drawer-title">{alert.attack_type}</h2><small>{alert.id} · {new Date(alert.timestamp).toLocaleString()}</small></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close alert details"><X/></button></div>
-    <section className="drawer-section"><h3>Detection summary</h3><div className="summary-grid"><div><span>Detector score</span><b>{(alert.confidence*100).toFixed(1)}%</b></div><div><span>Status</span><b>{alert.status.replace("_"," ")}</b></div><div><span>Detector</span><b className="mono">{alert.detector_model_version??alert.model_version??"Not reported"}</b></div>{alert.classifier_model_version?<div><span>Classifier</span><b className="mono">{alert.classifier_model_version}</b></div>:null}{alert.attack_class_score!=null?<div><span>Class score</span><b>{(alert.attack_class_score*100).toFixed(1)}%</b></div>:null}</div></section>
+    <section className="drawer-section"><h3>Detection summary</h3><div className="summary-grid"><div><span>Detector score</span><b>{(alert.confidence*100).toFixed(1)}%</b></div><div><span>Status</span><b>{alert.status.replace("_"," ")}</b></div><div><span>Detector</span><b className="mono">{alert.detector_model_version??alert.model_version??"Not reported"}</b></div>{alert.classifier_model_version?<div><span>Classifier</span><b className="mono">{alert.classifier_model_version}</b></div>:null}{alert.attack_class_score!=null?<div><span>Class score</span><b>{(alert.attack_class_score*100).toFixed(1)}%</b></div>:null}<div><span>Detector latency</span><b>{alert.detector_latency_ms == null ? "Not reported" : `${alert.detector_latency_ms.toFixed(2)} ms`}</b></div>{alert.classifier_latency_ms!=null?<div><span>Classifier latency</span><b>{alert.classifier_latency_ms.toFixed(2)} ms</b></div>:null}<div><span>Total inference latency</span><b>{alert.total_latency_ms == null ? "Not reported" : `${alert.total_latency_ms.toFixed(2)} ms`}</b></div></div></section>
     <section className="drawer-section"><h3>Observed route</h3><div className="route-card"><span><small>Source</small><b>{alert.source_ip}</b></span><ArrowRight/><span><small>Destination</small><b>{alert.destination_ip}</b></span></div>{alert.identity_quality==="port_only"?<p>Only transport ports are available; they are not persistent device identities.</p>:null}</section>
     <section className="drawer-section"><h3>Model explanation</h3><p>Signed SHAP impacts explain this model output relative to its base value. They are associations inside the model, not causal proof.</p>
       {explanationState==="loading"?<div className="explanation-state" role="status">Computing explanation…</div>:null}{explanationState==="error"?<div className="explanation-state" role="alert">On-demand explanation is unavailable.</div>:null}

@@ -105,7 +105,7 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
               description="Candidates shown here solve the same task. Quality is higher-is-better; false-positive rate and latency are lower-is-better."
               action={<span className="panel-heading-meta">{candidates.length} candidates</span>}
             />
-            <ModelComparisonChart models={candidates} height={420} />
+            <ModelComparisonChart models={candidates} height={420} includeFalsePositiveRate={stage === "binary"} />
             <div className="preview-scroll"><table><caption>Exact held-out candidate metrics</caption><thead><tr><th>Candidate</th><th>Macro F1</th><th>Weighted F1</th>{stage === "binary" ? <th>FPR</th> : null}<th>Median latency</th></tr></thead><tbody>{candidates.map((candidate) => <tr key={candidate.name}><th scope="row">{candidate.name}{candidate.selected ? " · selected" : ""}</th><td>{candidate.macro_f1 == null ? "—" : `${(candidate.macro_f1 * 100).toFixed(2)}%`}</td><td>{candidate.weighted_f1 == null ? "—" : `${(candidate.weighted_f1 * 100).toFixed(2)}%`}</td>{stage === "binary" ? <td>{candidate.false_positive_rate == null ? "Not measured" : `${(candidate.false_positive_rate * 100).toFixed(2)}%`}</td> : null}<td>{candidate.inference_ms == null ? "—" : `${candidate.inference_ms.toFixed(2)} ms`}</td></tr>)}</tbody></table></div>
           </section>
 
@@ -129,12 +129,12 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
               description="These validation aggregates selected the champion. The confusion matrix remains held-out test evidence."
             />
             <div className="seed-table">
-              <div className="seed-row seed-row--head"><span>Candidate</span><span>Macro F1</span><span>FPR</span><span>p95 latency</span></div>
+              <div className={`seed-row ${stage === "multiclass" ? "seed-row--three" : ""} seed-row--head`}><span>Candidate</span><span>Macro F1</span>{stage === "binary" ? <span>FPR</span> : null}<span>p95 latency</span></div>
               {candidates.map((candidate) => (
-                <div className="seed-row" key={candidate.name}>
+                <div className={`seed-row ${stage === "multiclass" ? "seed-row--three" : ""}`} key={candidate.name}>
                   <b>{candidate.name}{candidate.selected ? " · selected" : ""}</b>
                   <span>{candidate.selection_summary?.mean_validation_macro_f1 != null ? `${(candidate.selection_summary.mean_validation_macro_f1 * 100).toFixed(2)}%` : "—"}</span>
-                  <span>{candidate.selection_summary?.mean_validation_false_positive_rate != null ? `${(candidate.selection_summary.mean_validation_false_positive_rate * 100).toFixed(2)}%` : "—"}</span>
+                  {stage === "binary" ? <span>{candidate.selection_summary?.mean_validation_false_positive_rate != null ? `${(candidate.selection_summary.mean_validation_false_positive_rate * 100).toFixed(2)}%` : "—"}</span> : null}
                   <span>{candidate.selection_summary?.mean_p95_inference_latency_ms != null ? `${candidate.selection_summary.mean_p95_inference_latency_ms.toFixed(2)} ms` : "—"}</span>
                 </div>
               ))}

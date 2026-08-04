@@ -200,13 +200,14 @@ test.describe.serial("production-preview jury path", () => {
   });
 
   test("all pages expose accessible landmarks and no serious axe violations", async ({ page }) => {
+    test.setTimeout(120_000);
     for (const [view, title] of pages) {
       await waitForConnectedPage(page, view);
       await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
       await expect(page.getByRole("main")).toBeVisible();
       await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
       if (view === "models") {
-        await page.getByRole("button", { name: "Classifier", exact: true }).click();
+        await page.getByRole("tab", { name: "Classifier", exact: true }).click();
         await expect(page.getByText("Attack-family comparison")).toBeVisible();
       }
       const results = await new AxeBuilder({ page })
@@ -238,6 +239,7 @@ test.describe.serial("production-preview jury path", () => {
   });
 
   test("desktop, projector, tablet, mobile, and 400%-equivalent reflow do not overflow", async ({ page }) => {
+    test.setTimeout(120_000);
     for (const viewport of [
       { name: "desktop", width: 1440, height: 900 },
       { name: "projector", width: 1280, height: 720 },

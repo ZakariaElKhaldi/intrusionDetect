@@ -13,6 +13,7 @@ import {
   getAlert,
   getAlerts,
   getReplayStatus,
+  getDashboardSummary,
   getModels,
   liveEventFromSocketMessage,
   replayAction,
@@ -21,7 +22,7 @@ import {
 } from "./api";
 import { sampleAlerts, sampleModels } from "./data";
 import { ReplayPanel } from "./features/overview/ReplayPanel";
-import type { Alert, AlertStatus, HealthInfo, ModelInfo, Page, ReplayScenario, ReplayStatus } from "./types";
+import type { Alert, AlertStatus, DashboardSummary, HealthInfo, ModelInfo, Page, ReplayScenario, ReplayStatus } from "./types";
 import { pageTitles } from "./utils";
 
 type SocketState = "connecting" | "live" | "offline";
@@ -68,6 +69,9 @@ function App() {
   const [queuedAlerts, setQueuedAlerts] = useState<Alert[]>([]);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [models, setModels] = useState<ModelInfo[]>(fixtureMode ? sampleModels : []);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [summaryRange, setSummaryRange] = useState<DashboardSummary["range"]>("24h");
+  const [summaryError, setSummaryError] = useState("");
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [healthChecked, setHealthChecked] = useState(false);
   const [healthError, setHealthError] = useState("");
@@ -100,7 +104,7 @@ function App() {
     setAlertsError("");
     setModelsError("");
     setHealthError("");
-    const [healthResult, alertsResult, modelsResult] = await Promise.allSettled([checkHealth(), getAlerts(), getModels()]);
+    const [healthResult, alertsResult, modelsResult, summaryResult] = await Promise.allSettled([checkHealth(), getAlerts(), getModels(), getDashboardSummary(summaryRange)]);
     if (healthResult.status === "fulfilled" && healthResult.value) setHealth(healthResult.value);
     else {
       setHealth(null);
@@ -113,7 +117,9 @@ function App() {
     else setModelsError(modelsResult.reason instanceof Error ? modelsResult.reason.message : "Model descriptors could not be loaded.");
     setAlertsLoading(false);
     setModelsLoading(false);
-  }, [fixtureMode, mergeAlerts]);
+    if (summaryResult.status === "fulfilled") { setSummary(summaryResult.value); setSummaryError(""); }
+    else setSummaryError(summaryResult.reason instanceof Error ? summaryResult.reason.message : "Dashboard summary could not be loaded.");
+  }, [fixtureMode, mergeAlerts, summaryRange]);
 
   useEffect(() => {
     pageRef.current = page;
@@ -238,9 +244,10 @@ function App() {
   useEffect(() => {
     if (replay?.status === "completed" && lastReplayStatus.current !== "completed") {
       void getAlerts().then((incoming) => setAlerts((current) => mergeAlerts(current, incoming))).catch(() => undefined);
+      void getDashboardSummary(summaryRange).then(setSummary).catch(() => undefined);
     }
     lastReplayStatus.current = replay?.status ?? null;
-  }, [mergeAlerts, replay?.status]);
+  }, [mergeAlerts, replay?.status, summaryRange]);
 
   const navigate = useCallback((nextPage: Page, params?: Record<string, string>) => {
     const search = new URLSearchParams({ view: nextPage, ...params });
@@ -302,15 +309,19 @@ function App() {
   }, [replaySpeed]);
 
   const openTimeBucket = useCallback(
-    (start: string) => {
+    (start: string, bucketMinutes = 5) => {
       const from = new Date(start);
-      const to = new Date(from.getTime() + 5 * 60_000);
+      const to = new Date(from.getTime() + bucketMinutes * 60_000);
       navigate("alerts", { from: from.toISOString(), to: to.toISOString() });
     },
     [navigate],
   );
 
-  const sourceLabel = fixtureMode ? "Fixture data" : health ? "Live API" : healthChecked ? "API unavailable" : "Checking source";
+  const sourceLabel = fixtureMode ? "Fixture data" : health?.readiness === "blocked" ? "API blocked" : health?.readiness === "degraded" ? "API degraded" : health ? "Live API" : healthChecked ? "API unavailable" : "Checking source";
+  const replayReady = Boolean(health && (health.readiness === undefined || health.readiness === "ready")
+    && (health.components?.dataset?.status === undefined || health.components.dataset.status === "ready")
+    && (health.components?.database?.status === undefined || health.components.database.status === "ready")
+    && (health.components?.bundle?.status === undefined || health.components.bundle.status === "ready"));
   const [title, subtitle] = pageTitles[page];
 
   return (
@@ -384,7 +395,7 @@ function App() {
                 aria-hidden="true"
               />
               <span>
-                <b>{fixtureMode ? "Fixture preview" : health && socketState === "live" ? "Live stream connected" : health ? "API connected" : healthChecked ? "Backend offline" : "Connecting"}</b>
+                <b>{fixtureMode ? "Fixture preview" : health?.readiness === "blocked" ? "Backend blocked" : health?.readiness === "degraded" ? "Backend degraded" : health && socketState === "live" ? "Live stream connected" : health ? "API connected" : healthChecked ? "Backend offline" : "Connecting"}</b>
                 <small>{sourceLabel} · stream {socketState}</small>
               </span>
             </div>
@@ -408,7 +419,7 @@ function App() {
                 speed={replaySpeed}
                 limit={replayLimit}
                 error={replayError || replay?.error || ""}
-                disabled={fixtureMode || !health}
+                disabled={fixtureMode || !replayReady}
                 onScenario={setReplayScenario}
                 onSpeed={setReplaySpeed}
                 onLimit={setReplayLimit}
@@ -422,6 +433,10 @@ function App() {
                 socketState={socketState}
                 lastUpdate={lastUpdate}
                 livePredictionCount={livePredictionCount}
+                summary={summary}
+                summaryError={summaryError}
+                summaryRange={summaryRange}
+                onSummaryRange={setSummaryRange}
                 alertsLoading={alertsLoading}
                 alertsError={alertsError}
                 onRetry={() => void loadConnectedData()}
@@ -442,6 +457,7 @@ function App() {
               loading={alertsLoading}
               error={alertsError}
               onRetry={() => void loadConnectedData()}
+              fixtureMode={fixtureMode}
             />
           ) : null}
           {page === "topology" ? (

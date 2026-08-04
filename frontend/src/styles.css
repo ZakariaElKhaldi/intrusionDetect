@@ -370,6 +370,7 @@ h1, h2, h3, p { margin-top: 0; }
 .support-row--rare { box-shadow: inset 3px 0 0 var(--accent); }
 .seed-table { display: grid; overflow-x: auto; }
 .seed-row { display: grid; grid-template-columns: minmax(150px, 1.4fr) repeat(3, minmax(80px, .7fr)); min-width: 500px; border-bottom: 1px solid var(--line); }
+.seed-row--three { grid-template-columns: minmax(150px, 1.4fr) repeat(2, minmax(80px, .7fr)); }
 .seed-row:last-child { border-bottom: 0; }
 .seed-row > * { padding: 10px 12px; border-right: 1px solid var(--line); font-size: 9px; }
 .seed-row > *:last-child { border-right: 0; }
@@ -568,6 +569,19 @@ body { font-size: 16px; line-height: 1.5; }
 .sample-note .mono { overflow-wrap: anywhere; }
 .example-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 0 14px 14px; font-size: 14px; }
+.count-bars { display: grid; gap: 10px; padding: 18px; }
+.count-bars > div { display: grid; grid-template-columns: minmax(90px,1fr) minmax(100px,2fr) 42px; align-items: center; gap: 10px; font-size: 14px; }
+.count-bars i { height: 10px; min-width: 2px; background: var(--ink); }
+.count-bars b { text-align: right; font-variant-numeric: tabular-nums; }
+.summary-timeline { padding: 14px 4px 4px; }
+.summary-scope { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); background: #fff; font-size: 14px; }
+.summary-scope > span { font-weight: 700; }
+.summary-scope label { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.summary-scope select { min-height: 40px; border: 1px solid var(--line-strong); background: #fff; padding: 0 10px; }
+.summary-scope small { color: var(--ink-soft); font-size: 12px; }
+.timeline-bars { display: flex; height: 190px; align-items: flex-end; gap: 2px; padding: 10px 14px 0; border-bottom: 1px solid var(--line-strong); }
+.timeline-bars button { min-width: 4px; flex: 1; border: 0; background: var(--accent-dark); }
+.timeline-bars button:hover, .timeline-bars button:focus-visible { background: var(--ink); }
 .fixture-badge { bottom: 18px; font-size: 12px; }
 
 @media (max-width: 900px) {

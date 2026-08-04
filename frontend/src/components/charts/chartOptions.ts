@@ -171,17 +171,18 @@ export function detectionRankingOption(
   };
 }
 
-export function modelComparisonOption(models: ModelInfo[]): ChartOption {
+export function modelComparisonOption(models: ModelInfo[], includeFalsePositiveRate = true): ChartOption {
   const points = buildModelMetricSeries(models);
+  const metrics = includeFalsePositiveRate ? MODEL_METRICS : MODEL_METRICS.filter((metric) => metric.key !== "false_positive_rate");
   const modelNames = models.map((model) => model.name);
-  const grids = MODEL_METRICS.map((_, index) => ({
+  const grids = metrics.map((_, index) => ({
     left: index % 2 === 0 ? "7%" : "57%",
     top: index < 2 ? 42 : 232,
     width: "36%",
     height: 108,
     containLabel: true,
   }));
-  const xAxes = MODEL_METRICS.map((metric, index) => ({
+  const xAxes = metrics.map((metric, index) => ({
     ...axis,
     gridIndex: index,
     type: "value",
@@ -190,7 +191,7 @@ export function modelComparisonOption(models: ModelInfo[]): ChartOption {
     nameGap: 28,
     min: 0,
   }));
-  const yAxes = MODEL_METRICS.map((_, index) => ({
+  const yAxes = metrics.map((_, index) => ({
     ...axis,
     gridIndex: index,
     type: "category",
@@ -218,7 +219,7 @@ export function modelComparisonOption(models: ModelInfo[]): ChartOption {
           `<br/>${point.direction === "higher" ? "Higher" : "Lower"} is better`;
       },
     },
-    series: MODEL_METRICS.map((metric, index) => ({
+    series: metrics.map((metric, index) => ({
       name: metric.label,
       type: "bar",
       xAxisIndex: index,

@@ -52,9 +52,21 @@ class AlertDetail(AlertResponse):
     feedback: list[FeedbackResponse]
 
 
+class AlertPageFilters(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    severity: str | None = None
+    status: str | None = None
+    family: str | None = None
+    q: str | None = None
+    from_time: datetime | None = Field(default=None, alias="from")
+    to_time: datetime | None = Field(default=None, alias="to")
+
+
 class AlertPage(BaseModel):
     items: list[AlertResponse]
     total: int
     limit: int
     offset: int
     has_more: bool
+    filters: AlertPageFilters

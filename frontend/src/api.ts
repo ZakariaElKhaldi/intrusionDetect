@@ -291,7 +291,11 @@ export async function getAlertsPage(filters: { severity?: string; status?: strin
 }
 
 export async function getDashboardSummary(range: DashboardSummary["range"] = "24h"): Promise<DashboardSummary> {
-  return request<DashboardSummary>(`/dashboard/summary?range=${range}`);
+  const value = await request<unknown>(`/dashboard/summary?range=${range}`);
+  if (!value || typeof value !== "object" || !("predictions" in value) || !("alerts" in value) || !("scope" in value)) {
+    throw new ApiError("Dashboard summary response is invalid.", 502, value);
+  }
+  return value as DashboardSummary;
 }
 
 export async function getAlert(id: string): Promise<Alert> {
@@ -407,7 +411,8 @@ export async function getEvaluation(stage: "binary" | "multiclass"): Promise<Eva
     measurement_notes: Array.isArray(notes) ? notes.map(String) : [],
     split_notes: typeof body.split_notes === "string"
       ? body.split_notes
-      : typeof body.evaluation_scope === "string" ? body.evaluation_scope : undefined,
+      : typeof body.evaluation_scope === "string" ? body.evaluation_scope
+        : body.split_definition && typeof body.split_definition === "object" ? JSON.stringify(body.split_definition) : undefined,
     threshold_analysis: threshold ? {
       operating_threshold: Number(threshold.operating_threshold ?? 0.5),
       points: (Array.isArray(threshold.points) ? threshold.points : []).map((point) => {

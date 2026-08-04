@@ -88,19 +88,21 @@ export function DetectionRankingChart({
 
 export interface ModelComparisonChartProps extends ChartShellProps {
   models: ModelInfo[];
+  includeFalsePositiveRate?: boolean;
 }
 
 export function ModelComparisonChart({
   models,
   className,
   height = 390,
+  includeFalsePositiveRate = true,
 }: ModelComparisonChartProps) {
-  const option = useMemo(() => modelComparisonOption(models), [models]);
+  const option = useMemo(() => modelComparisonOption(models, includeFalsePositiveRate), [includeFalsePositiveRate, models]);
   return <EChart
     option={option}
     className={className}
     style={{ height }}
-    ariaLabel="Model quality, false-positive rate, and latency comparison"
+    ariaLabel={includeFalsePositiveRate ? "Model quality, false-positive rate, and latency comparison" : "Model quality and latency comparison"}
   />;
 }
 

@@ -34,8 +34,24 @@ async def test_dashboard_summary_and_alert_pagination(
     assert sum(point["total"] for point in body["severity_timeline"]) == 1
 
     alert_id = attack_response.json()["alert_id"]
+    legacy = await fallback_client.get("/alerts")
+    assert legacy.status_code == 200
+    assert legacy.json()[0]["total_latency_ms"] >= 0
+    severity = legacy.json()[0]["severity"]
+    past = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
     page = await fallback_client.get(
-        "/alerts/page", params={"q": alert_id, "limit": 1, "offset": 0}
+        "/alerts/page",
+        params={
+            "severity": severity,
+            "status": "new",
+            "family": "suspicious_activity",
+            "q": f"  {alert_id}  ",
+            "from": past,
+            "to": future,
+            "limit": 1,
+            "offset": 0,
+        },
     )
     assert page.status_code == 200
     payload = page.json()
@@ -45,14 +61,25 @@ async def test_dashboard_summary_and_alert_pagination(
     assert payload["items"][0]["detector_latency_ms"] >= 0
     assert payload["items"][0]["classifier_latency_ms"] >= 0
     assert payload["items"][0]["total_latency_ms"] >= 0
+    assert payload["filters"] == {
+        "severity": severity,
+        "status": "new",
+        "family": "suspicious_activity",
+        "q": alert_id,
+        "from": past.replace("+00:00", "Z"),
+        "to": future.replace("+00:00", "Z"),
+    }
 
-    legacy = await fallback_client.get("/alerts")
-    assert legacy.status_code == 200
-    assert legacy.json()[0]["total_latency_ms"] >= 0
-
-    future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
     empty = await fallback_client.get("/alerts/page", params={"from": future})
     assert empty.json()["total"] == 0
+    assert empty.json()["filters"] == {
+        "severity": None,
+        "status": None,
+        "family": None,
+        "q": None,
+        "from": future.replace("+00:00", "Z"),
+        "to": None,
+    }
     assert (
         await fallback_client.get("/dashboard/summary", params={"range": "invalid"})
     ).status_code == 422

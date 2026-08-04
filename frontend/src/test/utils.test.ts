@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { filterAlerts, parseCsv } from "../utils";
 import { sampleAlerts } from "../data";
-import { savedObservationCsv } from "../sampleObservation";
+import { datasetExampleProvenance, savedObservationCsv, verifiedAttackObservationCsv } from "../sampleObservation";
 
 describe("parseCsv", () => {
   it("parses numeric and categorical feature values", () => {
     const rows = parseCsv("duration_ms,protocol,src_bytes\n1200,TCP,42");
     expect(rows).toEqual([{ duration_ms: 1200, protocol: "TCP", src_bytes: 42 }]);
+  });
+
+  it("bundles checksum-linked normal and attack dataset rows without the source index", () => {
+    expect(datasetExampleProvenance.extractedSha256).toHaveLength(64);
+    expect(parseCsv(savedObservationCsv)[0].Attack_type).toBe("MQTT_Publish");
+    expect(parseCsv(verifiedAttackObservationCsv)[0].Attack_type).toBe("ARP_poisioning");
   });
 
   it("rejects rows with a mismatched column count", () => {
@@ -20,7 +26,7 @@ describe("parseCsv", () => {
   it("loads the saved scenario at the canonical 83-feature boundary", () => {
     const [row] = parseCsv(savedObservationCsv);
     expect(Object.keys(row)).toHaveLength(84);
-    expect(row.Attack_type).toBe("MQTT");
+    expect(row.Attack_type).toBe("MQTT_Publish");
   });
 });
 
