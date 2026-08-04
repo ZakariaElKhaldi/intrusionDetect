@@ -121,9 +121,13 @@ class ExplanationService:
         ]
         contributions.sort(key=lambda item: abs(item["impact"]), reverse=True)
         reconstructed = base_value + sum(item["impact"] for item in contributions)
-        if len(classes) == 2 and hasattr(pipeline, "decision_function"):
-            decision = float(np.asarray(pipeline.decision_function(raw)).reshape(-1)[0])
-            output_value = decision if class_index == 1 else -decision
+        if hasattr(pipeline, "decision_function"):
+            decision_values = np.asarray(pipeline.decision_function(raw))
+            if len(classes) == 2:
+                decision = float(decision_values.reshape(-1)[0])
+                output_value = decision if class_index == 1 else -decision
+            else:
+                output_value = float(decision_values[0, class_index])
         else:
             output_value = float(pipeline.predict_proba(raw)[0, class_index])
         additivity_error = abs(reconstructed - output_value)
@@ -139,7 +143,9 @@ class ExplanationService:
             "output_value": output_value,
             "additivity_error": additivity_error,
             "method": "SHAP TreeExplainer",
-            "output_units": "log_odds" if len(classes) == 2 else "probability",
+            "output_units": (
+                "raw_margin" if hasattr(pipeline, "decision_function") else "probability"
+            ),
             "causal": False,
             "contributions": contributions,
         }

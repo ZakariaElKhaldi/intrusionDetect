@@ -55,7 +55,14 @@ test.describe.serial("jury path with promoted models", () => {
     expect(alerts[0].classifier_model_version).toBeTruthy();
 
     await page.goto("/?view=alerts");
-    await expect(page.getByRole("table", { name: "Security alerts" }).getByRole("row").first()).toBeVisible();
+    const row = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
+    await expect(row).toBeVisible();
+    await row.click();
+    const explanationStages = page.getByRole("dialog").locator(".explanation-stage");
+    await expect(explanationStages).toHaveCount(2, { timeout: 15_000 });
+    await expect(explanationStages.nth(0)).toContainText("Detector");
+    await expect(explanationStages.nth(1)).toContainText("Classifier");
+    await expect(page.getByText("On-demand explanation is unavailable.")).toHaveCount(0);
   });
 
   test("pause, resume, and stop are valid lifecycle transitions", async ({ request }) => {
@@ -76,7 +83,7 @@ test.describe.serial("jury path with promoted models", () => {
     await page.goto("/?view=alerts");
     await page.getByRole("table", { name: "Security alerts" }).getByRole("row").first().click();
     await page.getByRole("button", { name: "Resolve" }).click();
-    await expect(page.getByRole("status")).toContainText("Saved as resolved");
+    await expect(page.getByText("Saved as resolved.", { exact: true })).toBeVisible();
     await page.reload();
     await page.getByRole("table", { name: "Security alerts" }).getByRole("row").first().click();
     await expect(page.getByText("resolved", { exact: true }).first()).toBeVisible();

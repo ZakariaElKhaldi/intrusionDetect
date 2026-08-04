@@ -61,7 +61,7 @@ fi
 
 (
   cd machine-learning
-  uv run --no-sync iot-ids-profile "${DATASET_PATH}"
+  .venv/bin/iot-ids-profile "${DATASET_PATH}"
 )
 (
   cd backend
