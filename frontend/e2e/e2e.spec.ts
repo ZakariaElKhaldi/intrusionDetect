@@ -137,6 +137,8 @@ test.describe.serial("production-preview end-to-end path", () => {
     await waitForConnectedPage(page, "alerts");
     const row = page.getByRole("row", { name: /^Open .* alert / }).first();
     await expect(row).toBeVisible();
+    const alertId = await row.getAttribute("data-alert-id");
+    expect(alertId).toBeTruthy();
     await row.focus();
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog");
@@ -153,10 +155,11 @@ test.describe.serial("production-preview end-to-end path", () => {
     await expect(page.getByText("Saved as resolved.", { exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
-    await expect(row).toBeFocused();
+    await expect(page.locator(`[data-alert-id="${alertId}"]`)).toBeFocused();
 
     await page.reload();
-    const hydratedRow = page.getByRole("row", { name: /^Open .* alert / }).first();
+    const hydratedRow = page.locator(`[data-alert-id="${alertId}"]`);
+    await expect(hydratedRow).toBeVisible();
     await hydratedRow.click();
     await expect(
       page.getByRole("dialog").locator(".summary-grid").getByText("resolved", { exact: true }),

@@ -134,13 +134,15 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
     return () => {
       removeEventListener("keydown", keydown);
       const original = restoreRef.current;
-      if (original?.isConnected) {
-        original.focus();
-        return;
-      }
-      const replacement = [...document.querySelectorAll<HTMLElement>("[data-alert-id]")]
-        .find((element) => element.dataset.alertId === alert.id);
-      replacement?.focus();
+      window.requestAnimationFrame(() => {
+        const replacement = [...document.querySelectorAll<HTMLElement>("[data-alert-id]")]
+          .find((element) => element.dataset.alertId === alert.id);
+        if (replacement) {
+          replacement.focus();
+          return;
+        }
+        if (original?.isConnected) original.focus();
+      });
     };
   }, []);
 
