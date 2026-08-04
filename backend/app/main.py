@@ -1,54 +1,21 @@
 from __future__ import annotations
 
-import csv
-import hashlib
 from contextlib import asynccontextmanager
-from pathlib import Path
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.api import alerts, live, models, predictions, replay
 from app.config import Settings
 from app.database.models import Base, ModelVersion
 from app.database.session import create_engine_and_session
-from app.features.canonical_schema import FEATURE_ORDER
+from app.health import DatasetHealthCache
 from app.inference.model_registry import ModelRegistry
 from app.inference.shap_explanations import ExplanationService
 from app.ingestion.dataset_replay import DatasetReplay
 from app.live import LiveConnectionManager
-
-
-def _dataset_status(
-    dataset_path: str | None, registry: ModelRegistry
-) -> dict[str, bool | str | None]:
-    path = Path(dataset_path).expanduser().resolve() if dataset_path else None
-    if path is None or not path.is_file():
-        return {
-            "ready": False,
-            "checksum": None,
-            "matches_training": None,
-            "error": "dataset file is unavailable",
-        }
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    checksum = digest.hexdigest()
-    expected = registry.detector.metadata.get("dataset_sha256")
-    try:
-        with path.open(newline="", encoding="utf-8") as handle:
-            fields = set(csv.DictReader(handle).fieldnames or ())
-        missing = [name for name in (*FEATURE_ORDER, "Attack_type") if name not in fields]
-        error = f"dataset schema mismatch; missing={missing}" if missing else None
-    except (OSError, UnicodeError, csv.Error) as exc:
-        error = f"dataset cannot be read: {exc}"
-    return {
-        "ready": error is None,
-        "checksum": checksum,
-        "matches_training": checksum == expected if expected else None,
-        "error": error,
-    }
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -59,7 +26,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.model_dir,
         allow_fallback=settings.allow_fallback,
     )
-    dataset_status = _dataset_status(settings.replay_dataset_path, registry)
+    dataset_health = DatasetHealthCache(
+        settings.replay_dataset_path, registry.detector.metadata.get("dataset_sha256")
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -103,24 +72,78 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health", tags=["health"])
     @app.get("/api/v1/health", tags=["health"], include_in_schema=False)
     async def health() -> dict:
+        dataset = dataset_health.status()
+        fallback_active = bool(
+            registry.detector.metadata.get("fallback")
+            or registry.classifier.metadata.get("fallback")
+        )
+        model_status = (
+            "ready"
+            if registry.production_bundle_valid and not fallback_active
+            else "degraded"
+            if fallback_active
+            else "blocked"
+        )
+        database_error = None
+        try:
+            with session_factory() as session:
+                session.execute(text("SELECT 1"))
+            database_status = "ready"
+        except Exception as exc:  # pragma: no cover - depends on external database failure
+            database_status = "blocked"
+            database_error = str(exc)
+        component_states = [dataset["status"], model_status, database_status]
+        readiness = (
+            "blocked"
+            if "blocked" in component_states
+            else "degraded"
+            if "degraded" in component_states
+            else "ready"
+        )
+        checked_at = datetime.now(UTC).isoformat()
         return {
             "status": "ok",
+            "readiness": readiness,
+            "checked_at": checked_at,
+            "instance_id": settings.instance_id,
             "schema_version": "rt-iot2022-v1",
             "model_version": registry.predictor.version,
             "detector_model_version": registry.detector.version,
             "classifier_model_version": registry.classifier.version,
-            "fallback": bool(registry.detector.metadata.get("fallback")),
+            "fallback": fallback_active,
             "fallback_status": {
-                "active": bool(registry.detector.metadata.get("fallback")),
+                "active": fallback_active,
                 "detector": bool(registry.detector.metadata.get("fallback")),
                 "classifier": bool(registry.classifier.metadata.get("fallback")),
             },
-            "dataset_ready": dataset_status["ready"],
-            "dataset_checksum": dataset_status["checksum"],
-            "dataset_checksum_matches_training": dataset_status["matches_training"],
-            "dataset_error": dataset_status["error"],
+            "dataset_ready": dataset["ready"],
+            "dataset_checksum": dataset["checksum"],
+            "dataset_checksum_matches_training": dataset[
+                "checksum_matches_training"
+            ],
+            "dataset_error": dataset["error"],
             "production_bundle_valid": registry.production_bundle_valid,
             "live_connections": len(app.state.live.connections),
+            "components": {
+                "api": {"status": "ready"},
+                "database": {"status": database_status, "error": database_error},
+                "dataset": dataset,
+                "models": {
+                    "status": model_status,
+                    "production_bundle_valid": registry.production_bundle_valid,
+                    "detector_model_version": registry.detector.version,
+                    "classifier_model_version": registry.classifier.version,
+                },
+                "fallback": {"status": "degraded" if fallback_active else "ready", "active": fallback_active},
+                "stream": {
+                    "status": "ready",
+                    "connections": len(app.state.live.connections),
+                },
+                "replay": {
+                    "status": "blocked" if not dataset["ready"] else "ready",
+                    "lifecycle": app.state.replay.state.status,
+                },
+            },
         }
 
     router = APIRouter()

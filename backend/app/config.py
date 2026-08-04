@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from uuid import uuid4
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,6 +14,7 @@ class Settings:
     allow_fallback: bool = False
     replay_dataset_path: str | None = None
     cors_origins: tuple[str, ...] = ("http://localhost:5173",)
+    instance_id: str = field(default_factory=lambda: f"iot-ids-{uuid4().hex[:12]}")
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -39,4 +41,5 @@ class Settings:
                 ),
             ),
             cors_origins=origins,
+            instance_id=os.getenv("IOT_IDS_INSTANCE_ID") or f"iot-ids-{uuid4().hex[:12]}",
         )

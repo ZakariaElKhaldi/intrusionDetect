@@ -317,8 +317,10 @@ class ModelRegistry:
                     "selection_metric": "mean validation macro-F1 across declared seeds",
                     "selection_value": aggregate.get("mean_validation_macro_f1"),
                     "three_seed_aggregate": aggregate,
-                    "validation_metrics": _compact_metrics(evidence.get("validation", {})),
-                    "test_metrics": _compact_metrics(test),
+                    "validation_metrics": _compact_metrics(
+                        evidence.get("validation", {}), stage=stage
+                    ),
+                    "test_metrics": _compact_metrics(test, stage=stage),
                     "confusion_matrix": test.get("confusion_matrix", []),
                     "classes": test.get("classes", []),
                     "class_support": {
@@ -338,7 +340,7 @@ class ModelRegistry:
                 "Reported classifier scores are uncalibrated probabilities.",
             ]
         )
-        return {
+        response = {
             "stage": stage,
             "evaluation_seeds": self.evaluation_report.get("evaluation_seeds", []),
             "split_definition": split.get("definition", {}),
@@ -346,11 +348,43 @@ class ModelRegistry:
             "selected_champion": selected,
             "measurement_notes": list(dict.fromkeys(notes)),
         }
+        if stage == "binary":
+            threshold = experiment.get("threshold_analysis", {})
+            response["threshold_analysis"] = {
+                "operating_threshold": threshold.get("operating_threshold"),
+                "points": threshold.get("curve", []),
+                "partition_rows": threshold.get("partition_rows"),
+                "score_note": threshold.get("score_note"),
+                "selection_policy": threshold.get("selection_policy"),
+            }
+            cascade = self.evaluation_report.get("cascade_evaluation", {})
+            cascade_metrics = cascade.get("metrics", {})
+            cascade_summary = {
+                "protocol": cascade.get("protocol"),
+                "split_seed": cascade.get("split_seed"),
+                "test_rows": cascade.get("test_rows"),
+                "detector_false_negatives": cascade.get("detector_false_negatives"),
+                "detector_routed_rows": cascade.get("detector_routed_rows"),
+                "aggregate": cascade.get("aggregate", {}),
+                "metrics": _compact_metrics(cascade_metrics, stage="cascade"),
+                "classes": cascade_metrics.get("classes", []),
+                "confusion_matrix": cascade_metrics.get("confusion_matrix", []),
+                "class_support": {
+                    label: values.get("support", 0)
+                    for label, values in cascade_metrics.get("per_class", {}).items()
+                },
+            }
+            response["cascade_summary"] = cascade_summary
+            response["cascade_evaluation"] = cascade_summary
+        return response
 
 
-def _compact_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+def _compact_metrics(metrics: dict[str, Any], *, stage: str) -> dict[str, Any]:
     excluded = {"confusion_matrix", "per_class", "pr_curves", "roc_curves"}
     compact = {key: value for key, value in metrics.items() if key not in excluded}
     compact.setdefault("macro_f1", metrics.get("f1_macro"))
     compact.setdefault("weighted_f1", metrics.get("f1_weighted"))
-    return {key: value for key, value in compact.items() if value is not None}
+    compact = {key: value for key, value in compact.items() if value is not None}
+    if stage == "multiclass":
+        compact["false_positive_rate"] = None
+    return compact

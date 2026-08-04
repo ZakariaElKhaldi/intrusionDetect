@@ -11,6 +11,7 @@ export IOT_IDS_MODEL_DIR="${REPOSITORY_DIR}/models/production"
 export IOT_IDS_DATASET_PATH="${REPOSITORY_DIR}/data/raw/RT_IOT2022.csv"
 export IOT_IDS_ALLOW_FALLBACK=false
 export IOT_IDS_CORS_ORIGINS="http://127.0.0.1:4174"
+export IOT_IDS_INSTANCE_ID="${IOT_IDS_INSTANCE_ID:-jury-e2e-production-preview}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/iot-ids-uv-cache}"
 
 cd "${REPOSITORY_DIR}/backend"

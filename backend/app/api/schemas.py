@@ -25,6 +25,9 @@ class AlertResponse(BaseModel):
     confidence: float
     detection_score: float
     attack_class_score: float | None
+    detector_latency_ms: float
+    classifier_latency_ms: float | None
+    total_latency_ms: float
     raw_features: dict
 
 
@@ -47,3 +50,11 @@ class FeedbackResponse(BaseModel):
 
 class AlertDetail(AlertResponse):
     feedback: list[FeedbackResponse]
+
+
+class AlertPage(BaseModel):
+    items: list[AlertResponse]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool

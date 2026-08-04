@@ -8,8 +8,57 @@ BACKEND_PORT="${DEMO_BACKEND_PORT:-8000}"
 FRONTEND_PORT="${DEMO_FRONTEND_PORT:-4173}"
 DEMO_TEMP_DIR="$(mktemp -d /tmp/iot-ids-demo.XXXXXX)"
 DEMO_DATABASE_PATH="${DEMO_TEMP_DIR}/jury-demo.sqlite3"
+DEMO_INSTANCE_ID="jury-demo-$(date +%s)-$$-${RANDOM}"
 BACKEND_PID=""
 FRONTEND_PID=""
+
+validate_port() {
+  local value="$1"
+  local label="$2"
+  if [[ ! "${value}" =~ ^[0-9]+$ ]] || ((value < 1 || value > 65535)); then
+    echo "demo failed: invalid ${label} port: ${value}" >&2
+    exit 2
+  fi
+}
+
+port_is_open() {
+  local port="$1"
+  (exec 9<>"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1
+}
+
+health_matches_instance() {
+  local url="$1"
+  local payload
+  payload="$(curl --silent --fail --max-time 2 "${url}" 2>/dev/null)" || return 1
+  HEALTH_PAYLOAD="${payload}" EXPECTED_INSTANCE_ID="${DEMO_INSTANCE_ID}" \
+    "${REPOSITORY_DIR}/backend/.venv/bin/python" -c \
+    'import json, os, sys; sys.exit(json.loads(os.environ["HEALTH_PAYLOAD"]).get("instance_id") != os.environ["EXPECTED_INSTANCE_ID"])'
+}
+
+wait_for_owned_health() {
+  local url="$1"
+  local process_id="$2"
+  local label="$3"
+  local attempts="$4"
+  local attempt=0
+  while ((attempt < attempts)); do
+    if ! kill -0 "${process_id}" 2>/dev/null; then
+      echo "demo failed: ${label} exited during startup" >&2
+      return 1
+    fi
+    if health_matches_instance "${url}"; then
+      kill -0 "${process_id}" 2>/dev/null || {
+        echo "demo failed: ${label} exited after its readiness check" >&2
+        return 1
+      }
+      return 0
+    fi
+    sleep 0.25
+    ((attempt += 1))
+  done
+  echo "demo failed: ${label} did not expose instance ${DEMO_INSTANCE_ID}" >&2
+  return 1
+}
 
 cleanup() {
   trap - EXIT INT TERM
@@ -26,6 +75,21 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+validate_port "${BACKEND_PORT}" "backend"
+validate_port "${FRONTEND_PORT}" "frontend"
+if [[ "${BACKEND_PORT}" == "${FRONTEND_PORT}" ]]; then
+  echo "demo failed: backend and frontend ports must differ" >&2
+  exit 2
+fi
+if port_is_open "${BACKEND_PORT}"; then
+  echo "demo failed: backend port ${BACKEND_PORT} is already in use; stop the existing service or set DEMO_BACKEND_PORT" >&2
+  exit 2
+fi
+if port_is_open "${FRONTEND_PORT}"; then
+  echo "demo failed: frontend port ${FRONTEND_PORT} is already in use; stop the existing service or set DEMO_FRONTEND_PORT" >&2
+  exit 2
+fi
+
 cd "${REPOSITORY_DIR}"
 ./scripts/preflight.sh --runtime-only
 
@@ -34,6 +98,8 @@ export IOT_IDS_MODEL_DIR="${REPOSITORY_DIR}/models/production"
 export IOT_IDS_DATASET_PATH="${DATASET:-${REPOSITORY_DIR}/data/raw/RT_IOT2022.csv}"
 export IOT_IDS_ALLOW_FALLBACK=false
 export IOT_IDS_CORS_ORIGINS="http://127.0.0.1:${FRONTEND_PORT},http://localhost:${FRONTEND_PORT}"
+export IOT_IDS_INSTANCE_ID="${DEMO_INSTANCE_ID}"
+export IOT_IDS_API_PROXY_TARGET="http://127.0.0.1:${BACKEND_PORT}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/iot-ids-uv-cache}"
 
 (
@@ -41,41 +107,20 @@ export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/iot-ids-uv-cache}"
   exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "${BACKEND_PORT}"
 ) &
 BACKEND_PID=$!
-
-for _ in {1..120}; do
-  if curl --silent --fail "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null; then
-    break
-  fi
-  if ! kill -0 "${BACKEND_PID}" 2>/dev/null; then
-    echo "demo failed: backend exited during startup" >&2
-    exit 1
-  fi
-  sleep 0.25
-done
-curl --silent --fail "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null || {
-  echo "demo failed: backend did not become ready" >&2
-  exit 1
-}
+wait_for_owned_health "http://127.0.0.1:${BACKEND_PORT}/health" \
+  "${BACKEND_PID}" "backend" 120
 
 (
   cd frontend
   exec npm run preview -- --host 127.0.0.1 --port "${FRONTEND_PORT}" --strictPort
 ) &
 FRONTEND_PID=$!
-
-for _ in {1..80}; do
-  if curl --silent --fail "http://127.0.0.1:${FRONTEND_PORT}" >/dev/null; then
-    break
-  fi
-  sleep 0.25
-done
-curl --silent --fail "http://127.0.0.1:${FRONTEND_PORT}" >/dev/null || {
-  echo "demo failed: dashboard did not become ready" >&2
-  exit 1
-}
+wait_for_owned_health "http://127.0.0.1:${FRONTEND_PORT}/api/v1/health" \
+  "${FRONTEND_PID}" "production dashboard" 80
 
 echo
 echo "Clean jury demo is ready (database: disposable)."
+echo "Instance:  ${DEMO_INSTANCE_ID}"
 echo "Dashboard: http://127.0.0.1:${FRONTEND_PORT}"
 echo "API docs:  http://127.0.0.1:${BACKEND_PORT}/docs"
 echo "Press Ctrl-C to stop and remove the demo database."

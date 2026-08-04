@@ -4,11 +4,9 @@ import {
   BarChart3,
   FlaskConical,
   LayoutDashboard,
+  Menu,
   Network,
-  Pause,
-  Play,
   ShieldAlert,
-  Square,
 } from "lucide-react";
 import {
   checkHealth,
@@ -22,6 +20,7 @@ import {
   startReplay,
 } from "./api";
 import { sampleAlerts, sampleModels } from "./data";
+import { ReplayPanel } from "./features/overview/ReplayPanel";
 import type { Alert, AlertStatus, HealthInfo, ModelInfo, Page, ReplayScenario, ReplayStatus } from "./types";
 import { pageTitles } from "./utils";
 
@@ -33,18 +32,6 @@ const ModelAnalysis = lazy(() => import("./features/models/ModelAnalysis").then(
 const ObservationLab = lazy(() => import("./features/testing/ObservationLab").then((module) => ({ default: module.ObservationLab })));
 const TopologyWorkspace = lazy(() => import("./features/topology").then((module) => ({ default: module.TopologyWorkspace })));
 
-const attackFamilies = [
-  "ARP_poisioning",
-  "DDOS_Slowloris",
-  "DOS_SYN_Hping",
-  "Metasploit_Brute_Force_SSH",
-  "NMAP_FIN_SCAN",
-  "NMAP_OS_DETECTION",
-  "NMAP_TCP_scan",
-  "NMAP_UDP_SCAN",
-  "NMAP_XMAS_TREE_SCAN",
-];
-
 function isFixtureMode() {
   return new URLSearchParams(window.location.search).get("fixture") === "true";
 }
@@ -53,16 +40,16 @@ const navGroups = [
   {
     label: "Monitor",
     items: [
-      { page: "overview" as Page, label: "Overview", icon: LayoutDashboard },
-      { page: "alerts" as Page, label: "Alerts", icon: ShieldAlert },
-      { page: "topology" as Page, label: "Topology", icon: Network },
+      { page: "overview" as Page, label: "Monitor", icon: LayoutDashboard },
+      { page: "alerts" as Page, label: "Triage alerts", icon: ShieldAlert },
+      { page: "topology" as Page, label: "Map routes", icon: Network },
     ],
   },
   {
     label: "Investigate",
     items: [
-      { page: "models" as Page, label: "Models", icon: BarChart3 },
-      { page: "testing" as Page, label: "Observation lab", icon: FlaskConical },
+      { page: "models" as Page, label: "Validate models", icon: BarChart3 },
+      { page: "testing" as Page, label: "Test observations", icon: FlaskConical },
     ],
   },
 ];
@@ -83,10 +70,14 @@ function App() {
   const [models, setModels] = useState<ModelInfo[]>(fixtureMode ? sampleModels : []);
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [healthChecked, setHealthChecked] = useState(false);
+  const [healthError, setHealthError] = useState("");
+  const [alertsError, setAlertsError] = useState("");
+  const [modelsError, setModelsError] = useState("");
   const [socketState, setSocketState] = useState<SocketState>("connecting");
   const [lastUpdate, setLastUpdate] = useState(() => new Date());
   const [livePredictionCount, setLivePredictionCount] = useState(0);
-  const [dataLoading, setDataLoading] = useState(!fixtureMode);
+  const [alertsLoading, setAlertsLoading] = useState(!fixtureMode);
+  const [modelsLoading, setModelsLoading] = useState(!fixtureMode);
   const [replay, setReplay] = useState<ReplayStatus | null>(null);
   const [replayError, setReplayError] = useState("");
   const [replaySpeed, setReplaySpeed] = useState(1);
@@ -94,6 +85,35 @@ function App() {
   const [replayScenario, setReplayScenario] = useState<ReplayScenario>("attack");
   const pageRef = useRef(page);
   const seenPredictions = useRef(new Set<string>());
+  const lastReplayStatus = useRef<string | null>(null);
+
+  const mergeAlerts = useCallback((current: Alert[], incoming: Alert[]) => {
+    const merged = new Map(current.map((alert) => [alert.id, alert]));
+    incoming.forEach((alert) => merged.set(alert.id, alert));
+    return [...merged.values()].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+  }, []);
+
+  const loadConnectedData = useCallback(async () => {
+    if (fixtureMode) return;
+    setAlertsLoading(true);
+    setModelsLoading(true);
+    setAlertsError("");
+    setModelsError("");
+    setHealthError("");
+    const [healthResult, alertsResult, modelsResult] = await Promise.allSettled([checkHealth(), getAlerts(), getModels()]);
+    if (healthResult.status === "fulfilled" && healthResult.value) setHealth(healthResult.value);
+    else {
+      setHealth(null);
+      setHealthError("The API health check failed.");
+    }
+    setHealthChecked(true);
+    if (alertsResult.status === "fulfilled") setAlerts((current) => mergeAlerts(current, alertsResult.value));
+    else setAlertsError(alertsResult.reason instanceof Error ? alertsResult.reason.message : "Alerts could not be loaded.");
+    if (modelsResult.status === "fulfilled") setModels(modelsResult.value);
+    else setModelsError(modelsResult.reason instanceof Error ? modelsResult.reason.message : "Model descriptors could not be loaded.");
+    setAlertsLoading(false);
+    setModelsLoading(false);
+  }, [fixtureMode, mergeAlerts]);
 
   useEffect(() => {
     pageRef.current = page;
@@ -115,25 +135,27 @@ function App() {
   useEffect(() => {
     if (fixtureMode) {
       setHealthChecked(true);
-      setDataLoading(false);
+      setAlertsLoading(false);
+      setModelsLoading(false);
       setSocketState("offline");
       return;
     }
-    let cancelled = false;
-    void Promise.allSettled([checkHealth(), getAlerts(), getModels()]).then(
-      ([healthResult, alertsResult, modelsResult]) => {
-        if (cancelled) return;
-        if (healthResult.status === "fulfilled") setHealth(healthResult.value);
-        setHealthChecked(true);
-        if (alertsResult.status === "fulfilled") setAlerts(alertsResult.value);
-        if (modelsResult.status === "fulfilled") setModels(modelsResult.value);
-        setDataLoading(false);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
+    void loadConnectedData();
+  }, [fixtureMode, loadConnectedData]);
+
+  const hydrateReplay = useCallback(async () => {
+    if (fixtureMode) return;
+    setReplayError("");
+    try {
+      setReplay(await getReplayStatus());
+    } catch (error) {
+      setReplayError(error instanceof Error ? error.message : "Replay status is unavailable.");
+    }
   }, [fixtureMode]);
+
+  useEffect(() => {
+    void hydrateReplay();
+  }, [hydrateReplay]);
 
   useEffect(() => {
     if (fixtureMode) return;
@@ -212,6 +234,13 @@ function App() {
       if (timer) window.clearTimeout(timer);
     };
   }, [fixtureMode, replay?.status, replay?.processed]);
+
+  useEffect(() => {
+    if (replay?.status === "completed" && lastReplayStatus.current !== "completed") {
+      void getAlerts().then((incoming) => setAlerts((current) => mergeAlerts(current, incoming))).catch(() => undefined);
+    }
+    lastReplayStatus.current = replay?.status ?? null;
+  }, [mergeAlerts, replay?.status]);
 
   const navigate = useCallback((nextPage: Page, params?: Record<string, string>) => {
     const search = new URLSearchParams({ view: nextPage, ...params });
@@ -301,8 +330,10 @@ function App() {
                 const Icon = item.icon;
                 return (
                   <button
-                    className="nav-button"
+                    className={`nav-button ${["models", "testing"].includes(item.page) ? "nav-button--mobile-overflow" : ""}`}
                     aria-current={page === item.page ? "page" : undefined}
+                    aria-label={item.label}
+                    data-nav-page={item.page}
                     type="button"
                     key={item.page}
                     onClick={() => navigate(item.page)}
@@ -319,6 +350,13 @@ function App() {
               })}
             </Fragment>
           ))}
+          <details className="mobile-more">
+            <summary><Menu aria-hidden="true" /><span>More</span></summary>
+            <div className="mobile-more-menu">
+              <button type="button" onClick={() => navigate("models")} data-nav-page="models">Validate models</button>
+              <button type="button" onClick={() => navigate("testing")} data-nav-page="testing">Test observations</button>
+            </div>
+          </details>
         </nav>
 
         <div className="sidebar-footer">
@@ -335,104 +373,56 @@ function App() {
             <p>{subtitle}</p>
           </div>
           <div className="topbar-actions">
-            <div className="replay-control">
-              <label className="replay-label" htmlFor="replay-scenario">
-                <i className={replay?.status === "paused" ? "paused" : ""} aria-hidden="true" /> Replay
-              </label>
-              <select
-                id="replay-scenario"
-                aria-label="Replay scenario"
-                value={replayScenario}
-                onChange={(event) => setReplayScenario(event.target.value as ReplayScenario)}
-                disabled={Boolean(replayActive) || fixtureMode}
-              >
-                <option value="attack">Attack traffic</option>
-                <option value="normal">Normal traffic</option>
-                <option value="all">File order</option>
-                <optgroup label="Exact attack family">
-                  {attackFamilies.map((family) => <option value={`class:${family}`} key={family}>{family}</option>)}
-                </optgroup>
-              </select>
-              <select
-                id="replay-speed"
-                aria-label="Replay speed"
-                value={replaySpeed}
-                onChange={(event) => setReplaySpeed(Number(event.target.value))}
-                disabled={Boolean(replayActive) || fixtureMode}
-              >
-                <option value={0.5}>0.5×</option>
-                <option value={1}>1×</option>
-                <option value={2}>2×</option>
-                <option value={4}>4×</option>
-              </select>
-              <label className="replay-limit">
-                <span className="sr-only">Replay limit</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={1000}
-                  value={replayLimit}
-                  onChange={(event) => setReplayLimit(Math.max(1, Math.min(1000, Number(event.target.value) || 1)))}
-                  disabled={Boolean(replayActive) || fixtureMode}
-                  aria-label="Replay limit"
-                />
-              </label>
-              <button
-                className="icon-button"
-                type="button"
-                onClick={() => void handleReplay()}
-                disabled={fixtureMode || !health}
-                aria-label={replay?.status === "running" ? "Pause replay" : replay?.status === "paused" ? "Resume replay" : "Start replay"}
-              >
-                {replay?.status === "running" ? <Pause size={16} /> : <Play size={16} />}
-              </button>
-              {replayActive ? (
-                <button className="icon-button" type="button" onClick={() => void stopReplay()} aria-label="Stop replay">
-                  <Square size={14} />
-                </button>
-              ) : null}
-            </div>
             <div className="system-status">
               <span
                 className={`status-mark status-mark--${health ? socketState : "offline"}`}
                 aria-hidden="true"
               />
               <span>
-                <b>{fixtureMode ? "Fixture preview" : health ? "System connected" : healthChecked ? "Backend offline" : "Connecting"}</b>
+                <b>{fixtureMode ? "Fixture preview" : health && socketState === "live" ? "Live stream connected" : health ? "API connected" : healthChecked ? "Backend offline" : "Connecting"}</b>
                 <small>{sourceLabel} · stream {socketState}</small>
               </span>
             </div>
           </div>
         </header>
 
-        <main id="main-content">
+        <main id="main-content" tabIndex={-1}>
           {!fixtureMode && healthChecked && !health ? (
             <div className="offline-notice" role="alert">
               Backend unavailable. No fixture records are mixed into this connected workspace.
             </div>
           ) : null}
-          {dataLoading ? <div className="inline-notice" role="status">Loading connected alerts and model records…</div> : null}
-          {replay ? (
-            <section className={`replay-status replay-status--${replay.status}`} aria-live="polite">
-              <div>
-                <b>{replay.status === "completed" ? "Replay completed" : replay.status === "failed" ? "Replay failed" : `Replay ${replay.status}`}</b>
-                <span>{replay.processed} / {replay.total} observations · {replay.scenario}</span>
-              </div>
-              <progress value={replay.processed} max={Math.max(1, replay.total)} aria-label="Replay progress">{replayProgress.toFixed(0)}%</progress>
-            </section>
-          ) : null}
-          {(replayError || replay?.error) ? <div className="inline-notice" role="alert">{replayError || replay?.error}</div> : null}
+          {healthError && health ? <div className="inline-notice" role="alert">{healthError}</div> : null}
           <Suspense fallback={<div className="panel data-state" role="status">Loading workspace…</div>}>
           {page === "overview" ? (
-            <Overview
-              alerts={alerts}
-              health={health}
-              socketState={socketState}
-              lastUpdate={lastUpdate}
-              livePredictionCount={livePredictionCount}
-              onOpenAlert={openAlert}
-              onTimeBucket={openTimeBucket}
-            />
+            <div className="monitor-page">
+              <ReplayPanel
+                replay={replay}
+                scenario={replayScenario}
+                speed={replaySpeed}
+                limit={replayLimit}
+                error={replayError || replay?.error || ""}
+                disabled={fixtureMode || !health}
+                onScenario={setReplayScenario}
+                onSpeed={setReplaySpeed}
+                onLimit={setReplayLimit}
+                onPrimary={() => void handleReplay()}
+                onStop={() => void stopReplay()}
+                onRetry={() => void hydrateReplay()}
+              />
+              <Overview
+                alerts={alerts}
+                health={health}
+                socketState={socketState}
+                lastUpdate={lastUpdate}
+                livePredictionCount={livePredictionCount}
+                alertsLoading={alertsLoading}
+                alertsError={alertsError}
+                onRetry={() => void loadConnectedData()}
+                onOpenAlert={openAlert}
+                onTimeBucket={openTimeBucket}
+              />
+            </div>
           ) : null}
           {page === "alerts" ? (
             <AlertWorkspace
@@ -443,6 +433,9 @@ function App() {
                 setAlerts((current) => [...queuedAlerts, ...current]);
                 setQueuedAlerts([]);
               }}
+              loading={alertsLoading}
+              error={alertsError}
+              onRetry={() => void loadConnectedData()}
             />
           ) : null}
           {page === "topology" ? (
@@ -451,7 +444,7 @@ function App() {
               onViewAlerts={(endpoint) => navigate("alerts", { q: endpoint })}
             />
           ) : null}
-          {page === "models" ? <ModelAnalysis models={models} fixtureMode={fixtureMode} /> : null}
+          {page === "models" ? <ModelAnalysis models={models} fixtureMode={fixtureMode} descriptorLoading={modelsLoading} descriptorError={modelsError} /> : null}
           {page === "testing" ? <ObservationLab /> : null}
           </Suspense>
         </main>

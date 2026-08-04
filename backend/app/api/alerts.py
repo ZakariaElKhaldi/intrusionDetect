@@ -1,14 +1,47 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import select
 
-from app.api.schemas import AlertDetail, AlertResponse, FeedbackRequest, FeedbackResponse
+from app.api.schemas import (
+    AlertDetail,
+    AlertPage,
+    AlertResponse,
+    FeedbackRequest,
+    FeedbackResponse,
+)
 from app.database.models import Alert, AnalystFeedback, Observation, Prediction
 
 router = APIRouter(tags=["alerts"])
+
+
+def _alert_response(
+    alert: Alert, prediction: Prediction, observation: Observation
+) -> AlertResponse:
+    return AlertResponse(
+        alert_id=alert.alert_id,
+        event_id=alert.event_id,
+        severity=alert.severity,
+        reasons=alert.reasons,
+        top_features=alert.top_features,
+        status=alert.status,
+        created_at=alert.created_at,
+        model_version=prediction.model_version,
+        detector_model_version=prediction.detector_model_version,
+        classifier_model_version=prediction.classifier_model_version,
+        binary_prediction=prediction.binary_prediction,
+        attack_class=prediction.attack_class,
+        confidence=prediction.confidence,
+        detection_score=prediction.detection_score,
+        attack_class_score=prediction.attack_class_score,
+        detector_latency_ms=prediction.detector_latency_ms,
+        classifier_latency_ms=prediction.classifier_latency_ms,
+        total_latency_ms=prediction.end_to_end_latency_ms,
+        raw_features=observation.raw_features,
+    )
 
 
 @router.get("/alerts", response_model=list[AlertResponse])
@@ -31,26 +64,7 @@ async def list_alerts(
         for alert in alerts:
             prediction = session.get(Prediction, alert.prediction_id)
             observation = session.get(Observation, alert.event_id)
-            responses.append(
-                AlertResponse(
-                    alert_id=alert.alert_id,
-                    event_id=alert.event_id,
-                    severity=alert.severity,
-                    reasons=alert.reasons,
-                    top_features=alert.top_features,
-                    status=alert.status,
-                    created_at=alert.created_at,
-                    model_version=prediction.model_version,
-                    detector_model_version=prediction.detector_model_version,
-                    classifier_model_version=prediction.classifier_model_version,
-                    binary_prediction=prediction.binary_prediction,
-                    attack_class=prediction.attack_class,
-                    confidence=prediction.confidence,
-                    detection_score=prediction.detection_score,
-                    attack_class_score=prediction.attack_class_score,
-                    raw_features=observation.raw_features,
-                )
-            )
+            responses.append(_alert_response(alert, prediction, observation))
         return responses
 
 
