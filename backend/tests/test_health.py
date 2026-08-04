@@ -24,7 +24,7 @@ async def test_health_echoes_instance_and_invalidates_dataset_cache_on_stat_chan
             database_url=f"sqlite:///{tmp_path / 'health.db'}",
             allow_fallback=True,
             replay_dataset_path=str(dataset),
-            instance_id="jury-demo-42",
+            instance_id="project-demo-42",
         )
     )
     async with app.router.lifespan_context(app):
@@ -32,7 +32,7 @@ async def test_health_echoes_instance_and_invalidates_dataset_cache_on_stat_chan
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             first = (await client.get("/health")).json()
-            assert first["instance_id"] == "jury-demo-42"
+            assert first["instance_id"] == "project-demo-42"
             assert first["readiness"] == "degraded"
             assert first["components"]["database"]["status"] == "ready"
             assert first["components"]["dataset"]["status"] == "ready"

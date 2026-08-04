@@ -102,7 +102,7 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
             <PanelHeading
               eyebrow="Three-seed candidate study"
               title={`${taskName} comparison`}
-              description="Candidates shown here solve the same task. Quality is higher-is-better; false-positive rate and latency are lower-is-better."
+              description={stage === "binary" ? "Detector candidates only. Quality is higher-is-better; false-positive rate and latency are lower-is-better." : "Classifier candidates only. Quality is higher-is-better and latency is lower-is-better; detector FPR does not apply."}
               action={<span className="panel-heading-meta">{candidates.length} candidates</span>}
             />
             <ModelComparisonChart models={candidates} height={420} includeFalsePositiveRate={stage === "binary"} />

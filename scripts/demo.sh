@@ -7,8 +7,8 @@ REPOSITORY_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 BACKEND_PORT="${DEMO_BACKEND_PORT:-8000}"
 FRONTEND_PORT="${DEMO_FRONTEND_PORT:-4173}"
 DEMO_TEMP_DIR="$(mktemp -d /tmp/iot-ids-demo.XXXXXX)"
-DEMO_DATABASE_PATH="${DEMO_TEMP_DIR}/jury-demo.sqlite3"
-DEMO_INSTANCE_ID="jury-demo-$(date +%s)-$$-${RANDOM}"
+DEMO_DATABASE_PATH="${DEMO_TEMP_DIR}/project-demo.sqlite3"
+DEMO_INSTANCE_ID="project-demo-$(date +%s)-$$-${RANDOM}"
 BACKEND_PID=""
 FRONTEND_PID=""
 
@@ -119,7 +119,7 @@ wait_for_owned_health "http://127.0.0.1:${FRONTEND_PORT}/api/v1/health" \
   "${FRONTEND_PID}" "production dashboard" 80
 
 echo
-echo "Clean jury demo is ready (database: disposable)."
+echo "Clean project demo is ready (database: disposable)."
 echo "Instance:  ${DEMO_INSTANCE_ID}"
 echo "Dashboard: http://127.0.0.1:${FRONTEND_PORT}"
 echo "API docs:  http://127.0.0.1:${BACKEND_PORT}/docs"

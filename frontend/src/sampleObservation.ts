@@ -11,7 +11,11 @@ export const datasetExampleProvenance = {
 } as const;
 
 export const verifiedNormalObservationCsv = `${headers}\n${normalValues}`;
-export const verifiedAttackObservationCsv = `${headers}\n${attackValues}`;
+// The literal mirrors the source line; remove the source export's duplicated
+// empty subflow slot so the committed example aligns exactly to 83 features.
+const canonicalAttackValues = attackValues.split(",");
+canonicalAttackValues.splice(60, 1);
+export const verifiedAttackObservationCsv = `${headers}\n${canonicalAttackValues.join(",")}`;
 
 /** Backward-compatible alias for tests and imports that only need a valid row. */
 export const savedObservationCsv = verifiedNormalObservationCsv;

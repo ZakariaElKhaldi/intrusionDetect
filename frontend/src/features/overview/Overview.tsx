@@ -133,8 +133,8 @@ export function Overview({
         <PanelHeading
           eyebrow="Investigation timeline"
           title="Alerts by severity"
-          description="Five-minute buckets. Select a bar to inspect alerts from that interval."
-          action={<span className="panel-heading-meta">{alerts.length} observations</span>}
+          description={`${summary?.scope.bucket_minutes ?? 5}-minute buckets. Select a bar to inspect alerts from that interval.`}
+          action={<span className="panel-heading-meta">{summary?.alerts.total ?? alerts.length} alerts</span>}
         />
         {summary ? <PersistedTimeline summary={summary} onSelect={onTimeBucket}/> : alertsLoading ? <div className="data-state" role="status">Loading persisted timeline…</div> : (summaryError || alertsError) ? <div className="data-state data-state--error" role="alert"><span>{summaryError || alertsError}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry summary</button> : null}</div> : <div className="chart-empty">No persisted summary is available.</div>}
       </section>

@@ -123,17 +123,16 @@ Start the already-promoted model without retraining:
 ./scripts/run_all.sh --skip-setup
 ```
 
-For the jury, run the complete acceptance gate and then start a clean,
-disposable demonstration (also without retraining):
+Run the complete engineering acceptance gate and then start a clean,
+disposable local demonstration (also without retraining):
 
 ```bash
-make jury-preflight
+make project-preflight
 make demo
 ```
 
 `make benchmark` records the fixed normal/attack replay evidence in
-`docs/evidence/`. Jury materials and recovery instructions are in
-[`docs/jury`](docs/jury).
+`docs/evidence/`.
 
 Intentionally rerun the complete benchmark and atomically replace production:
 

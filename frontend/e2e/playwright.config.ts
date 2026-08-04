@@ -5,7 +5,7 @@ const repository = path.resolve(import.meta.dirname, "../..");
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "jury.spec.ts",
+  testMatch: "e2e.spec.ts",
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -22,7 +22,7 @@ export default defineConfig({
     {
       command: "./scripts/start_e2e_backend.sh",
       cwd: repository,
-      env: { IOT_IDS_INSTANCE_ID: "jury-e2e-production-preview" },
+      env: { IOT_IDS_INSTANCE_ID: "project-e2e-production-preview" },
       url: "http://127.0.0.1:8001/health",
       reuseExistingServer: false,
       timeout: 60_000,

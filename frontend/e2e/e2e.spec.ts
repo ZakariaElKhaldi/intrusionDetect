@@ -82,11 +82,11 @@ function runtimeIssues(page: Page) {
   return issues;
 }
 
-test.describe.serial("production-preview jury path", () => {
+test.describe.serial("production-preview end-to-end path", () => {
   test("owns the expected backend instance and starts with honest empty data", async ({ page, request }) => {
     const issues = runtimeIssues(page);
     const health = await apiJson<Record<string, unknown>>(request, "/health");
-    expect(health.instance_id).toBe("jury-e2e-production-preview");
+    expect(health.instance_id).toBe("project-e2e-production-preview");
     expect(health.fallback).toBeFalsy();
     expect(health.production_bundle_valid).toBe(true);
     expect(await apiJson<unknown[]>(request, "/alerts")).toEqual([]);
@@ -106,7 +106,7 @@ test.describe.serial("production-preview jury path", () => {
       timeout: 15_000,
     });
     await expect(
-      page.locator("article.metric").filter({ hasText: "Live predictions" }).locator("strong"),
+      page.locator("article.metric").filter({ hasText: "Persisted predictions" }).locator("strong"),
     ).toHaveText("8");
     expect((await waitForReplay(request, "completed")).processed).toBe(8);
     expect(await apiJson<unknown[]>(request, "/alerts")).toEqual([]);
@@ -208,7 +208,9 @@ test.describe.serial("production-preview jury path", () => {
       await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
       if (view === "models") {
         await page.getByRole("tab", { name: "Classifier", exact: true }).click();
-        await expect(page.getByText("Attack-family comparison")).toBeVisible();
+        await expect(
+          page.getByRole("heading", { name: "Attack-family classifier comparison" }),
+        ).toBeVisible();
       }
       const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -249,9 +251,35 @@ test.describe.serial("production-preview jury path", () => {
     ]) {
       await page.setViewportSize(viewport);
       await waitForConnectedPage(page);
-      expect(await page.evaluate(
-        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-      ), viewport.name).toBeTruthy();
+      const layout = await page.evaluate(() => {
+        const clientWidth = document.documentElement.clientWidth;
+        const overflowing = [...document.querySelectorAll<HTMLElement>("body *")]
+          .filter((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && (rect.left < -1 || rect.right > clientWidth + 1);
+          })
+          .slice(0, 12)
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              selector: `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${[...element.classList].map((name) => `.${name}`).join("")}`,
+              left: Math.round(rect.left * 10) / 10,
+              right: Math.round(rect.right * 10) / 10,
+              width: Math.round(rect.width * 10) / 10,
+              scrollWidth: element.scrollWidth,
+              clientWidth: element.clientWidth,
+            };
+          });
+        return {
+          clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          overflowing,
+        };
+      });
+      expect(
+        layout.scrollWidth,
+        `${viewport.name}: ${JSON.stringify(layout)}`,
+      ).toBeLessThanOrEqual(layout.clientWidth);
       await expect(page.getByRole("button", { name: "Start replay" })).toBeVisible();
     }
 

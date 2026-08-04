@@ -1,4 +1,4 @@
-.PHONY: help setup download-data prepare-data validate-data train verify-model test lint build dev run-all check-all demo demo-preflight jury-preflight e2e benchmark docker-up docker-down
+.PHONY: help setup download-data prepare-data validate-data train verify-model test lint build dev run-all check-all demo demo-preflight project-preflight e2e benchmark docker-up docker-down
 
 DATASET ?= data/raw/RT_IOT2022.csv
 DATA_ARCHIVE ?= data/raw/rt-iot2022.zip
@@ -23,9 +23,9 @@ help:
 	@echo "  make dev            Print commands for local development"
 	@echo "  make run-all        Run the full workflow, then start the application"
 	@echo "  make check-all      Run the full workflow without starting servers"
-	@echo "  make demo           Start a clean jury demo without retraining"
+	@echo "  make demo           Start a clean disposable demo without retraining"
 	@echo "  make demo-preflight Check demo data, bundle, and production artifacts"
-	@echo "  make jury-preflight Run every acceptance check, including browser E2E"
+	@echo "  make project-preflight Run every acceptance check, including browser E2E"
 	@echo "  make e2e            Run Playwright against real local services/models"
 	@echo "  make benchmark      Measure normal and attack dataset replay"
 	@echo "  make docker-up      Start the demonstration stack"
@@ -97,7 +97,7 @@ demo:
 demo-preflight:
 	./scripts/preflight.sh --runtime-only
 
-jury-preflight:
+project-preflight:
 	./scripts/preflight.sh
 
 e2e:

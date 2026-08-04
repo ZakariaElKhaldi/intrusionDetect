@@ -187,7 +187,7 @@ async def main() -> None:
             )
         )
     report = {
-        "schema_version": "jury-replay-benchmark-v1",
+        "schema_version": "replay-benchmark-v1",
         "recorded_at": datetime.now(UTC).isoformat(),
         "environment": "local single-process FastAPI, promoted models, disposable SQLite",
         "dataset_checksum": health.get("dataset_checksum"),

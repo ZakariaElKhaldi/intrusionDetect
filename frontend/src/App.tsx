@@ -262,6 +262,21 @@ function App() {
     document.getElementById("main-content")?.focus({ preventScroll: true });
   }, [page]);
 
+  useEffect(() => {
+    const labelScrollableTables = () => {
+      document.querySelectorAll<HTMLElement>(".preview-scroll").forEach((region) => {
+        region.tabIndex = 0;
+        region.setAttribute("role", "region");
+        const caption = region.querySelector("caption")?.textContent?.trim();
+        region.setAttribute("aria-label", caption || "Scrollable data table");
+      });
+    };
+    labelScrollableTables();
+    const observer = new MutationObserver(labelScrollableTables);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
   const openAlert = useCallback(async (alert: Alert) => {
     setSelectedAlert(alert);
     if (fixtureMode) return;

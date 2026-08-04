@@ -84,4 +84,4 @@ fi
 [[ -f "${REPOSITORY_DIR}/frontend/dist/index.html" ]] || \
   fail "frontend build completed without dist/index.html"
 make e2e
-echo "Jury preflight passed: data, artifacts, backend, ML, frontend, build, and E2E."
+echo "Project preflight passed: data, artifacts, backend, ML, frontend, build, and E2E."

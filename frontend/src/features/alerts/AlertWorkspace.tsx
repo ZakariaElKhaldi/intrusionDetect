@@ -110,6 +110,8 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [feedbackState, setFeedbackState] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [explanations, setExplanations] = useState<AlertExplanationStage[]>([]);
@@ -120,7 +122,7 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
     restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeRef.current?.focus();
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+      if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); return; }
       if (event.key !== "Tab" || !dialogRef.current) return;
       const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')];
       if (!focusable.length) return;
@@ -129,8 +131,18 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     addEventListener("keydown", keydown);
-    return () => { removeEventListener("keydown", keydown); restoreRef.current?.focus(); };
-  }, [onClose]);
+    return () => {
+      removeEventListener("keydown", keydown);
+      const original = restoreRef.current;
+      if (original?.isConnected) {
+        original.focus();
+        return;
+      }
+      const replacement = [...document.querySelectorAll<HTMLElement>("[data-alert-id]")]
+        .find((element) => element.dataset.alertId === alert.id);
+      replacement?.focus();
+    };
+  }, []);
 
   useEffect(() => {
     if (!loadExplanation) { setExplanationState("empty"); setExplanations([]); return; }

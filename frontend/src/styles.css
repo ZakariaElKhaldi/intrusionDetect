@@ -407,7 +407,7 @@ h1, h2, h3, p { margin-top: 0; }
 .result-summary div:last-child { border-right: 0; }
 .result-summary span { display: block; color: var(--ink-soft); font-size: 8px; }
 .result-summary b { display: block; margin-top: 5px; font-size: 14px; }
-.preview-scroll { overflow: auto; margin: 14px; border: 1px solid var(--line); }
+.preview-scroll { width: calc(100% - 28px); max-width: calc(100% - 28px); min-width: 0; overflow: auto; margin: 14px; border: 1px solid var(--line); }
 .preview-scroll table { min-width: 100%; border-collapse: collapse; font-size: 9px; }
 .preview-scroll th, .preview-scroll td { padding: 9px 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .preview-scroll th { background: #f4f2ed; color: var(--ink-soft); font-size: 8px; text-transform: uppercase; }
@@ -484,7 +484,7 @@ h1, h2, h3, p { margin-top: 0; }
   }
 }
 
-/* Jury presentation accessibility baseline */
+/* Accessibility baseline */
 .nav-group { color: var(--ink-soft); }
 body { font-size: 16px; line-height: 1.5; }
 .brand-copy strong, .sidebar-footer b, .system-status b, .panel-heading h2,
@@ -569,6 +569,7 @@ body { font-size: 16px; line-height: 1.5; }
 .sample-note .mono { overflow-wrap: anywhere; }
 .example-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 0 14px 14px; font-size: 14px; }
+.workspace, .workspace main, .monitor-page, .overview-grid, .overview-grid > *, .replay-panel, .replay-panel > * { min-width: 0; max-width: 100%; }
 .count-bars { display: grid; gap: 10px; padding: 18px; }
 .count-bars > div { display: grid; grid-template-columns: minmax(90px,1fr) minmax(100px,2fr) 42px; align-items: center; gap: 10px; font-size: 14px; }
 .count-bars i { height: 10px; min-width: 2px; background: var(--ink); }
@@ -580,7 +581,7 @@ body { font-size: 16px; line-height: 1.5; }
 .summary-scope select { min-height: 40px; border: 1px solid var(--line-strong); background: #fff; padding: 0 10px; }
 .summary-scope small { color: var(--ink-soft); font-size: 12px; }
 .timeline-bars { display: flex; height: 190px; align-items: flex-end; gap: 2px; padding: 10px 14px 0; border-bottom: 1px solid var(--line-strong); }
-.timeline-bars button { min-width: 4px; flex: 1; border: 0; background: var(--accent-dark); }
+.timeline-bars button { width: 0; min-width: 0; flex: 1 1 0; padding: 0; border: 0; background: var(--accent-dark); }
 .timeline-bars button:hover, .timeline-bars button:focus-visible { background: var(--ink); }
 .fixture-badge { bottom: 18px; font-size: 12px; }
 
@@ -628,4 +629,11 @@ body { font-size: 16px; line-height: 1.5; }
   .metrics-grid { grid-template-columns: 1fr; }
   .alert-card dl { grid-template-columns: 1fr; }
   .drawer-header, .drawer-section { padding-inline: 14px; }
+  .replay-panel { padding: 14px; }
+  .summary-scope { flex-wrap: wrap; }
+  .summary-scope label { width: 100%; margin-left: 0; flex-wrap: wrap; }
+  .summary-scope select { width: 100%; }
+  .offline-notice { align-items: flex-start; flex-direction: column; }
+  .preview-scroll { width: calc(100% - 16px); max-width: calc(100% - 16px); margin-inline: 8px; }
+  .timeline-bars { gap: 1px; padding-inline: 8px; }
 }
