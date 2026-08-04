@@ -64,6 +64,7 @@ async def client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
             database_url=f"sqlite:///{tmp_path / 'test.db'}",
             model_dir=str(MODEL_DIR),
             allow_fallback=True,
+            instance_id="backend-test-production",
         )
     )
     async with app.router.lifespan_context(app):
@@ -83,6 +84,7 @@ async def fallback_client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
             model_artifact_path=None,
             allow_fallback=True,
             replay_dataset_path=str(REPOSITORY / "data/raw/RT_IOT2022.csv"),
+            instance_id="backend-test-fallback",
         )
     )
     async with app.router.lifespan_context(app):

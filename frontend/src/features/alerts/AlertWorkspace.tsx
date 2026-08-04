@@ -2,33 +2,16 @@ import { ArrowRight, CheckCircle2, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getAlertExplanation, submitAlertFeedback } from "../../api";
 import { EvidenceChart } from "../../components/charts";
-import { PanelHeading } from "../../components/PanelHeading";
 import { SeverityLabel } from "../../components/SeverityLabel";
 import type { Alert, AlertExplanationStage, AlertStatus } from "../../types";
 import { formatTime } from "../../utils";
 
-const rangeMilliseconds: Record<string, number> = {
-  "15m": 15 * 60_000,
-  "1h": 60 * 60_000,
-  "24h": 24 * 60 * 60_000,
-};
+const rangeMilliseconds: Record<string, number> = { "15m": 900_000, "1h": 3_600_000, "24h": 86_400_000 };
+const defaultFilters = { query: "", severity: "all", status: "all", family: "all", range: "all" };
 
-function filterByRange(alert: Alert, range: string) {
-  if (range === "all") return true;
-  const timestamp = new Date(alert.timestamp).valueOf();
-  return Number.isFinite(timestamp) && timestamp >= Date.now() - rangeMilliseconds[range];
-}
-
-export function AlertWorkspace({
-  alerts,
-  pending,
-  onSelect,
-  applyPending,
-}: {
-  alerts: Alert[];
-  pending: number;
-  onSelect: (alert: Alert) => void;
-  applyPending: () => void;
+export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loading = false, error = "", onRetry }: {
+  alerts: Alert[]; pending: number; onSelect: (alert: Alert) => void; applyPending: () => void;
+  loading?: boolean; error?: string; onRetry?: () => void;
 }) {
   const params = new URLSearchParams(location.search);
   const [query, setQuery] = useState(params.get("q") ?? "");
@@ -36,334 +19,111 @@ export function AlertWorkspace({
   const [status, setStatus] = useState(params.get("status") ?? "all");
   const [family, setFamily] = useState(params.get("family") ?? "all");
   const [range, setRange] = useState(params.get("range") ?? "all");
-  const from = params.get("from");
-  const to = params.get("to");
-  const [scrollTop, setScrollTop] = useState(0);
-  const families = useMemo(
-    () => [...new Set(alerts.map((alert) => alert.attack_type))].sort(),
-    [alerts],
-  );
+  const [from, setFrom] = useState(params.get("from") ?? "");
+  const [to, setTo] = useState(params.get("to") ?? "");
+  const families = useMemo(() => [...new Set(alerts.map((alert) => alert.attack_type))].sort(), [alerts]);
   const filtered = useMemo(() => {
     const needle = query.toLowerCase().trim();
-    return alerts.filter((alert) =>
-      (!needle || [
-        alert.id,
-        alert.attack_type,
-        alert.source_ip,
-        alert.destination_ip,
-        alert.protocol,
-      ].some((value) => value.toLowerCase().includes(needle)))
-      && (severity === "all" || alert.severity === severity)
-      && (status === "all" || alert.status === status)
-      && (family === "all" || alert.attack_type === family)
-      && filterByRange(alert, range)
-      && (!from || Date.parse(alert.timestamp) >= Date.parse(from))
-      && (!to || Date.parse(alert.timestamp) < Date.parse(to))
-    );
+    return alerts.filter((alert) => {
+      const timestamp = Date.parse(alert.timestamp);
+      const inRange = range === "all" || (Number.isFinite(timestamp) && timestamp >= Date.now() - rangeMilliseconds[range]);
+      return (!needle || [alert.id, alert.attack_type, alert.source_ip, alert.destination_ip, alert.protocol].some((value) => value.toLowerCase().includes(needle)))
+        && (severity === "all" || alert.severity === severity)
+        && (status === "all" || alert.status === status)
+        && (family === "all" || alert.attack_type === family)
+        && inRange && (!from || timestamp >= Date.parse(from)) && (!to || timestamp < Date.parse(to));
+    });
   }, [alerts, family, from, query, range, severity, status, to]);
-  const rowHeight = 62;
-  const viewportHeight = 570;
-  const start = Math.max(0, Math.floor(scrollTop / rowHeight) - 3);
-  const end = Math.min(filtered.length, start + Math.ceil(viewportHeight / rowHeight) + 7);
 
   useEffect(() => {
     const next = new URLSearchParams(location.search);
-    const values = { q: query, severity, status, family, range };
-    Object.entries(values).forEach(([key, value]) => {
-      if (value && value !== "all") next.set(key, value);
-      else next.delete(key);
+    Object.entries({ q: query, severity, status, family, range, from, to }).forEach(([key, value]) => {
+      if (value && value !== "all") next.set(key, value); else next.delete(key);
     });
     history.replaceState(null, "", `${location.pathname}?${next.toString()}`);
-  }, [family, query, range, severity, status]);
+  }, [family, from, query, range, severity, status, to]);
 
-  return (
-    <section className="panel alerts-panel">
-      <div className="filters">
-        <label className="search-field">
-          <Search aria-hidden="true" />
-          <span className="sr-only">Search alerts</span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Endpoint, detection, ID, protocol…"
-          />
-        </label>
-        <label>
-          <span className="sr-only">Time range</span>
-          <select value={range} onChange={(event) => setRange(event.target.value)}>
-            <option value="all">All time</option>
-            <option value="15m">Last 15 minutes</option>
-            <option value="1h">Last hour</option>
-            <option value="24h">Last 24 hours</option>
-          </select>
-        </label>
-        <label>
-          <span className="sr-only">Detection family</span>
-          <select value={family} onChange={(event) => setFamily(event.target.value)}>
-            <option value="all">All detections</option>
-            {families.map((value) => <option key={value}>{value}</option>)}
-          </select>
-        </label>
-        <label>
-          <span className="sr-only">Severity</span>
-          <select value={severity} onChange={(event) => setSeverity(event.target.value)}>
-            <option value="all">All severities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-            <option value="normal">Normal</option>
-          </select>
-        </label>
-        <label>
-          <span className="sr-only">Status</span>
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="all">All statuses</option>
-            <option value="new">New</option>
-            <option value="investigating">Investigating</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="false_positive">False positive</option>
-            <option value="resolved">Resolved</option>
-          </select>
-        </label>
-        <span className="result-count">{filtered.length} results</span>
-      </div>
+  const reset = () => { setQuery(""); setSeverity("all"); setStatus("all"); setFamily("all"); setRange("all"); setFrom(""); setTo(""); };
+  const hasFilters = query || severity !== "all" || status !== "all" || family !== "all" || range !== "all" || from || to;
 
-      {pending > 0 && (
-        <button className="pending-banner" onClick={applyPending}>
-          {pending} new alert{pending === 1 ? "" : "s"} received — show updates
-        </button>
-      )}
-
-      <div className="table-head" aria-hidden="true">
-        <span>Severity</span>
-        <span>Detection</span>
-        <span>Route</span>
-        <span>Protocol</span>
-        <span>Score</span>
-        <span>Status</span>
-        <span>Time</span>
-      </div>
-      <div
-        className="virtual-table"
-        role="table"
-        aria-label="Security alerts"
-        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-      >
-        <div style={{ height: Math.max(filtered.length * rowHeight, filtered.length ? 0 : viewportHeight), position: "relative" }}>
-          {!filtered.length ? (
-            <div className="alert-empty">
-              <b>{alerts.length ? "No alerts match these filters" : "No alerts recorded"}</b>
-              <span>{alerts.length ? "Adjust the filters to widen the investigation window." : "Run an attack replay to create real alert records."}</span>
-            </div>
-          ) : null}
-          {filtered.slice(start, end).map((alert, index) => (
-            <button
-              className={`alert-row ${alert.severity === "critical" ? "alert-row--critical" : ""}`}
-              role="row"
-              key={alert.id}
-              style={{ transform: `translateY(${(start + index) * rowHeight}px)` }}
-              onClick={() => onSelect(alert)}
-            >
-              <span role="cell"><SeverityLabel severity={alert.severity} /></span>
-              <span role="cell"><b>{alert.attack_type}</b><small>{alert.id}</small></span>
-              <span role="cell"><b>{alert.source_ip}</b><small>to {alert.destination_ip}</small></span>
-              <span role="cell">{alert.protocol}</span>
-              <span role="cell"><b>{(alert.confidence * 100).toFixed(1)}%</b></span>
-              <span role="cell" className={`status-text status-text--${alert.status}`}>
-                {alert.status.replace("_", " ")}
-              </span>
-              <time role="cell" dateTime={alert.timestamp}>{formatTime(alert.timestamp)}</time>
-            </button>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
+  return <section className="panel alerts-panel" aria-labelledby="alerts-heading">
+    <h2 className="sr-only" id="alerts-heading">Security alerts</h2>
+    <div className="filters">
+      <label className="search-field"><Search aria-hidden="true"/><span className="sr-only">Search alerts</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Endpoint, detection, ID, protocol…" /></label>
+      <label><span className="sr-only">Time range</span><select value={range} onChange={(e) => { setRange(e.target.value); setFrom(""); setTo(""); }}><option value="all">All time</option><option value="15m">Last 15 minutes</option><option value="1h">Last hour</option><option value="24h">Last 24 hours</option></select></label>
+      <label><span className="sr-only">Detection family</span><select value={family} onChange={(e) => setFamily(e.target.value)}><option value="all">All detections</option>{families.map((value) => <option key={value}>{value}</option>)}</select></label>
+      <label><span className="sr-only">Severity</span><select value={severity} onChange={(e) => setSeverity(e.target.value)}><option value="all">All severities</option>{["critical","high","medium","low","normal"].map((v)=><option key={v}>{v[0].toUpperCase()+v.slice(1)}</option>)}</select></label>
+      <label><span className="sr-only">Status</span><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">All statuses</option>{["new","investigating","confirmed","false_positive","resolved"].map((v)=><option key={v} value={v}>{v.replace("_"," ")}</option>)}</select></label>
+      {hasFilters ? <button type="button" className="secondary-button filter-reset" onClick={reset}>Reset filters</button> : null}
+      <span className="result-count">{filtered.length} results</span>
+    </div>
+    {(from || to) ? <div className="active-filter">Timeline interval: {from ? new Date(from).toLocaleString() : "start"} – {to ? new Date(to).toLocaleString() : "now"}<button type="button" onClick={() => { setFrom(""); setTo(""); }}>Clear interval</button></div> : null}
+    {pending > 0 ? <button className="pending-banner" onClick={applyPending}>{pending} new alert{pending === 1 ? "" : "s"} received — show updates</button> : null}
+    {loading ? <div className="data-state" role="status" data-state="loading">Loading alerts…</div> : error ? <div className="data-state data-state--error" role="alert" data-state="error"><span>{error}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry alerts</button> : null}</div> : !filtered.length ? <div className="alert-empty" data-state="empty"><b>{alerts.length ? "No alerts match these filters" : "No alerts recorded"}</b><span>{alerts.length ? "Reset filters to widen the investigation window." : "Run an attack replay to create real alert records."}</span>{hasFilters ? <button className="secondary-button" onClick={reset}>Clear all filters</button> : null}</div> : <>
+      <div className="alert-table-wrap"><table className="alert-table"><thead><tr><th>Severity</th><th>Detection</th><th>Route</th><th>Protocol</th><th>Detector score</th><th>Status</th><th>Time</th></tr></thead><tbody>{filtered.map((alert) => <tr key={alert.id} data-alert-id={alert.id}><td><SeverityLabel severity={alert.severity}/></td><td><button className="alert-open" onClick={() => onSelect(alert)} aria-label={`Open ${alert.attack_type} alert ${alert.id}`}><b>{alert.attack_type}</b><small>{alert.id}</small></button></td><td><b>{alert.source_ip}</b><small>to {alert.destination_ip}</small></td><td>{alert.protocol}</td><td>{(alert.confidence*100).toFixed(1)}%</td><td className={`status-text status-text--${alert.status}`}>{alert.status.replace("_"," ")}</td><td><time dateTime={alert.timestamp}>{formatTime(alert.timestamp)}</time></td></tr>)}</tbody></table></div>
+      <div className="alert-cards" aria-label="Security alerts">{filtered.map((alert)=><article className="alert-card" key={alert.id}><div><SeverityLabel severity={alert.severity}/><span className={`status-text status-text--${alert.status}`}>{alert.status.replace("_"," ")}</span></div><h3>{alert.attack_type}</h3><p>{alert.source_ip} → {alert.destination_ip}</p><dl><div><dt>Protocol</dt><dd>{alert.protocol}</dd></div><div><dt>Detector score</dt><dd>{(alert.confidence*100).toFixed(1)}%</dd></div><div><dt>Observed</dt><dd>{formatTime(alert.timestamp)}</dd></div></dl><button className="secondary-button" onClick={() => onSelect(alert)} aria-label={`Open ${alert.attack_type} alert ${alert.id}`}>Inspect alert</button></article>)}</div>
+    </>}
+    {alerts.length >= 500 ? <p className="window-note">Showing the latest 500 alert records returned by the API.</p> : null}
+  </section>;
 }
 
-export function AlertDrawer({
-  alert,
-  onClose,
-  onStatusChange,
-  loadExplanation = true,
-}: {
-  alert: Alert;
-  onClose: () => void;
-  onStatusChange: (id: string, status: AlertStatus) => void;
-  loadExplanation?: boolean;
+export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = true, readOnly = false }: {
+  alert: Alert; onClose: () => void; onStatusChange: (id: string, status: AlertStatus) => void; loadExplanation?: boolean; readOnly?: boolean;
 }) {
+  const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
   const [feedbackState, setFeedbackState] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [explanations, setExplanations] = useState<AlertExplanationStage[]>([]);
-  const [explanationState, setExplanationState] = useState<"loading" | "ready" | "empty" | "error">("loading");
+  const [explanationState, setExplanationState] = useState<"loading"|"ready"|"empty"|"error">("loading");
+  const [activeStage, setActiveStage] = useState(0);
 
   useEffect(() => {
+    restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeRef.current?.focus();
-    const close = (event: KeyboardEvent) => event.key === "Escape" && onClose();
-    addEventListener("keydown", close);
-    return () => removeEventListener("keydown", close);
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+      if (!focusable.length) return;
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    addEventListener("keydown", keydown);
+    return () => { removeEventListener("keydown", keydown); restoreRef.current?.focus(); };
   }, [onClose]);
 
   useEffect(() => {
-    if (!loadExplanation) {
-      setExplanationState("empty");
-      setExplanations([]);
-      return;
-    }
-    let cancelled = false;
-    setExplanationState("loading");
-    setExplanations([]);
-    void getAlertExplanation(alert.id).then((stages) => {
-      if (cancelled) return;
-      setExplanations(stages);
-      setExplanationState(stages.length ? "ready" : "empty");
-    }).catch(() => {
-      if (!cancelled) setExplanationState("error");
-    });
-    return () => { cancelled = true; };
-  }, [alert.id, loadExplanation]);
+    if (!loadExplanation) { setExplanationState("empty"); setExplanations([]); return; }
+    let cancelled=false; setExplanationState("loading"); setExplanations([]);
+    void getAlertExplanation(alert.id).then((items)=>{ if(!cancelled){setExplanations(items);setExplanationState(items.length?"ready":"empty");setActiveStage(0);}}).catch(()=>{if(!cancelled)setExplanationState("error")});
+    return ()=>{cancelled=true};
+  },[alert.id,loadExplanation]);
 
   const updateStatus = async (status: AlertStatus) => {
-    setSubmitting(true);
-    setFeedbackState("");
-    try {
-      await submitAlertFeedback(alert.id, {
-        analyst: "dashboard-analyst",
-        status,
-        notes: `Status changed to ${status.replace("_", " ")} from the dashboard.`,
-      });
-      onStatusChange(alert.id, status);
-      setFeedbackState(`Saved as ${status.replace("_", " ")}.`);
-    } catch (error) {
-      setFeedbackState(error instanceof Error ? error.message : "Could not save analyst feedback.");
-    } finally {
-      setSubmitting(false);
-    }
+    if (readOnly) return; setSubmitting(true); setFeedbackState("");
+    try { await submitAlertFeedback(alert.id,{analyst:"dashboard-analyst",status,notes:`Status changed to ${status.replace("_"," ")} from the dashboard.`}); onStatusChange(alert.id,status); setFeedbackState(`Saved as ${status.replace("_"," ")}.`); }
+    catch(error){setFeedbackState(error instanceof Error?error.message:"Could not save analyst feedback.");} finally{setSubmitting(false);}
   };
+  const current = explanations[activeStage];
+  const shown = current ? [...current.contributions].sort((a,b)=>Math.abs(b.impact)-Math.abs(a.impact)).slice(0,10) : [];
+  const remaining = current ? current.contributions.slice(10).reduce((sum,item)=>sum+item.impact,0) : 0;
+  const evidence = current ? [...shown.map(item=>({feature:item.feature,impact:item.impact,value:item.raw_value??undefined,evidence_type:"model_contribution" as const})), ...(current.contributions.length>10?[{feature:`Other ${current.contributions.length-10} features`,impact:remaining,evidence_type:"model_contribution" as const}]:[])] : [];
 
-  const contributionEvidence = alert.evidence_type === "model_contribution";
-  return (
-    <div
-      className="drawer-layer"
-      role="presentation"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
-    >
-      <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
-        <div className="drawer-header">
-          <div>
-            <SeverityLabel severity={alert.severity} />
-            <h2 id="drawer-title">{alert.attack_type}</h2>
-            <small>{alert.id} · {new Date(alert.timestamp).toLocaleString()}</small>
-          </div>
-          <button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close alert details">
-            <X aria-hidden="true" />
-          </button>
-        </div>
-
-        <section className="drawer-section">
-          <h3>Detection summary</h3>
-          <div className="summary-grid">
-            <div><span>Score</span><b>{(alert.confidence * 100).toFixed(1)}%</b></div>
-            <div><span>Status</span><b>{alert.status.replace("_", " ")}</b></div>
-            <div><span>Detector</span><b className="mono">{alert.detector_model_version ?? alert.model_version ?? "Not reported"}</b></div>
-            <div><span>Detection score</span><b>{((alert.detection_score ?? alert.confidence) * 100).toFixed(1)}%</b></div>
-            {alert.classifier_model_version ? (
-              <div><span>Classifier</span><b className="mono">{alert.classifier_model_version}</b></div>
-            ) : null}
-            {alert.attack_class_score != null ? (
-              <div><span>Class score</span><b>{(alert.attack_class_score * 100).toFixed(1)}%</b></div>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="drawer-section">
-          <h3>Observed route</h3>
-          <div className="route-card">
-            <span><small>Source</small><b>{alert.source_ip}</b></span>
-            <ArrowRight aria-hidden="true" />
-            <span><small>Destination</small><b>{alert.destination_ip}</b></span>
-          </div>
-          {alert.identity_quality === "port_only" && (
-            <p>Only transport ports are available in the current feature schema; these are not persistent device identities.</p>
-          )}
-        </section>
-
-        <section className="drawer-section">
-          <h3>Model explanation</h3>
-          <p>
-            Signed SHAP impacts explain this output relative to its base value. They are model attributions, not causal proof.
-          </p>
-          {explanationState === "loading" ? <div className="explanation-state" role="status">Computing explanation…</div> : null}
-          {explanationState === "error" ? <div className="explanation-state" role="status">On-demand explanation is unavailable.</div> : null}
-          {explanations.map((stage) => (
-            <article className="explanation-stage" key={`${stage.stage}-${stage.model_version}`}>
-              <div className="explanation-meta">
-                <div><span>Stage</span><b>{stage.stage === "binary" || stage.stage === "detector" ? "Detector" : "Classifier"}</b></div>
-                <div><span>Explained class</span><b>{stage.explained_class}</b></div>
-                <div><span>Base → output</span><b>{stage.base_value.toFixed(3)} → {stage.output_value.toFixed(3)}</b></div>
-                <div><span>Method</span><b>{stage.method}</b></div>
-              </div>
-              <EvidenceChart
-                evidence={stage.contributions.map((item) => ({
-                  feature: item.feature,
-                  impact: item.impact,
-                  value: item.raw_value ?? undefined,
-                  evidence_type: "model_contribution",
-                }))}
-                height={Math.max(220, Math.min(340, stage.contributions.length * 27 + 70))}
-              />
-            </article>
-          ))}
-          {explanationState === "empty" && contributionEvidence && alert.explanations?.length ? (
-            <EvidenceChart evidence={alert.explanations} height={260} />
-          ) : null}
-          {explanationState === "empty" && !contributionEvidence ? (
-            <div className="evidence-list">
-              {(alert.explanations ?? []).map((item) => (
-                <div className="evidence-row" key={item.feature}>
-                  <span>{item.feature}</span>
-                  <b className="mono">{String(item.value ?? item.impact)}</b>
-                </div>
-              ))}
-              {!alert.explanations?.length && <span className="panel-heading-meta">No feature evidence was returned.</span>}
-            </div>
-          ) : null}
-        </section>
-
-        {!!alert.reasons?.length && (
-          <section className="drawer-section">
-            <h3>Detection reasons</h3>
-            {alert.reasons.map((reason) => <p key={reason}>{reason}</p>)}
-          </section>
-        )}
-
-        <section className="drawer-section">
-          <h3>Raw flow features</h3>
-          <dl className="feature-grid">
-            {Object.entries(alert.features ?? {}).map(([key, value]) => (
-              <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{value}</dd></div>
-            ))}
-          </dl>
-        </section>
-
-        <section className="drawer-section">
-          <h3>Analyst action</h3>
-          <div className="drawer-actions">
-            <button className="primary-button" disabled={submitting} onClick={() => updateStatus("investigating")}>
-              Start investigation
-            </button>
-            <button className="secondary-button" disabled={submitting} onClick={() => updateStatus("false_positive")}>
-              Mark false positive
-            </button>
-            <button className="secondary-button" disabled={submitting} onClick={() => updateStatus("resolved")}>
-              <CheckCircle2 aria-hidden="true" /> Resolve
-            </button>
-          </div>
-          {feedbackState && <div className="feedback-state" role="status">{feedbackState}</div>}
-        </section>
-      </aside>
-    </div>
-  );
+  return <div className="drawer-layer" role="presentation" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><aside ref={dialogRef} className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+    <div className="drawer-header"><div><SeverityLabel severity={alert.severity}/><h2 id="drawer-title">{alert.attack_type}</h2><small>{alert.id} · {new Date(alert.timestamp).toLocaleString()}</small></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close alert details"><X/></button></div>
+    <section className="drawer-section"><h3>Detection summary</h3><div className="summary-grid"><div><span>Detector score</span><b>{(alert.confidence*100).toFixed(1)}%</b></div><div><span>Status</span><b>{alert.status.replace("_"," ")}</b></div><div><span>Detector</span><b className="mono">{alert.detector_model_version??alert.model_version??"Not reported"}</b></div>{alert.classifier_model_version?<div><span>Classifier</span><b className="mono">{alert.classifier_model_version}</b></div>:null}{alert.attack_class_score!=null?<div><span>Class score</span><b>{(alert.attack_class_score*100).toFixed(1)}%</b></div>:null}</div></section>
+    <section className="drawer-section"><h3>Observed route</h3><div className="route-card"><span><small>Source</small><b>{alert.source_ip}</b></span><ArrowRight/><span><small>Destination</small><b>{alert.destination_ip}</b></span></div>{alert.identity_quality==="port_only"?<p>Only transport ports are available; they are not persistent device identities.</p>:null}</section>
+    <section className="drawer-section"><h3>Model explanation</h3><p>Signed SHAP impacts explain this model output relative to its base value. They are associations inside the model, not causal proof.</p>
+      {explanationState==="loading"?<div className="explanation-state" role="status">Computing explanation…</div>:null}{explanationState==="error"?<div className="explanation-state" role="alert">On-demand explanation is unavailable.</div>:null}
+      {explanations.length>1?<div className="stage-tabs" role="tablist" aria-label="Explanation stage">{explanations.map((item,index)=><button key={`${item.stage}-${item.model_version}`} role="tab" aria-selected={activeStage===index} onClick={()=>setActiveStage(index)}>{item.stage==="binary"||item.stage==="detector"?"Detector":"Classifier"}</button>)}</div>:null}
+      {current?<article className="explanation-stage"><div className="explanation-meta"><div><span>Explained class</span><b>{current.explained_class}</b></div><div><span>Model version</span><b>{current.model_version}</b></div><div><span>Base → output</span><b>{current.base_value.toFixed(4)} → {current.output_value.toFixed(4)}</b></div><div><span>Units / method</span><b>{current.output_units??"model output"} · {current.method}</b></div></div><EvidenceChart evidence={evidence} height={Math.max(240,evidence.length*30+80)}/><div className="preview-scroll"><table className="evidence-table"><caption>Exact signed feature impacts</caption><thead><tr><th>Transformed feature</th><th>Raw feature</th><th>Raw value</th><th>Transformed value</th><th>Impact</th></tr></thead><tbody>{shown.map((item)=><tr key={item.feature}><td>{item.feature}</td><td>{item.raw_feature??"—"}</td><td>{String(item.raw_value??"—")}</td><td>{String(item.transformed_value??"—")}</td><td>{item.impact.toFixed(6)}</td></tr>)}{current.contributions.length>10?<tr><td colSpan={4}>Other {current.contributions.length-10} features</td><td>{remaining.toFixed(6)}</td></tr>:null}</tbody></table></div></article>:null}
+      {explanationState==="empty"?<div className="explanation-state">No SHAP explanation was returned for this alert.</div>:null}
+    </section>
+    {!!alert.reasons?.length?<section className="drawer-section"><h3>Severity reasons</h3>{alert.reasons.map(reason=><p key={reason}>{reason}</p>)}</section>:null}
+    <section className="drawer-section"><h3>Raw flow features</h3><dl className="feature-grid">{Object.entries(alert.features??{}).map(([key,value])=><div key={key}><dt>{key.replaceAll("_"," ")}</dt><dd>{value}</dd></div>)}</dl></section>
+    <section className="drawer-section"><h3>Analyst action</h3>{readOnly?<p className="readonly-note">Fixture data is read-only. Connect the API to persist analyst feedback.</p>:null}<div className="drawer-actions"><button className="primary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("investigating")}>Start investigation</button><button className="secondary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("confirmed")}>Confirm alert</button><button className="secondary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("false_positive")}>Mark false positive</button><button className="secondary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("resolved")}><CheckCircle2/>Resolve</button></div>{feedbackState?<div className="feedback-state" role="status">{feedbackState}</div>:null}</section>
+  </aside></div>;
 }

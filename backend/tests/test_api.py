@@ -14,6 +14,13 @@ async def test_health_models_and_packaged_prediction(client: httpx.AsyncClient) 
     assert health.json()["dataset_checksum"] is None
     assert health.json()["production_bundle_valid"] is True
     assert health.json()["fallback_status"]["active"] is False
+    assert health.json()["instance_id"] == "backend-test-production"
+    assert health.json()["readiness"] == "blocked"
+    assert health.json()["components"]["dataset"]["status"] == "blocked"
+    assert health.json()["components"]["detector"]["status"] == "ready"
+    assert health.json()["components"]["classifier"]["status"] == "ready"
+    assert health.json()["components"]["bundle"]["valid"] is True
+    assert health.json()["checked_at"]
 
     models = await client.get("/models")
     assert models.status_code == 200
@@ -58,9 +65,21 @@ async def test_stage_evaluation_is_compact_and_requires_filter(
     assert champion["test_metrics"]["macro_f1"] > 0
     assert champion["class_support"]["normal"] > 0
     assert champion["selection_value"] > 0
+    assert len(body["threshold_analysis"]["points"]) > 10
+    assert body["threshold_analysis"]["operating_threshold"] == 0.5
+    assert body["cascade_summary"]["detector_false_negatives"] >= 0
+    assert body["cascade_summary"] == body["cascade_evaluation"]
     assert "Random-split evidence is not deployment validation." in body[
         "measurement_notes"
     ]
+
+    multiclass = (
+        await client.get("/evaluation", params={"stage": "multiclass"})
+    ).json()
+    assert all(
+        candidate["test_metrics"]["false_positive_rate"] is None
+        for candidate in multiclass["candidates"]
+    )
 
 
 @pytest.mark.anyio
@@ -105,6 +124,7 @@ async def test_fallback_exposes_status_but_not_false_shap_claims(
     assert health["dataset_ready"] is True
     assert len(health["dataset_checksum"]) == 64
     assert health["dataset_checksum_matches_training"] is None
+    assert health["readiness"] == "degraded"
     assert (await fallback_client.get("/evaluation", params={"stage": "binary"})).status_code == 503
 
     payload = observation()

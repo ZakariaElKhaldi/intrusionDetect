@@ -6,11 +6,13 @@ import httpx
 import pytest
 from conftest import observation
 
+from app.config import Settings
 from app.database.models import Base
 from app.database.session import create_engine_and_session
 from app.features.canonical_schema import FlowObservation
 from app.inference.model_registry import ModelRegistry
 from app.live import LiveConnectionManager
+from app.main import create_app
 from app.service import process_observation
 
 
@@ -117,3 +119,29 @@ async def test_normal_prediction_broadcasts_no_alert_event(tmp_path) -> None:
     assert response.alert_id is None
     assert [message["type"] for message in socket.messages] == ["prediction.created"]
     engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_batch_failure_rolls_back_every_row_and_broadcasts_nothing(tmp_path) -> None:
+    app = create_app(
+        Settings(
+            database_url=f"sqlite:///{tmp_path / 'atomic.db'}",
+            allow_fallback=True,
+            instance_id="atomic-test",
+        )
+    )
+    socket = FakeSocket()
+    app.state.live.connections.add(socket)  # type: ignore[arg-type]
+    duplicate = observation()
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/predict/batch", json={"observations": [duplicate, duplicate]}
+            )
+            assert response.status_code == 409
+            summary = (await client.get("/dashboard/summary", params={"range": "all"})).json()
+            assert summary["predictions"]["total"] == 0
+            assert (await client.get("/alerts")).json() == []
+    assert socket.messages == []

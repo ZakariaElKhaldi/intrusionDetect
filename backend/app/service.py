@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from time import perf_counter
 from uuid import UUID
 
@@ -14,12 +15,17 @@ from app.inference.predictor import run_inference
 from app.live import LiveConnectionManager
 
 
-async def process_observation(
+@dataclass(frozen=True, slots=True)
+class StagedObservation:
+    response: PredictionResponse
+    events: tuple[dict, ...]
+
+
+def stage_observation(
     observation: FlowObservation,
     session: Session,
     registry: ModelRegistry,
-    live: LiveConnectionManager,
-) -> PredictionResponse:
+) -> StagedObservation:
     started = perf_counter()
     event_id = str(observation.event_id)
     if session.get(Observation, event_id):
@@ -74,7 +80,6 @@ async def process_observation(
 
     end_to_end = (perf_counter() - started) * 1000
     prediction_row.end_to_end_latency_ms = end_to_end
-    session.commit()
     response = PredictionResponse(
         prediction_id=UUID(prediction_row.prediction_id),
         event_id=observation.event_id,
@@ -95,11 +100,11 @@ async def process_observation(
         total_latency_ms=end_to_end,
         alert_id=UUID(alert_row.alert_id) if alert_row else None,
     )
-    await live.broadcast(
+    events: list[dict] = [
         {"type": "prediction.created", "data": response.model_dump(mode="json")}
-    )
+    ]
     if alert_row:
-        await live.broadcast(
+        events.append(
             {
                 "type": "alert.created",
                 "data": {
@@ -118,8 +123,30 @@ async def process_observation(
                     "confidence": inference.confidence,
                     "detection_score": inference.detection_score,
                     "attack_class_score": inference.attack_class_score,
+                    "detector_latency_ms": inference.detector_latency_ms,
+                    "classifier_latency_ms": inference.classifier_latency_ms,
+                    "total_latency_ms": end_to_end,
                     "raw_features": observation.features,
                 },
             }
         )
-    return response
+    return StagedObservation(response=response, events=tuple(events))
+
+
+async def broadcast_staged(
+    staged: StagedObservation, live: LiveConnectionManager
+) -> None:
+    for event in staged.events:
+        await live.broadcast(event)
+
+
+async def process_observation(
+    observation: FlowObservation,
+    session: Session,
+    registry: ModelRegistry,
+    live: LiveConnectionManager,
+) -> PredictionResponse:
+    staged = stage_observation(observation, session, registry)
+    session.commit()
+    await broadcast_staged(staged, live)
+    return staged.response

@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 interface ReplayStatus {
   status: string;
@@ -7,101 +8,256 @@ interface ReplayStatus {
   error: string | null;
 }
 
+const pages = [
+  ["overview", "Live overview"],
+  ["alerts", "Alert investigation"],
+  ["topology", "Network topology"],
+  ["models", "Model analysis"],
+  ["testing", "Observation lab"],
+] as const;
+
+async function apiJson<T>(request: APIRequestContext, path: string): Promise<T> {
+  const response = await request.get(`/api/v1${path}`);
+  expect(response.ok(), `${path} returned ${response.status()}`).toBeTruthy();
+  return await response.json() as T;
+}
+
 async function waitForReplay(
   request: APIRequestContext,
   expected: string,
 ): Promise<ReplayStatus> {
-  return expect.poll(async () => {
-    const response = await request.get("http://127.0.0.1:8001/api/v1/replay/status");
-    expect(response.ok()).toBeTruthy();
-    return (await response.json() as ReplayStatus).status;
-  }, { timeout: 30_000 }).toBe(expected).then(async () => {
-    const response = await request.get("http://127.0.0.1:8001/api/v1/replay/status");
-    return await response.json() as ReplayStatus;
+  await expect.poll(async () => (
+    await apiJson<ReplayStatus>(request, "/replay/status")
+  ).status, { timeout: 30_000 }).toBe(expected);
+  return apiJson<ReplayStatus>(request, "/replay/status");
+}
+
+async function waitForConnectedPage(page: Page, view = "overview") {
+  await page.goto(`/?view=${view}`);
+  await expect(page.getByText("System connected")).toBeVisible();
+  await expect(page.locator(".system-status small")).toContainText("stream live", {
+    timeout: 10_000,
   });
 }
 
-test.describe.serial("jury path with promoted models", () => {
-  test("fresh connected UI has no fixture alerts", async ({ page, request }) => {
-    const health = await request.get("http://127.0.0.1:8001/health");
-    expect(health.ok()).toBeTruthy();
-    expect((await health.json()).fallback).toBeFalsy();
-    expect(await (await request.get("http://127.0.0.1:8001/alerts")).json()).toEqual([]);
+async function startReplayFromBrowser(
+  page: Page,
+  scenario: string,
+  limit: number,
+  speed = "4",
+) {
+  await page.getByLabel("Replay scenario").selectOption(scenario);
+  await page.getByLabel("Replay speed").selectOption(speed);
+  await page.getByLabel("Replay limit").fill(String(limit));
+  await page.getByRole("button", { name: "Start replay" }).click();
+}
 
-    await page.goto("/");
-    await expect(page.getByText("System connected")).toBeVisible();
+async function attachViewport(page: Page, name: string) {
+  const image = await page.screenshot({
+    animations: "disabled",
+    fullPage: false,
+    caret: "hide",
+  });
+  expect(image.byteLength).toBeGreaterThan(1_000);
+  await test.info().attach(name, { body: image, contentType: "image/png" });
+}
+
+function runtimeIssues(page: Page) {
+  const issues: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") issues.push(`console: ${message.text()}`);
+  });
+  page.on("requestfailed", (request) => {
+    issues.push(`request: ${request.method()} ${request.url()} ${request.failure()?.errorText}`);
+  });
+  return issues;
+}
+
+test.describe.serial("production-preview jury path", () => {
+  test("owns the expected backend instance and starts with honest empty data", async ({ page, request }) => {
+    const issues = runtimeIssues(page);
+    const health = await apiJson<Record<string, unknown>>(request, "/health");
+    expect(health.instance_id).toBe("jury-e2e-production-preview");
+    expect(health.fallback).toBeFalsy();
+    expect(health.production_bundle_valid).toBe(true);
+    expect(await apiJson<unknown[]>(request, "/alerts")).toEqual([]);
+
+    await waitForConnectedPage(page);
     await expect(page.getByText("Fixture data", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("No unresolved alerts in the current dataset.")).toBeVisible();
+    await attachViewport(page, "01-empty-overview.png");
+    expect(issues).toEqual([]);
   });
 
-  test("normal replay persists predictions without alerts", async ({ request }) => {
-    const response = await request.post("http://127.0.0.1:8001/api/v1/replay/start", {
-      data: { mode: "dataset", scenario: "normal", limit: 8, interval_ms: 0, speed: 100 },
+  test("normal replay is controlled in the browser and streams predictions without alerts", async ({ page, request }) => {
+    const issues = runtimeIssues(page);
+    await waitForConnectedPage(page);
+    await startReplayFromBrowser(page, "normal", 8);
+    await expect(page.getByText("Replay completed", { exact: true })).toBeVisible({
+      timeout: 15_000,
     });
-    expect(response.status()).toBe(202);
-    const status = await waitForReplay(request, "completed");
-    expect(status.processed).toBe(8);
-    expect(await (await request.get("http://127.0.0.1:8001/alerts")).json()).toEqual([]);
+    await expect(
+      page.locator("article.metric").filter({ hasText: "Live predictions" }).locator("strong"),
+    ).toHaveText("8");
+    expect((await waitForReplay(request, "completed")).processed).toBe(8);
+    expect(await apiJson<unknown[]>(request, "/alerts")).toEqual([]);
+    expect(issues).toEqual([]);
   });
 
-  test("attack replay completes and exposes both model versions", async ({ page, request }) => {
-    const response = await request.post("http://127.0.0.1:8001/api/v1/replay/start", {
-      data: { mode: "dataset", scenario: "attack", limit: 8, interval_ms: 0, speed: 100 },
+  test("attack replay streams alerts into the UI without reload", async ({ page, request }) => {
+    const issues = runtimeIssues(page);
+    await waitForConnectedPage(page);
+    await startReplayFromBrowser(page, "attack", 8);
+    await expect(page.getByText("Replay completed", { exact: true })).toBeVisible({
+      timeout: 20_000,
     });
-    expect(response.status()).toBe(202);
-    await waitForReplay(request, "completed");
-    const alerts = await (await request.get("http://127.0.0.1:8001/alerts")).json();
+    const newAlerts = page.getByLabel(/new alerts/);
+    await expect(newAlerts).toBeVisible();
+    await page.getByRole("button", { name: "Alerts", exact: true }).click();
+    const firstRow = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
+    await expect(firstRow).toBeVisible();
+    const alerts = await apiJson<Record<string, unknown>[]>(request, "/alerts");
     expect(alerts.length).toBeGreaterThan(0);
     expect(alerts[0].detector_model_version).toBeTruthy();
     expect(alerts[0].classifier_model_version).toBeTruthy();
+    await attachViewport(page, "02-live-attack-alerts.png");
+    expect(issues).toEqual([]);
+  });
 
-    await page.goto("/?view=alerts");
+  test("reload hydrates alerts, SHAP works, feedback persists, and focus is restored", async ({ page }) => {
+    await waitForConnectedPage(page, "alerts");
     const row = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
     await expect(row).toBeVisible();
-    await row.click();
-    const explanationStages = page.getByRole("dialog").locator(".explanation-stage");
+    await row.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close alert details" })).toBeFocused();
+    const explanationStages = dialog.locator(".explanation-stage");
     await expect(explanationStages).toHaveCount(2, { timeout: 15_000 });
     await expect(explanationStages.nth(0)).toContainText("Detector");
     await expect(explanationStages.nth(1)).toContainText("Classifier");
-    await expect(page.getByText("On-demand explanation is unavailable.")).toHaveCount(0);
-  });
-
-  test("pause, resume, and stop are valid lifecycle transitions", async ({ request }) => {
-    expect((await request.post("http://127.0.0.1:8001/api/v1/replay/start", {
-      data: { mode: "dataset", scenario: "attack", limit: 100, interval_ms: 100, speed: 1 },
-    })).status()).toBe(202);
-    expect((await request.post("http://127.0.0.1:8001/api/v1/replay/pause")).ok()).toBeTruthy();
-    await waitForReplay(request, "paused");
-    expect((await request.post("http://127.0.0.1:8001/api/v1/replay/resume", {
-      data: { speed: 4 },
-    })).ok()).toBeTruthy();
-    await waitForReplay(request, "running");
-    expect((await request.post("http://127.0.0.1:8001/api/v1/replay/stop")).ok()).toBeTruthy();
-    await waitForReplay(request, "stopped");
-  });
-
-  test("analyst feedback remains after reload", async ({ page }) => {
-    await page.goto("/?view=alerts");
-    await page.getByRole("table", { name: "Security alerts" }).getByRole("row").first().click();
     await page.getByRole("button", { name: "Resolve" }).click();
     await expect(page.getByText("Saved as resolved.", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(row).toBeFocused();
+
     await page.reload();
-    await page.getByRole("table", { name: "Security alerts" }).getByRole("row").first().click();
+    const hydratedRow = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
+    await hydratedRow.click();
     await expect(page.getByText("resolved", { exact: true }).first()).toBeVisible();
   });
 
-  test("core dashboard stays within desktop, projector, tablet, and mobile viewports", async ({ page }) => {
+  test("pause, resume, and stop use browser controls and preserve progress", async ({ page, request }) => {
+    await waitForConnectedPage(page);
+    await startReplayFromBrowser(page, "attack", 100, "0.5");
+    await expect(page.getByRole("button", { name: "Pause replay" })).toBeVisible();
+    await page.waitForTimeout(500);
+    await page.getByRole("button", { name: "Pause replay" }).click();
+    await expect(page.getByText("Replay paused", { exact: true })).toBeVisible();
+    const paused = await apiJson<ReplayStatus>(request, "/replay/status");
+    await page.waitForTimeout(800);
+    expect((await apiJson<ReplayStatus>(request, "/replay/status")).processed).toBe(
+      paused.processed,
+    );
+    await page.getByRole("button", { name: "Resume replay" }).click();
+    await expect(page.getByText("Replay running", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Stop replay" }).click();
+    await expect(page.getByText("Replay stopped", { exact: true })).toBeVisible();
+    expect((await waitForReplay(request, "stopped")).processed).toBeGreaterThanOrEqual(
+      paused.processed,
+    );
+  });
+
+  test("replay request failures are explicit and recoverable", async ({ page }) => {
+    await waitForConnectedPage(page);
+    await page.route("**/api/v1/replay/start", async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Audit-injected replay failure" }),
+      });
+    });
+    await startReplayFromBrowser(page, "attack", 3);
+    await expect(page.getByRole("alert")).toContainText("Audit-injected replay failure");
+    await expect(page.getByRole("button", { name: "Start replay" })).toBeEnabled();
+    await page.unroute("**/api/v1/replay/start");
+  });
+
+  test("all pages expose accessible landmarks and no serious axe violations", async ({ page }) => {
+    for (const [view, title] of pages) {
+      await waitForConnectedPage(page, view);
+      await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+      await expect(page.getByRole("main")).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
+      if (view === "models") {
+        await page.getByRole("button", { name: "Classifier", exact: true }).click();
+        await expect(page.getByText("Attack-family comparison")).toBeVisible();
+      }
+      const results = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .analyze();
+      const blocking = results.violations.filter((violation) =>
+        violation.impact === "serious" || violation.impact === "critical"
+      );
+      expect(blocking, `${view}: ${blocking.map((item) => item.id).join(", ")}`).toEqual([]);
+      if (["overview", "models", "testing"].includes(view)) {
+        await attachViewport(page, `page-${view}.png`);
+      }
+    }
+  });
+
+  test("navigation and alert investigation remain keyboard operable", async ({ page }) => {
+    await waitForConnectedPage(page);
+    const alertsButton = page.getByRole("button", { name: "Alerts", exact: true });
+    await alertsButton.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { level: 1, name: "Alert investigation" })).toBeVisible();
+    const row = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
+    await row.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(row).toBeFocused();
+  });
+
+  test("desktop, projector, tablet, mobile, and 400%-equivalent reflow do not overflow", async ({ page }) => {
     for (const viewport of [
-      { width: 1440, height: 900 },
-      { width: 1280, height: 720 },
-      { width: 768, height: 1024 },
-      { width: 390, height: 844 },
+      { name: "desktop", width: 1440, height: 900 },
+      { name: "projector", width: 1280, height: 720 },
+      { name: "tablet", width: 768, height: 1024 },
+      { name: "mobile", width: 390, height: 844 },
+      { name: "reflow-400-percent", width: 320, height: 720 },
     ]) {
       await page.setViewportSize(viewport);
-      await page.goto("/");
-      await expect(page.locator("#main-content")).toBeVisible();
+      await waitForConnectedPage(page);
       expect(await page.evaluate(
         () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-      )).toBeTruthy();
+      ), viewport.name).toBeTruthy();
+      await expect(page.getByRole("button", { name: "Start replay" })).toBeVisible();
     }
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    for (const [view] of pages) {
+      await waitForConnectedPage(page, view);
+      expect(await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ), `${view} at mobile width`).toBeTruthy();
+    }
+    await waitForConnectedPage(page, "alerts");
+    const row = page.getByRole("table", { name: "Security alerts" }).getByRole("row").first();
+    await expect(row).toBeVisible();
+    const rowFits = await row.evaluate((element) => {
+      const rowRect = element.getBoundingClientRect();
+      return [...element.children].every((child) => {
+        const rect = child.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return true;
+        return rect.left >= rowRect.left - 1 && rect.right <= rowRect.right + 1;
+      });
+    });
+    expect(rowFits, "mobile alert cells must remain within their row").toBeTruthy();
+    await attachViewport(page, "03-mobile-alert-rows.png");
   });
 });

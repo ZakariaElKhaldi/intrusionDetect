@@ -46,6 +46,7 @@ class DatasetHealthCache:
                 error = "dataset checksum does not match the promoted training dataset"
             result = {
                 "status": "ready" if error is None else "blocked",
+                "reason": error or "dataset schema and checksum checks passed",
                 "ready": error is None,
                 "path": str(self.path),
                 "checksum": checksum,
@@ -63,6 +64,7 @@ class DatasetHealthCache:
     def _unavailable(self, error: str) -> dict[str, Any]:
         return {
             "status": "blocked",
+            "reason": error,
             "ready": False,
             "path": str(self.path) if self.path else None,
             "checksum": None,

@@ -7,7 +7,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import alerts, live, models, predictions, replay
+from app.api import alerts, dashboard, live, models, predictions, replay
 from app.config import Settings
 from app.database.models import Base, ModelVersion
 from app.database.session import create_engine_and_session
@@ -84,6 +84,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if fallback_active
             else "blocked"
         )
+        detector_fallback = bool(registry.detector.metadata.get("fallback"))
+        classifier_fallback = bool(registry.classifier.metadata.get("fallback"))
+        model_reason = (
+            "validated promoted artifacts are active"
+            if model_status == "ready"
+            else "development fallback models are active"
+            if model_status == "degraded"
+            else "validated model artifacts are unavailable"
+        )
         database_error = None
         try:
             with session_factory() as session:
@@ -125,22 +134,64 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "production_bundle_valid": registry.production_bundle_valid,
             "live_connections": len(app.state.live.connections),
             "components": {
-                "api": {"status": "ready"},
-                "database": {"status": database_status, "error": database_error},
+                "api": {"status": "ready", "reason": "HTTP API is serving requests"},
+                "database": {
+                    "status": database_status,
+                    "reason": database_error or "database connectivity check passed",
+                    "error": database_error,
+                },
                 "dataset": dataset,
                 "models": {
                     "status": model_status,
+                    "reason": model_reason,
                     "production_bundle_valid": registry.production_bundle_valid,
                     "detector_model_version": registry.detector.version,
                     "classifier_model_version": registry.classifier.version,
                 },
-                "fallback": {"status": "degraded" if fallback_active else "ready", "active": fallback_active},
+                "detector": {
+                    "status": "degraded" if detector_fallback else "ready",
+                    "reason": (
+                        "development fallback detector is active"
+                        if detector_fallback
+                        else "promoted detector artifact is active"
+                    ),
+                    "model_version": registry.detector.version,
+                    "fallback": detector_fallback,
+                },
+                "classifier": {
+                    "status": "degraded" if classifier_fallback else "ready",
+                    "reason": (
+                        "development fallback classifier is active"
+                        if classifier_fallback
+                        else "promoted classifier artifact is active"
+                    ),
+                    "model_version": registry.classifier.version,
+                    "fallback": classifier_fallback,
+                },
+                "bundle": {
+                    "status": model_status,
+                    "reason": model_reason,
+                    "valid": registry.production_bundle_valid,
+                },
+                "fallback": {
+                    "status": "degraded" if fallback_active else "ready",
+                    "active": fallback_active,
+                    "reason": (
+                        "fallback inference is active"
+                        if fallback_active
+                        else "fallback inference is inactive"
+                    ),
+                },
                 "stream": {
                     "status": "ready",
+                    "reason": "WebSocket event stream is accepting connections",
                     "connections": len(app.state.live.connections),
                 },
                 "replay": {
                     "status": "blocked" if not dataset["ready"] else "ready",
+                    "reason": (
+                        dataset["error"] or "validated replay dataset is available"
+                    ),
                     "lifecycle": app.state.replay.state.status,
                 },
             },
@@ -149,6 +200,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     router = APIRouter()
     router.include_router(predictions.router)
     router.include_router(alerts.router)
+    router.include_router(dashboard.router)
     router.include_router(models.router)
     router.include_router(replay.router)
     router.include_router(live.router)

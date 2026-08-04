@@ -74,7 +74,7 @@ function App() {
   const [alertsError, setAlertsError] = useState("");
   const [modelsError, setModelsError] = useState("");
   const [socketState, setSocketState] = useState<SocketState>("connecting");
-  const [lastUpdate, setLastUpdate] = useState(() => new Date());
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [livePredictionCount, setLivePredictionCount] = useState(0);
   const [alertsLoading, setAlertsLoading] = useState(!fixtureMode);
   const [modelsLoading, setModelsLoading] = useState(!fixtureMode);
@@ -249,6 +249,12 @@ function App() {
     setPage(nextPage);
   }, [fixtureMode]);
 
+  useEffect(() => {
+    const [nextTitle] = pageTitles[page];
+    document.title = `${nextTitle} · Sentinel`;
+    document.getElementById("main-content")?.focus({ preventScroll: true });
+  }, [page]);
+
   const openAlert = useCallback(async (alert: Alert) => {
     setSelectedAlert(alert);
     if (fixtureMode) return;
@@ -304,13 +310,12 @@ function App() {
     [navigate],
   );
 
-  const replayActive = replay && ["running", "paused"].includes(replay.status);
-  const replayProgress = replay?.total ? Math.min(100, (replay.processed / replay.total) * 100) : 0;
   const sourceLabel = fixtureMode ? "Fixture data" : health ? "Live API" : healthChecked ? "API unavailable" : "Checking source";
   const [title, subtitle] = pageTitles[page];
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <aside className="sidebar">
         <button className="brand" type="button" onClick={() => navigate("overview")}>
           <span className="brand-mark" aria-hidden="true">
@@ -388,8 +393,9 @@ function App() {
 
         <main id="main-content" tabIndex={-1}>
           {!fixtureMode && healthChecked && !health ? (
-            <div className="offline-notice" role="alert">
-              Backend unavailable. No fixture records are mixed into this connected workspace.
+            <div className="offline-notice" role="alert" data-state="offline">
+              <span>Backend unavailable. No fixture records are mixed into this connected workspace.</span>
+              <button className="secondary-button" type="button" onClick={() => void loadConnectedData()}>Retry connection</button>
             </div>
           ) : null}
           {healthError && health ? <div className="inline-notice" role="alert">{healthError}</div> : null}
@@ -457,6 +463,7 @@ function App() {
             onClose={() => setSelectedAlert(null)}
             onStatusChange={updateAlertStatus}
             loadExplanation={!fixtureMode}
+            readOnly={fixtureMode}
           />
         </Suspense>
       ) : null}

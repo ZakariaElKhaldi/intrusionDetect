@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.schemas import (
     AlertDetail,
@@ -68,6 +69,83 @@ async def list_alerts(
         return responses
 
 
+@router.get("/alerts/page", response_model=AlertPage)
+async def page_alerts(
+    request: Request,
+    severity: str | None = None,
+    alert_status: str | None = Query(default=None, alias="status"),
+    family: str | None = None,
+    query: str | None = Query(default=None, alias="q", max_length=256),
+    from_time: Annotated[datetime | None, Query(alias="from")] = None,
+    to_time: Annotated[datetime | None, Query(alias="to")] = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> AlertPage:
+    if from_time and to_time and from_time >= to_time:
+        raise HTTPException(status_code=422, detail="from must be earlier than to")
+    with request.app.state.SessionLocal() as session:
+        statement = (
+            select(Alert, Prediction, Observation)
+            .join(Prediction, Prediction.prediction_id == Alert.prediction_id)
+            .join(Observation, Observation.event_id == Alert.event_id)
+        )
+        if severity:
+            statement = statement.where(Alert.severity == severity)
+        if alert_status:
+            statement = statement.where(Alert.status == alert_status)
+        if family:
+            statement = statement.where(Prediction.attack_class == family)
+        if from_time:
+            statement = statement.where(Alert.created_at >= from_time)
+        if to_time:
+            statement = statement.where(Alert.created_at < to_time)
+        if query and query.strip():
+            rows = list(session.execute(statement.order_by(Alert.created_at.desc())).all())
+            needle = query.casefold().strip()
+
+            def matches(row) -> bool:
+                alert, prediction, observation = row
+                features = observation.raw_features
+                values = (
+                    alert.alert_id,
+                    prediction.attack_class or "",
+                    str(features.get("source_ip", features.get("src_ip", ""))),
+                    str(features.get("destination_ip", features.get("dst_ip", ""))),
+                    str(features.get("id.orig_p", "")),
+                    str(features.get("id.resp_p", "")),
+                    str(features.get("proto", "")),
+                    str(features.get("service", "")),
+                )
+                return any(needle in value.casefold() for value in values)
+
+            rows = [row for row in rows if matches(row)]
+            total = len(rows)
+            page_rows = rows[offset : offset + limit]
+        else:
+            total = int(
+                session.scalar(
+                    select(func.count()).select_from(statement.order_by(None).subquery())
+                )
+                or 0
+            )
+            page_rows = list(
+                session.execute(
+                    statement.order_by(Alert.created_at.desc()).offset(offset).limit(limit)
+                ).all()
+            )
+        items = [
+            _alert_response(alert, prediction, observation)
+            for alert, prediction, observation in page_rows
+        ]
+        return AlertPage(
+            items=items,
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_more=offset + len(items) < total,
+        )
+
+
 @router.get("/alerts/{alert_id}", response_model=AlertDetail)
 async def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
     with request.app.state.SessionLocal() as session:
@@ -99,6 +177,9 @@ async def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
             confidence=prediction.confidence,
             detection_score=prediction.detection_score,
             attack_class_score=prediction.attack_class_score,
+            detector_latency_ms=prediction.detector_latency_ms,
+            classifier_latency_ms=prediction.classifier_latency_ms,
+            total_latency_ms=prediction.end_to_end_latency_ms,
             raw_features=observation.raw_features,
             feedback=feedback,
         )

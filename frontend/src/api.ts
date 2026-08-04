@@ -313,7 +313,7 @@ export async function getModels(): Promise<ModelInfo[]> {
       status: model.active ? "active" : "candidate",
       macro_f1: Number(metrics.macro_f1 ?? 0),
       weighted_f1: Number(metrics.weighted_f1 ?? 0),
-      false_positive_rate: Number(metrics.false_positive_rate ?? 0),
+      false_positive_rate: optionalNumber(metrics.false_positive_rate),
       inference_ms: Number(metrics.inference_ms ?? 0),
       trained_at: typeof model.metadata_json?.trained_at === "string" ? model.metadata_json.trained_at : undefined,
       classes: Array.isArray(metrics.classes) ? metrics.classes.map(String) : undefined,
@@ -329,6 +329,10 @@ function numericRecord(value: unknown): Record<string, number> | undefined {
   const entries = Object.entries(value as Record<string, unknown>)
     .filter((entry): entry is [string, number] => typeof entry[1] === "number");
   return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function evaluationCandidate(value: unknown, champion?: string): EvaluationCandidate | null {
@@ -349,7 +353,7 @@ function evaluationCandidate(value: unknown, champion?: string): EvaluationCandi
     selected: Boolean(row.selected) || champion === name,
     macro_f1: Number(test.macro_f1 ?? row.macro_f1 ?? 0),
     weighted_f1: Number(test.weighted_f1 ?? row.weighted_f1 ?? 0),
-    false_positive_rate: Number(test.false_positive_rate ?? test.fpr ?? row.false_positive_rate ?? 0),
+    false_positive_rate: optionalNumber(test.false_positive_rate ?? test.fpr ?? row.false_positive_rate),
     inference_ms: Number(operational.median_inference_latency_ms ?? operational.p50_latency_ms ?? operational.inference_ms ?? row.inference_ms ?? 0),
     classes: Array.isArray(classes) ? classes.map(String) : undefined,
     confusion_matrix: Array.isArray(matrix) ? matrix as number[][] : undefined,
@@ -376,6 +380,11 @@ export async function getEvaluation(stage: "binary" | "multiclass"): Promise<Eva
     ? body.candidates
     : Array.isArray(body.models) ? body.models : Array.isArray(payload) ? payload : [];
   const notes = body.measurement_notes ?? body.notes;
+  const threshold = body.threshold_analysis && typeof body.threshold_analysis === "object"
+    ? body.threshold_analysis as Record<string, unknown> : undefined;
+  const cascadeValue = body.cascade_evaluation ?? body.cascade_summary;
+  const cascade = cascadeValue && typeof cascadeValue === "object"
+    ? cascadeValue as Record<string, unknown> : undefined;
   return {
     stage,
     candidates: rawCandidates
@@ -386,6 +395,34 @@ export async function getEvaluation(stage: "binary" | "multiclass"): Promise<Eva
     split_notes: typeof body.split_notes === "string"
       ? body.split_notes
       : typeof body.evaluation_scope === "string" ? body.evaluation_scope : undefined,
+    threshold_analysis: threshold ? {
+      operating_threshold: Number(threshold.operating_threshold ?? 0.5),
+      points: (Array.isArray(threshold.points) ? threshold.points : []).map((point) => {
+        const row = point as Record<string, unknown>;
+        return {
+          threshold: Number(row.threshold ?? 0),
+          recall: Number(row.recall ?? 0),
+          precision: Number(row.precision ?? 0),
+          false_positive_rate: Number(row.false_positive_rate ?? row.fpr ?? 0),
+          alert_rate: Number(row.alert_rate ?? 0),
+        };
+      }),
+      partition_rows: optionalNumber(threshold.partition_rows),
+      score_note: typeof threshold.score_note === "string" ? threshold.score_note : undefined,
+      selection_policy: typeof threshold.selection_policy === "string" ? threshold.selection_policy : undefined,
+    } : undefined,
+    cascade_evaluation: cascade ? {
+      protocol: typeof cascade.protocol === "string" ? cascade.protocol : undefined,
+      split_seed: optionalNumber(cascade.split_seed),
+      test_rows: optionalNumber(cascade.test_rows),
+      detector_false_negatives: optionalNumber(cascade.detector_false_negatives),
+      detector_routed_rows: optionalNumber(cascade.detector_routed_rows),
+      aggregate: numericRecord(cascade.aggregate),
+      metrics: numericRecord(cascade.metrics),
+      classes: Array.isArray(cascade.classes) ? cascade.classes.map(String) : [],
+      confusion_matrix: Array.isArray(cascade.confusion_matrix) ? cascade.confusion_matrix as number[][] : [],
+      class_support: numericRecord(cascade.class_support),
+    } : undefined,
   };
 }
 
@@ -413,6 +450,8 @@ function explanationStage(value: unknown): AlertExplanationStage | null {
           : typeof contribution.feature === "string" ? contribution.feature : undefined,
         raw_value: typeof contribution.raw_value === "string" || typeof contribution.raw_value === "number"
           ? contribution.raw_value : null,
+        transformed_value: typeof contribution.transformed_value === "string" || typeof contribution.transformed_value === "number"
+          ? contribution.transformed_value : null,
         impact: Number(contribution.impact ?? contribution.shap_value ?? contribution.contribution ?? 0),
       };
     }),

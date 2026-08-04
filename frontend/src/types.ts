@@ -88,7 +88,37 @@ export interface ExplanationContribution {
   feature: string;
   raw_feature?: string;
   raw_value?: string | number | null;
+  transformed_value?: string | number | null;
   impact: number;
+}
+
+export interface ThresholdPoint {
+  threshold: number;
+  recall: number;
+  precision: number;
+  false_positive_rate: number;
+  alert_rate: number;
+}
+
+export interface ThresholdAnalysis {
+  operating_threshold: number;
+  points: ThresholdPoint[];
+  partition_rows?: number;
+  score_note?: string;
+  selection_policy?: string;
+}
+
+export interface CascadeEvaluation {
+  protocol?: string;
+  split_seed?: number;
+  test_rows?: number;
+  detector_false_negatives?: number;
+  detector_routed_rows?: number;
+  aggregate?: Record<string, number>;
+  metrics?: Record<string, number>;
+  classes: string[];
+  confusion_matrix: number[][];
+  class_support?: Record<string, number>;
 }
 
 export interface AlertExplanationStage {
@@ -118,6 +148,8 @@ export interface EvaluationReport {
   selected_champion?: string;
   measurement_notes: string[];
   split_notes?: string;
+  threshold_analysis?: ThresholdAnalysis;
+  cascade_evaluation?: CascadeEvaluation;
 }
 
 export interface AnalystFeedbackRequest {
@@ -142,7 +174,7 @@ export interface ModelInfo {
   status?: string;
   macro_f1?: number;
   weighted_f1?: number;
-  false_positive_rate?: number;
+  false_positive_rate?: number | null;
   inference_ms?: number;
   trained_at?: string;
   classes?: string[];

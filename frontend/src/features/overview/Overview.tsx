@@ -52,14 +52,20 @@ export function Overview({
   socketState,
   lastUpdate,
   livePredictionCount,
+  alertsLoading,
+  alertsError,
+  onRetry,
   onOpenAlert,
   onTimeBucket,
 }: {
   alerts: Alert[];
   health: HealthInfo | null;
   socketState: "connecting" | "live" | "offline";
-  lastUpdate: Date;
+  lastUpdate: Date | null;
   livePredictionCount: number;
+  alertsLoading?: boolean;
+  alertsError?: string;
+  onRetry?: () => void;
   onOpenAlert: (alert: Alert) => void;
   onTimeBucket: (start: string) => void;
 }) {
@@ -81,7 +87,7 @@ export function Overview({
         <Metric
           label="Live predictions"
           value={String(livePredictionCount)}
-          detail={`${alerts.length} alerts in the investigation window`}
+          detail="Predictions received since this page opened"
           icon={Radio}
         />
         <Metric
@@ -98,9 +104,9 @@ export function Overview({
           icon={Boxes}
         />
         <Metric
-          label="Median score"
+          label="Median detector score"
           value={`${(medianConfidence * 100).toFixed(1)}%`}
-          detail="Classifier score; not a calibrated probability"
+          detail="Detector output; not a calibrated probability"
           icon={Crosshair}
         />
       </section>
@@ -112,7 +118,7 @@ export function Overview({
           description="Five-minute buckets. Select a bar to inspect alerts from that interval."
           action={<span className="panel-heading-meta">{alerts.length} observations</span>}
         />
-        <SeverityTimelineChart alerts={alerts} bucketMinutes={5} height={290} onBucketSelect={onTimeBucket} />
+        {alertsLoading ? <div className="data-state" role="status">Loading alert timeline…</div> : alertsError ? <div className="data-state data-state--error" role="alert"><span>{alertsError}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry alerts</button> : null}</div> : alerts.length ? <SeverityTimelineChart alerts={alerts} bucketMinutes={5} height={290} onBucketSelect={onTimeBucket} /> : <div className="chart-empty">No alert records yet. Run an attack replay to populate this evidence.</div>}
       </section>
 
       <div className="overview-side">
@@ -122,7 +128,7 @@ export function Overview({
             title="Protocols among alerts"
             description="Distribution within alert records, not all network traffic."
           />
-          <ProtocolDistributionChart alerts={alerts} height={225} />
+          {alerts.length ? <ProtocolDistributionChart alerts={alerts} height={225} /> : <div className="chart-empty">No alert protocols recorded.</div>}
         </section>
         <section className="panel">
           <PanelHeading
@@ -140,7 +146,7 @@ export function Overview({
             <div><span>Dataset SHA-256</span><b className="mono checksum">{health?.dataset_checksum ?? "Not reported"}</b></div>
             <div><span>Production bundle</span><b>{health?.production_bundle_valid === undefined ? "Not reported" : health.production_bundle_valid ? "Verified" : "Invalid"}</b></div>
             <div><span>Fallback</span><b>{(health?.fallback_active ?? health?.fallback) === undefined ? "Not reported" : (health?.fallback_active ?? health?.fallback) ? "Active" : "Inactive"}</b></div>
-            <div><span>Last update</span><b>{formatTime(lastUpdate.toISOString())}</b></div>
+            <div><span>Last live event</span><b>{lastUpdate ? formatTime(lastUpdate.toISOString()) : "Not received"}</b></div>
           </div>
         </section>
       </div>
@@ -151,7 +157,7 @@ export function Overview({
           title="Detection families"
           description="Total alerts split into resolved and unresolved work."
         />
-        <DetectionRankingChart alerts={alerts} height={340} />
+        {alerts.length ? <DetectionRankingChart alerts={alerts} height={340} /> : <div className="chart-empty">No detection families recorded.</div>}
       </section>
 
       <section className="panel">
