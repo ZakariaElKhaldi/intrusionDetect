@@ -39,10 +39,16 @@ async def process_observation(
     prediction_row = Prediction(
         event_id=event_id,
         model_version=inference.model_version,
+        detector_model_version=inference.detector_model_version,
+        classifier_model_version=inference.classifier_model_version,
         binary_prediction=inference.binary_prediction,
         attack_class=inference.attack_class,
         confidence=inference.confidence,
+        detection_score=inference.detection_score,
+        attack_class_score=inference.attack_class_score,
         latency_ms=inference.latency_ms,
+        detector_latency_ms=inference.detector_latency_ms,
+        classifier_latency_ms=inference.classifier_latency_ms,
         end_to_end_latency_ms=0,
         top_features=inference.top_features,
     )
@@ -51,7 +57,7 @@ async def process_observation(
 
     alert_row = None
     behavior_reasons = evaluate_device_profile(observation.features)
-    if inference.binary_prediction == "attack" or behavior_reasons:
+    if inference.binary_prediction == "attack":
         severity, reasons = assess_severity(
             inference.binary_prediction, inference.confidence, behavior_reasons
         )
@@ -66,8 +72,6 @@ async def process_observation(
         session.add(alert_row)
         session.flush()
 
-    prediction_row.end_to_end_latency_ms = (perf_counter() - started) * 1000
-    session.commit()
     end_to_end = (perf_counter() - started) * 1000
     prediction_row.end_to_end_latency_ms = end_to_end
     session.commit()
@@ -75,14 +79,47 @@ async def process_observation(
         prediction_id=UUID(prediction_row.prediction_id),
         event_id=observation.event_id,
         model_version=inference.model_version,
+        detector_model_version=inference.detector_model_version,
+        classifier_model_version=inference.classifier_model_version,
         binary_prediction=inference.binary_prediction,
         attack_class=inference.attack_class,
         confidence=inference.confidence,
+        detection_score=inference.detection_score,
+        attack_class_score=inference.attack_class_score,
         latency_ms=inference.latency_ms,
+        detector_latency_ms=inference.detector_latency_ms,
+        classifier_latency_ms=inference.classifier_latency_ms,
         raw_features=observation.features,
         top_features=inference.top_features,
         end_to_end_latency_ms=end_to_end,
+        total_latency_ms=end_to_end,
         alert_id=UUID(alert_row.alert_id) if alert_row else None,
     )
-    await live.broadcast({"type": "prediction", "data": response.model_dump(mode="json")})
+    await live.broadcast(
+        {"type": "prediction.created", "data": response.model_dump(mode="json")}
+    )
+    if alert_row:
+        await live.broadcast(
+            {
+                "type": "alert.created",
+                "data": {
+                    "alert_id": alert_row.alert_id,
+                    "event_id": event_id,
+                    "severity": alert_row.severity,
+                    "reasons": alert_row.reasons,
+                    "top_features": alert_row.top_features,
+                    "status": alert_row.status,
+                    "created_at": alert_row.created_at.isoformat(),
+                    "model_version": inference.model_version,
+                    "detector_model_version": inference.detector_model_version,
+                    "classifier_model_version": inference.classifier_model_version,
+                    "binary_prediction": inference.binary_prediction,
+                    "attack_class": inference.attack_class,
+                    "confidence": inference.confidence,
+                    "detection_score": inference.detection_score,
+                    "attack_class_score": inference.attack_class_score,
+                    "raw_features": observation.features,
+                },
+            }
+        )
     return response

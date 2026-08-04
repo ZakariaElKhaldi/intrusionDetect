@@ -3,6 +3,8 @@ import {
   ApiError,
   checkHealth,
   getAlerts,
+  liveEventFromSocketMessage,
+  startReplay,
   submitAlertFeedback,
 } from "../api";
 
@@ -86,6 +88,104 @@ describe("frontend API adapter", () => {
       impact: -0.42,
       evidence_type: "model_contribution",
     });
+  });
+
+  it("parses prediction JSON as telemetry without manufacturing an alert", () => {
+    const event = liveEventFromSocketMessage(JSON.stringify({
+      type: "prediction.created",
+      data: {
+        prediction_id: "prediction-1",
+        event_id: "event-1",
+        model_version: "legacy-v1",
+        detector_model_version: "detector-v2",
+        classifier_model_version: null,
+        binary_prediction: "normal",
+        attack_class: null,
+        confidence: 0.04,
+        detection_score: 0.04,
+        attack_class_score: null,
+        detector_latency_ms: 1.2,
+        classifier_latency_ms: null,
+        alert_id: null,
+      },
+    }));
+
+    expect(event).toEqual({
+      type: "prediction.created",
+      data: expect.objectContaining({
+        prediction_id: "prediction-1",
+        detector_model_version: "detector-v2",
+        detection_score: 0.04,
+        alert_id: null,
+      }),
+    });
+  });
+
+  it("uses the authoritative alert event severity and cascade metadata", () => {
+    const event = liveEventFromSocketMessage(JSON.stringify({
+      type: "alert.created",
+      data: {
+        alert_id: "alert-3",
+        event_id: "event-3",
+        severity: "low",
+        reasons: ["device profile deviation"],
+        top_features: [],
+        status: "new",
+        created_at: "2026-08-03T10:00:00Z",
+        model_version: "detector-v2",
+        detector_model_version: "detector-v2",
+        classifier_model_version: "classifier-v4",
+        binary_prediction: "attack",
+        attack_class: "DDoS-UDP",
+        confidence: 0.88,
+        detection_score: 0.88,
+        attack_class_score: 0.73,
+        raw_features: { source_ip: "10.0.0.1", destination_ip: "10.0.0.2" },
+      },
+    }));
+
+    expect(event).toEqual({
+      type: "alert.created",
+      data: expect.objectContaining({
+        id: "alert-3",
+        severity: "low",
+        detector_model_version: "detector-v2",
+        classifier_model_version: "classifier-v4",
+        detection_score: 0.88,
+        attack_class_score: 0.73,
+      }),
+    });
+  });
+
+  it("ignores malformed and unknown socket messages", () => {
+    expect(liveEventFromSocketMessage("not-json")).toBeNull();
+    expect(liveEventFromSocketMessage(JSON.stringify({ type: "heartbeat", data: {} }))).toBeNull();
+    expect(liveEventFromSocketMessage(JSON.stringify({
+      type: "prediction.created",
+      data: { event_id: "missing-prediction-id" },
+    }))).toBeNull();
+  });
+
+  it("starts bounded server-side replay from the real prepared dataset", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: "running" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await startReplay(4);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/replay/start",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          mode: "dataset",
+          scenario: "all",
+          offset: 0,
+          limit: 100,
+          interval_ms: 1000,
+          speed: 4,
+        }),
+      }),
+    );
   });
 
   it("posts analyst feedback with the backend wire contract", async () => {

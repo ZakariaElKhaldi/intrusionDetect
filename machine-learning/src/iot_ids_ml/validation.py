@@ -150,6 +150,7 @@ def validate_dataset(
         column
         for column in original_columns
         if column.startswith("Unnamed:")
+        or column in IDENTIFIER_LIKE_COLUMNS
         or any(token in column.lower() for token in ("uuid", "event_id", "row_id"))
     ]
     profile: dict[str, Any] = {

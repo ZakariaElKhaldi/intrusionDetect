@@ -8,9 +8,13 @@ import { parseCsv } from "../../utils";
 interface PredictionResult {
   event_id?: string;
   model_version?: string;
+  detector_model_version?: string;
+  classifier_model_version?: string | null;
   binary_prediction?: string;
   attack_class?: string | null;
   confidence?: number;
+  detection_score?: number;
+  attack_class_score?: number | null;
   alert_id?: string | null;
 }
 
@@ -45,7 +49,7 @@ export function ObservationLab() {
   const results = useMemo(() => normalizeResults(response), [response]);
   const attackCount = results.filter((result) => result.binary_prediction === "attack").length;
   const averageConfidence = results.length
-    ? results.reduce((total, result) => total + (result.confidence ?? 0), 0) / results.length
+    ? results.reduce((total, result) => total + (result.detection_score ?? result.confidence ?? 0), 0) / results.length
     : 0;
 
   const loadText = (text: string, name: string) => {
@@ -165,15 +169,19 @@ export function ObservationLab() {
             </div>
             <div className="preview-scroll">
               <table>
-                <thead><tr><th>Row</th><th>Prediction</th><th>Class</th><th>Score</th><th>Model version</th><th>Alert</th></tr></thead>
+                <thead><tr><th>Row</th><th>Prediction</th><th>Class</th><th>Detection score</th><th>Class score</th><th>Serving models</th><th>Alert</th></tr></thead>
                 <tbody>
                   {results.map((result, index) => (
                     <tr key={result.event_id ?? index}>
                       <td>{index + 1}</td>
                       <td>{result.binary_prediction ?? "Unknown"}</td>
                       <td>{result.attack_class ?? "—"}</td>
-                      <td>{typeof result.confidence === "number" ? `${(result.confidence * 100).toFixed(1)}%` : "—"}</td>
-                      <td className="mono">{result.model_version ?? "—"}</td>
+                      <td>{typeof (result.detection_score ?? result.confidence) === "number" ? `${((result.detection_score ?? result.confidence ?? 0) * 100).toFixed(1)}%` : "—"}</td>
+                      <td>{typeof result.attack_class_score === "number" ? `${(result.attack_class_score * 100).toFixed(1)}%` : "—"}</td>
+                      <td className="mono">
+                        {result.detector_model_version ?? result.model_version ?? "—"}
+                        {result.classifier_model_version ? ` / ${result.classifier_model_version}` : ""}
+                      </td>
                       <td className="mono">{result.alert_id ?? "No alert"}</td>
                     </tr>
                   ))}
@@ -190,4 +198,3 @@ export function ObservationLab() {
     </div>
   );
 }
-

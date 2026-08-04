@@ -96,10 +96,16 @@ class FlowObservation(BaseModel):
 class PredictionContract(BaseModel):
     event_id: UUID
     model_version: str
+    detector_model_version: str
+    classifier_model_version: str | None
     binary_prediction: Literal["normal", "attack"]
     attack_class: str | None
     confidence: float = Field(ge=0, le=1)
+    detection_score: float = Field(ge=0, le=1)
+    attack_class_score: float | None = Field(default=None, ge=0, le=1)
     latency_ms: float = Field(ge=0)
+    detector_latency_ms: float = Field(ge=0)
+    classifier_latency_ms: float | None = Field(default=None, ge=0)
 
 
 class PredictionResponse(PredictionContract):
@@ -107,6 +113,7 @@ class PredictionResponse(PredictionContract):
     raw_features: dict[str, Any]
     top_features: list[dict[str, Any]]
     end_to_end_latency_ms: float = Field(ge=0)
+    total_latency_ms: float = Field(ge=0)
     alert_id: UUID | None = None
 
 

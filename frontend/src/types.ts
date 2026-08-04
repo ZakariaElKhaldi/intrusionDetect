@@ -35,6 +35,13 @@ export interface Alert {
   features?: Record<string, string | number>;
   explanations?: AlertEvidence[];
   model_version?: string;
+  detector_model_version?: string;
+  classifier_model_version?: string | null;
+  detection_score?: number;
+  attack_class_score?: number | null;
+  detector_latency_ms?: number;
+  classifier_latency_ms?: number | null;
+  total_latency_ms?: number;
   reasons?: string[];
   evidence_type?: EvidenceType;
   identity_quality?: IdentityQuality;
@@ -44,6 +51,8 @@ export interface HealthInfo {
   status: string;
   schema_version: string;
   model_version: string;
+  detector_model_version?: string;
+  classifier_model_version?: string | null;
   live_connections: number;
 }
 
@@ -75,6 +84,29 @@ export interface ModelInfo {
   classes?: string[];
   confusion_matrix?: number[][];
   evaluation_scope?: string;
+  role?: "detector" | "classifier" | "candidate";
 }
+
+export interface LivePrediction {
+  prediction_id: string;
+  event_id: string;
+  model_version?: string;
+  detector_model_version?: string;
+  classifier_model_version?: string | null;
+  binary_prediction: "normal" | "attack";
+  attack_class: string | null;
+  confidence?: number;
+  detection_score: number;
+  attack_class_score?: number | null;
+  detector_latency_ms?: number;
+  classifier_latency_ms?: number | null;
+  total_latency_ms?: number;
+  end_to_end_latency_ms?: number;
+  alert_id: string | null;
+}
+
+export type LiveEvent =
+  | { type: "prediction.created"; data: LivePrediction }
+  | { type: "alert.created"; data: Alert };
 
 export type Page = "overview" | "alerts" | "topology" | "models" | "testing";

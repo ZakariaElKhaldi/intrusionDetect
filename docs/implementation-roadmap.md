@@ -1,100 +1,133 @@
 # Implementation Roadmap
 
-## Phase 0 — Reproducible foundation
+Status reviewed on 2026-08-04. A file or placeholder does not count as an
+implemented capability; phases below are marked by observable behavior and
+evidence.
 
-- Create monorepo structure.
-- Add Python and frontend environments.
-- Add formatting, linting, tests, and Docker.
-- Download the dataset and record its checksum.
-- Create the canonical feature-schema document.
+## Phase 0 — Reproducible foundation: complete
 
-**Exit condition:** one command validates the dataset and prints a reproducible profile.
+- Monorepo environments, linting, tests, Docker Compose, and ordered workflow.
+- Safe archive extraction with fixed archive and CSV checksums.
+- Dataset manifest and canonical machine-readable schema.
+- Fixture isolation: synthetic data can test contracts but cannot be promoted.
 
-## Phase 1 — Machine-learning baseline
+**Evidence:** `make prepare-data`, `make validate-data`, and
+`data/dataset-manifest.json`.
 
-- Perform exploratory analysis.
-- Build binary and multiclass targets.
-- Create leakage-safe preprocessing pipelines.
-- Train Logistic Regression, Decision Tree, Random Forest, and one boosting model.
-- Generate the full evaluation report.
-- Save model and preprocessing artifacts.
+## Phase 1 — Real-data baseline and promotion: complete
 
-**Exit condition:** a versioned model can predict a validated observation through Python code.
+- Binary and attack-only multiclass targets.
+- Leakage-safe preprocessing and duplicate-flow isolation.
+- Logistic Regression, Decision Tree, Random Forest, and
+  HistGradientBoosting over three seeds.
+- Class metrics, confusion matrices, compact PR curves, local operational
+  measurements, metadata, and checksums.
+- Atomic champion promotion and strict production verification.
 
-## Phase 2 — Prediction API
+**Evidence:** `models/production/` and `make verify-model`.
 
-- Build FastAPI.
-- Add `/predict`, `/predict/batch`, `/models`, and health endpoints.
-- Add Pydantic schema validation.
-- Add model registry and artifact loading.
-- Add database models for observations and alerts.
+## Phase 2 — Prediction service: complete for the prototype
 
-**Exit condition:** the API accepts a dataset row and stores a prediction.
+- `/predict`, `/predict/batch`, `/models`, `/health`, alerts, and feedback.
+- Exact Pydantic observation validation.
+- Binary detector followed by attack-family classification only for attacks.
+- SQLite locally and PostgreSQL in Docker Compose.
+- Persisted observations, predictions, stage scores/latencies, alerts, model
+  versions, and analyst feedback.
 
-## Phase 3 — Functional dashboard
+**Boundary:** no authentication, authorization, retention policy, migration
+framework, job queue, or production hardening yet.
 
-- Build application shell.
-- Add live overview.
-- Add virtualized alert table.
-- Add alert detail drawer.
-- Add model comparison page.
-- Add observation upload and testing.
+## Phase 3 — Investigation dashboard: complete for the prototype
 
-**Exit condition:** a user can investigate a prediction from summary to raw features.
+- Live overview, alert workspace and detail drawer, model analysis,
+  observation upload, and topology view.
+- Purpose-specific ECharts and Cytoscape/fcose topology rendering.
+- Connection state, data freshness, cascade metadata, and explicit
+  uncalibrated-score language.
+- Authoritative alert-event handling without manufacturing alerts from normal
+  prediction events.
 
-## Phase 4 — Real-time dataset replay
+**Boundary:** the topology is inferred from available route labels/ports; the
+dataset does not provide verified device identities or IP addresses.
 
-- Stream observations at configurable speed.
-- Add WebSocket or SSE updates.
-- Add pause, resume, and scenario controls.
-- Measure end-to-end latency.
-- Prevent disruptive UI reordering.
+## Phase 4 — Dataset replay: functional, evaluation incomplete
 
-**Exit condition:** dataset observations appear as live alerts in the dashboard.
+Implemented:
 
-## Phase 5 — Explainability and behavior rules
+- lazy server-side CSV iteration;
+- all/normal/attack/exact-class filters, offset, limit, speed, pause/resume/stop;
+- bounded real-data replay from the dashboard;
+- `prediction.created` for every observation and `alert.created` for attacks;
+- end-to-end latency captured per prediction; and
+- stable alert handling while analysts inspect the interface.
 
-- Add SHAP for selected alerts.
-- Add global feature importance.
-- Create device profile format.
-- Add rule violations and severity scoring.
-- Display explanation and rule evidence together.
+Still required:
 
-**Exit condition:** every high-severity alert has understandable evidence.
+- a formal sustained-load and end-to-end p95 report;
+- replay completion/status polling in the dashboard;
+- explicit backpressure and failure-recovery behavior; and
+- tests at production-scale concurrency.
 
-## Phase 6 — PCAP and feature compatibility
+## Phase 5 — Explainability and behavior policy: not complete
 
-- Generate controlled PCAP scenarios.
-- Evaluate Zeek/CICFlowMeter-compatible extraction.
-- Build the canonical adapter.
-- Add automated schema and value checks.
-- Document incompatibilities.
+Current code ranks raw numeric magnitudes and applies score-based severity. A
+minimal hook can accept a `device_profile_violation` value, but the canonical
+83-feature contract does not currently supply that field. This is not SHAP,
+feature attribution, MUD enforcement, or a validated behavior engine.
 
-**Exit condition:** replayed PCAP produces model-compatible observations.
+Next work:
 
-## Phase 7 — Drift and model health
+- add global permutation importance for model analysis;
+- add local TreeSHAP for selected alerts and label it as attribution, not proof;
+- define device identity outside the model feature map;
+- implement and test device behavior/MUD policy evaluation; and
+- keep model evidence and policy evidence separate in the API and UI.
 
-- Add feature-distribution monitoring.
-- Track confidence and alert-rate shifts.
-- Add model-health dashboard.
-- Define retraining and promotion process.
+## Phase 6 — PCAP and live feature compatibility: not started
 
-**Exit condition:** the system distinguishes pipeline health from attack alerts.
+The Zeek/CICFlowMeter modules deliberately pass through mappings or raise a
+compatibility error. Live capture only contains an authorization guard.
 
-## Phase 8 — Optional edge deployment
+Next work:
 
-- Select a reduced feature set.
-- Export or quantize the edge candidate.
-- Benchmark on Raspberry Pi.
-- Forward edge alerts to the backend.
-- Compare edge and central predictions.
+- generate controlled PCAP scenarios;
+- select an extractor based on value comparisons, not name similarity;
+- implement the canonical adapter and golden-value tests;
+- document units, directionality, timeouts, and unsupported fields; and
+- permit only authorized capture in an isolated environment.
 
-**Exit condition:** resource use, latency, and accuracy are measured on actual hardware.
+## Phase 7 — Model health and drift: partially complete
 
-## Recommended MVP boundary
+Completed foundations:
 
-Complete Phases 0–4 first.
+- versioned artifacts and active model records;
+- explicit candidate-to-production promotion;
+- data/model checksums and fixed training configuration; and
+- prediction, latency, alert, and analyst-feedback persistence.
 
-Phases 5–7 create a strong final academic project.
+Missing:
 
-Phase 8 is an optional advanced extension and should not block the core system.
+- reference distributions and rolling live windows;
+- missing/unseen-category telemetry;
+- tested PSI, Jensen-Shannon, KS, or streaming change signals;
+- a model-health API and evidence-based dashboard; and
+- retraining triggers and rollback policy.
+
+The current drift function returns `not_enough_data`; it is not a detector.
+
+## Phase 8 — Edge experiment: optional, not started
+
+- Select a reduced feature set only after compatibility work.
+- Export or quantize a candidate.
+- Measure accuracy, memory, CPU, latency, power, and throughput on actual target
+  hardware.
+- Compare edge and central decisions and test buffered forwarding.
+
+## Recommended next milestone
+
+Prioritize Phase 6 compatibility and Phase 4 end-to-end measurement before
+adding more model families. The largest validity risk is domain/feature mismatch,
+not lack of classifier complexity. After compatible live observations exist,
+Phase 7 drift monitoring and Phase 5 behavior/explanation evidence become
+meaningful.

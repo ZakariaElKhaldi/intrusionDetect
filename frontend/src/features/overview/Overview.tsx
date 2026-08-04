@@ -51,6 +51,7 @@ export function Overview({
   health,
   socketState,
   lastUpdate,
+  livePredictionCount,
   onOpenAlert,
   onTimeBucket,
 }: {
@@ -58,6 +59,7 @@ export function Overview({
   health: HealthInfo | null;
   socketState: "connecting" | "live" | "offline";
   lastUpdate: Date;
+  livePredictionCount: number;
   onOpenAlert: (alert: Alert) => void;
   onTimeBucket: (start: string) => void;
 }) {
@@ -77,9 +79,9 @@ export function Overview({
     <div className="overview-grid">
       <section className="metrics-grid" aria-label="Current alert posture">
         <Metric
-          label="Alerts loaded"
-          value={String(alerts.length)}
-          detail="Current client investigation window"
+          label="Live predictions"
+          value={String(livePredictionCount)}
+          detail={`${alerts.length} alerts in the investigation window`}
           icon={Radio}
         />
         <Metric
@@ -132,7 +134,8 @@ export function Overview({
             <div><span>API</span><b>{health ? health.status : "Unavailable"}</b></div>
             <div><span>Stream</span><b>{socketState}</b></div>
             <div><span>Schema</span><b className="mono">{health?.schema_version ?? "Not reported"}</b></div>
-            <div><span>Model</span><b className="mono">{health?.model_version ?? "Not reported"}</b></div>
+            <div><span>Detector</span><b className="mono">{health?.detector_model_version ?? health?.model_version ?? "Not reported"}</b></div>
+            <div><span>Classifier</span><b className="mono">{health?.classifier_model_version ?? "Not reported"}</b></div>
             <div><span>Last update</span><b>{formatTime(lastUpdate.toISOString())}</b></div>
           </div>
         </section>
@@ -170,4 +173,3 @@ export function Overview({
     </div>
   );
 }
-

@@ -52,6 +52,10 @@ def test_training_creates_reproducible_reports_and_loadable_models(fixture_csv, 
             assert "f1_macro" in evaluation["test"]
             assert "per_class" in evaluation["test"]
             assert evaluation["test"]["precision_recall_curves"]
+            assert all(
+                len(curve["precision"]) <= 256
+                for curve in evaluation["test"]["precision_recall_curves"].values()
+            )
             assert "p95_inference_latency_ms" in evaluation["operational"]
             assert evaluation["operational"]["serialized_model_size_bytes"] > 0
 
@@ -67,3 +71,24 @@ def test_training_creates_reproducible_reports_and_loadable_models(fixture_csv, 
     assert prediction["target"] == "binary"
     assert prediction["prediction"] in {"normal", "attack"}
     assert prediction["confidence_is_calibrated_probability"] is False
+
+
+def test_default_training_aggregates_three_validation_seeds(fixture_csv, tmp_path):
+    train_baselines(fixture_csv, tmp_path)
+    report = json.loads((tmp_path / "evaluation-report.json").read_text())
+
+    assert report["evaluation_seeds"] == [42, 1337, 2026]
+    for target in ("binary", "multiclass"):
+        experiment = report["experiments"][target]
+        models = experiment["splits"]["stratified_random"]["models"]
+        for evaluation in models.values():
+            assert set(evaluation["seed_evaluations"]) == {"42", "1337", "2026"}
+            assert "mean_validation_macro_f1" in evaluation["selection_aggregate"]
+        assert experiment["selected_model"]["selection_policy"][0].startswith("highest mean")
+
+    multiclass = report["experiments"]["multiclass"]
+    assert multiclass["training_row_count"] < report["profile"]["row_count"]
+    assert set(multiclass["target_definition"]["classes"]).isdisjoint(
+        {"MQTT", "Thing_speak", "Wipro_bulb", "Amazon-Alexa"}
+    )
+    assert multiclass["selected_model"]["training_population"].startswith("attack-only")

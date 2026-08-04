@@ -238,7 +238,14 @@ export function AlertDrawer({
           <div className="summary-grid">
             <div><span>Score</span><b>{(alert.confidence * 100).toFixed(1)}%</b></div>
             <div><span>Status</span><b>{alert.status.replace("_", " ")}</b></div>
-            <div><span>Model</span><b className="mono">{alert.model_version ?? "Not reported"}</b></div>
+            <div><span>Detector</span><b className="mono">{alert.detector_model_version ?? alert.model_version ?? "Not reported"}</b></div>
+            <div><span>Detection score</span><b>{((alert.detection_score ?? alert.confidence) * 100).toFixed(1)}%</b></div>
+            {alert.classifier_model_version ? (
+              <div><span>Classifier</span><b className="mono">{alert.classifier_model_version}</b></div>
+            ) : null}
+            {alert.attack_class_score != null ? (
+              <div><span>Class score</span><b>{(alert.attack_class_score * 100).toFixed(1)}%</b></div>
+            ) : null}
           </div>
         </section>
 

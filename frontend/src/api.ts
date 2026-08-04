@@ -6,6 +6,8 @@ import type {
   EvidenceType,
   HealthInfo,
   IdentityQuality,
+  LiveEvent,
+  LivePrediction,
   ModelInfo,
 } from "./types";
 
@@ -31,6 +33,13 @@ interface AlertWire {
   status: string;
   created_at: string;
   model_version?: string;
+  detector_model_version?: string;
+  classifier_model_version?: string | null;
+  detection_score?: number;
+  attack_class_score?: number | null;
+  detector_latency_ms?: number;
+  classifier_latency_ms?: number | null;
+  total_latency_ms?: number;
   attack_class?: string | null;
   confidence?: number;
   raw_features?: Record<string, string | number>;
@@ -47,17 +56,27 @@ interface ModelWire {
   model_type: string;
   active: boolean;
   metadata_json?: Record<string, unknown>;
+  role?: string;
 }
 
 interface PredictionWire {
   prediction_id: string;
   event_id: string;
-  model_version: string;
+  model_version?: string;
+  detector_model_version?: string;
+  classifier_model_version?: string | null;
   binary_prediction: "normal" | "attack";
   attack_class: string | null;
-  confidence: number;
-  raw_features: Record<string, string | number>;
-  top_features: AlertWire["top_features"];
+  confidence?: number;
+  detection_score?: number;
+  attack_class_score?: number | null;
+  detector_latency_ms?: number;
+  classifier_latency_ms?: number | null;
+  total_latency_ms?: number;
+  latency_ms?: number;
+  end_to_end_latency_ms?: number;
+  raw_features?: Record<string, string | number>;
+  top_features?: AlertWire["top_features"];
   alert_id: string | null;
 }
 
@@ -122,7 +141,7 @@ function alertFromWire(value: AlertWire): Alert {
     id: value.alert_id,
     timestamp: value.created_at,
     attack_type: value.attack_class ?? value.reasons?.[0] ?? "Suspicious activity",
-    confidence: value.confidence ?? 0,
+    confidence: value.detection_score ?? value.confidence ?? 0,
     severity: asSeverity(value.severity),
     source_ip: String(features.source_ip ?? features.src_ip ?? (features["id.orig_p"] !== undefined ? `port ${features["id.orig_p"]}` : "Source in details")),
     destination_ip: String(features.destination_ip ?? features.dst_ip ?? (features["id.resp_p"] !== undefined ? `port ${features["id.resp_p"]}` : "Destination in details")),
@@ -130,6 +149,13 @@ function alertFromWire(value: AlertWire): Alert {
     status: asAlertStatus(value.status),
     features,
     model_version: value.model_version,
+    detector_model_version: value.detector_model_version ?? value.model_version,
+    classifier_model_version: value.classifier_model_version,
+    detection_score: value.detection_score ?? value.confidence,
+    attack_class_score: value.attack_class_score,
+    detector_latency_ms: value.detector_latency_ms,
+    classifier_latency_ms: value.classifier_latency_ms,
+    total_latency_ms: value.total_latency_ms,
     reasons: value.reasons ?? [],
     evidence_type: alertEvidenceType,
     identity_quality: identityQuality(features),
@@ -153,21 +179,29 @@ function alertFromWire(value: AlertWire): Alert {
   };
 }
 
-function predictionAsAlert(value: PredictionWire): Alert | null {
-  if (!value.alert_id) return null;
-  return alertFromWire({
-    alert_id: value.alert_id,
+function predictionFromWire(value: PredictionWire): LivePrediction | null {
+  if (
+    typeof value.prediction_id !== "string"
+    || typeof value.event_id !== "string"
+    || !["normal", "attack"].includes(value.binary_prediction)
+  ) return null;
+  return {
+    prediction_id: value.prediction_id,
     event_id: value.event_id,
-    severity: value.confidence >= 0.95 ? "critical" : value.confidence >= 0.8 ? "high" : "medium",
-    reasons: [value.attack_class ?? value.binary_prediction],
-    top_features: value.top_features,
-    status: "new",
-    created_at: new Date().toISOString(),
-    attack_class: value.attack_class,
-    confidence: value.confidence,
-    raw_features: value.raw_features,
     model_version: value.model_version,
-  });
+    detector_model_version: value.detector_model_version ?? value.model_version,
+    classifier_model_version: value.classifier_model_version,
+    binary_prediction: value.binary_prediction,
+    attack_class: typeof value.attack_class === "string" ? value.attack_class : null,
+    confidence: value.confidence,
+    detection_score: value.detection_score ?? value.confidence ?? 0,
+    attack_class_score: value.attack_class_score,
+    detector_latency_ms: value.detector_latency_ms ?? value.latency_ms,
+    classifier_latency_ms: value.classifier_latency_ms,
+    total_latency_ms: value.total_latency_ms,
+    end_to_end_latency_ms: value.end_to_end_latency_ms,
+    alert_id: typeof value.alert_id === "string" ? value.alert_id : null,
+  };
 }
 
 export class ApiError extends Error {
@@ -260,6 +294,14 @@ export async function getModels(): Promise<ModelInfo[]> {
   const value = await request<ModelWire[]>("/models");
   return value.map((model) => {
     const metrics = (model.metadata_json?.metrics ?? model.metadata_json ?? {}) as Record<string, unknown>;
+    const declaredRole = model.role ?? model.metadata_json?.role ?? model.metadata_json?.target;
+    const role: ModelInfo["role"] = declaredRole === "binary"
+      ? "detector"
+      : declaredRole === "multiclass"
+        ? "classifier"
+        : ["detector", "classifier", "candidate"].includes(String(declaredRole))
+          ? String(declaredRole) as ModelInfo["role"]
+          : undefined;
     return {
       name: model.model_type,
       version: model.model_version,
@@ -272,6 +314,7 @@ export async function getModels(): Promise<ModelInfo[]> {
       classes: Array.isArray(metrics.classes) ? metrics.classes.map(String) : undefined,
       confusion_matrix: Array.isArray(metrics.confusion_matrix) ? metrics.confusion_matrix as number[][] : undefined,
       evaluation_scope: typeof metrics.evaluation_scope === "string" ? metrics.evaluation_scope : undefined,
+      role,
     };
   });
 }
@@ -310,14 +353,16 @@ export async function predict(rows: Record<string, string | number>[]) {
   });
 }
 
-export async function startReplay(rows: Record<string, string | number>[], speed: number) {
+export async function startReplay(speed: number) {
   return request<unknown>("/replay/start", {
     method: "POST",
     body: JSON.stringify({
-      observations: observationsFromRows(rows),
+      mode: "dataset",
+      scenario: "all",
+      offset: 0,
+      limit: 100,
       interval_ms: 1000,
       speed,
-      scenario: "saved-normal-observation",
     }),
   });
 }
@@ -336,8 +381,33 @@ export function socketUrl(): string {
   return `${protocol}//${location.host}/api/v1/live`;
 }
 
-export function alertFromSocketMessage(value: unknown): Alert | null {
-  if (!value || typeof value !== "object") return null;
-  const message = value as { type?: string; data?: PredictionWire };
-  return message.type === "prediction" && message.data ? predictionAsAlert(message.data) : null;
+function decodedSocketValue(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/** Convert the WebSocket wire envelope into the two events the UI understands. */
+export function liveEventFromSocketMessage(value: unknown): LiveEvent | null {
+  const decoded = decodedSocketValue(value);
+  if (!decoded || typeof decoded !== "object") return null;
+  const message = decoded as { type?: unknown; data?: unknown; payload?: unknown };
+  const data = message.data ?? message.payload;
+  if (!data || typeof data !== "object") return null;
+
+  // `prediction` is accepted during the backend transition, but it always
+  // remains telemetry: an alert_id on a prediction is not an alert payload.
+  if (message.type === "prediction.created" || message.type === "prediction") {
+    const prediction = predictionFromWire(data as PredictionWire);
+    return prediction ? { type: "prediction.created", data: prediction } : null;
+  }
+  if (message.type === "alert.created" || message.type === "alert") {
+    const alert = data as AlertWire;
+    if (typeof alert.alert_id !== "string" || typeof alert.created_at !== "string") return null;
+    return { type: "alert.created", data: alertFromWire(alert) };
+  }
+  return null;
 }

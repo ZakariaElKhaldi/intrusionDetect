@@ -18,9 +18,13 @@ class AlertResponse(BaseModel):
     status: str
     created_at: datetime
     model_version: str
+    detector_model_version: str
+    classifier_model_version: str | None
     binary_prediction: str
     attack_class: str | None
     confidence: float
+    detection_score: float
+    attack_class_score: float | None
     raw_features: dict
 
 

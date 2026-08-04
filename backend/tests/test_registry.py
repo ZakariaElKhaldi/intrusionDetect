@@ -9,13 +9,37 @@ from app.inference.model_registry import ModelRegistry
 
 
 def test_registry_discovers_binary_pipeline_and_metadata(model_dir: Path) -> None:
-    registry = ModelRegistry(model_dir=str(model_dir))
+    registry = ModelRegistry(model_dir=str(model_dir), allow_fallback=True)
     descriptor = registry.descriptor
     assert descriptor.model_version.startswith("binary-")
     assert descriptor.schema_version == "rt-iot2022-v1"
     assert descriptor.metadata_json
     assert len(descriptor.metadata_json["feature_order"]) == 83
     assert descriptor.metadata_json["target"] == "binary"
+    assert len(registry.descriptors) == 2
+    assert {item.metadata_json["target"] for item in registry.descriptors} == {
+        "binary",
+        "multiclass",
+    }
+
+
+def test_registry_requires_explicit_development_fallback() -> None:
+    with pytest.raises(RuntimeError, match="ALLOW_FALLBACK"):
+        ModelRegistry()
+
+    registry = ModelRegistry(allow_fallback=True)
+    assert registry.detector.metadata["fallback"] is True
+    assert registry.classifier.metadata["fallback"] is True
+
+
+def test_registry_rejects_fixture_artifacts_without_development_flag(
+    model_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.inference.model_registry._is_fixture_run", lambda _model_dir: True
+    )
+    with pytest.raises(RuntimeError, match="fixture-trained"):
+        ModelRegistry(model_dir=str(model_dir))
 
 
 def test_registry_rejects_manifest_checksum_mismatch(
@@ -27,6 +51,8 @@ def test_registry_rejects_manifest_checksum_mismatch(
     metadata_source = model_dir / binary["metadata"]
     (tmp_path / binary["artifact"]).write_bytes(artifact_source.read_bytes() + b"corrupt")
     (tmp_path / binary["metadata"]).write_bytes(metadata_source.read_bytes())
+    report_name = manifest["evaluation_report"]
+    (tmp_path / report_name).write_bytes((model_dir / report_name).read_bytes())
     (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(ValueError, match="checksum does not match manifest"):
@@ -36,6 +62,7 @@ def test_registry_rejects_manifest_checksum_mismatch(
 def test_explicit_artifact_override_loads_sidecar(model_dir: Path) -> None:
     manifest = json.loads((model_dir / "manifest.json").read_text(encoding="utf-8"))
     binary = next(item for item in manifest["models"] if item["target"] == "binary")
-    registry = ModelRegistry(artifact_path=str(model_dir / binary["artifact"]))
+    registry = ModelRegistry(
+        artifact_path=str(model_dir / binary["artifact"]), allow_fallback=True
+    )
     assert registry.predictor.version == binary["model_version"]
-

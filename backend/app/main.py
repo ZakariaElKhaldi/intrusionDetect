@@ -17,7 +17,11 @@ from app.live import LiveConnectionManager
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     engine, session_factory = create_engine_and_session(settings.database_url)
-    registry = ModelRegistry(settings.model_artifact_path, settings.model_dir)
+    registry = ModelRegistry(
+        settings.model_artifact_path,
+        settings.model_dir,
+        allow_fallback=settings.allow_fallback,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -48,7 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.SessionLocal = session_factory
     app.state.registry = registry
     app.state.live = LiveConnectionManager()
-    app.state.replay = DatasetReplay()
+    app.state.replay = DatasetReplay(settings.replay_dataset_path)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
@@ -64,6 +68,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "ok",
             "schema_version": "rt-iot2022-v1",
             "model_version": registry.predictor.version,
+            "detector_model_version": registry.detector.version,
+            "classifier_model_version": registry.classifier.version,
+            "fallback": bool(registry.detector.metadata.get("fallback")),
             "live_connections": len(app.state.live.connections),
         }
 

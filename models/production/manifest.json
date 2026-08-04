@@ -1,0 +1,23 @@
+{
+  "evaluation_report": "evaluation-report.json",
+  "evaluation_report_sha256": "aeaf0f89adea0bc0a0121e86dcea0e7bbc08f7f7d89e39a1d9d533f8ce085b3a",
+  "models": [
+    {
+      "artifact": "binary-hist_gradient_boosting-5a27200c4fcc.joblib",
+      "artifact_sha256": "6235bb5a1577a425b585250a7e46dbc8f1ec8090982f23b1d53846640bcca297",
+      "metadata": "binary-hist_gradient_boosting-5a27200c4fcc.metadata.json",
+      "metadata_sha256": "d3e40db9eb93a1011164da5e918b79a81c891e0f788ed58c6fd601273a39493e",
+      "model_version": "binary-hist_gradient_boosting-5a27200c4fcc",
+      "target": "binary"
+    },
+    {
+      "artifact": "multiclass-random_forest-df3f5d0cd53c.joblib",
+      "artifact_sha256": "c484228d64f6712df15119e88a12f37b24fd03ae31a6b1aa3a0e40779092d14a",
+      "metadata": "multiclass-random_forest-df3f5d0cd53c.metadata.json",
+      "metadata_sha256": "0b1cadc0865dc20a5a31bb9ce5173fa15852b959f418a9e2e67281b2d7a57e0e",
+      "model_version": "multiclass-random_forest-df3f5d0cd53c",
+      "target": "multiclass"
+    }
+  ],
+  "schema_version": "rt-iot2022-v1"
+}

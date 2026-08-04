@@ -18,7 +18,10 @@ dev = [
 
 [project.scripts]
 iot-ids-profile = "iot_ids_ml.cli:profile_main"
+iot-ids-prepare = "iot_ids_ml.cli:prepare_main"
 iot-ids-train = "iot_ids_ml.cli:train_main"
+iot-ids-promote = "iot_ids_ml.cli:promote_main"
+iot-ids-verify = "iot_ids_ml.cli:verify_main"
 
 [build-system]
 requires = ["hatchling"]
@@ -37,4 +40,3 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-

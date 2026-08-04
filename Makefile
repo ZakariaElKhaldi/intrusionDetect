@@ -1,14 +1,22 @@
-.PHONY: help setup download-data validate-data train test lint build dev run-all check-all docker-up docker-down
+.PHONY: help setup download-data prepare-data validate-data train verify-model test lint build dev run-all check-all docker-up docker-down
 
-DATASET ?= data/sample/rt_iot2022_sample.csv
+DATASET ?= data/raw/RT_IOT2022.csv
+DATA_ARCHIVE ?= data/raw/rt-iot2022.zip
+DATASET_SHA256 ?= 956956c09c1764584fa08acd0f6876475626bcedcd6a6b1f8c492c2e9a2089ea
+ARCHIVE_SHA256 ?= bcaa24d62abbb1215be576d5cf9c02dfcb0bb7c4c2f5a00e03055afaa1ed109e
+DATASET_ROWS ?= 123117
+MODEL_RUN_DIR ?= models/runs/latest
+PRODUCTION_MODEL_DIR ?= models/production
 export UV_CACHE_DIR ?= /tmp/iot-ids-uv-cache
 
 help:
 	@echo "IoT IDS development commands"
 	@echo "  make setup          Install backend, ML, and frontend dependencies"
 	@echo "  make download-data  Fetch and checksum the official UCI archive"
+	@echo "  make prepare-data   Safely verify and extract the canonical dataset"
 	@echo "  make validate-data  Validate and profile DATASET=$(DATASET)"
-	@echo "  make train          Train and evaluate baseline models"
+	@echo "  make train          Train, evaluate, and promote real-data champions"
+	@echo "  make verify-model   Verify the promoted artifacts and dataset provenance"
 	@echo "  make test           Run backend, ML, and frontend tests"
 	@echo "  make lint           Run Python and TypeScript linters"
 	@echo "  make build          Build the frontend and validate Python imports"
@@ -25,15 +33,32 @@ setup:
 download-data:
 	mkdir -p data/raw
 	curl -L --fail --show-error -o data/raw/rt-iot2022.zip https://archive.ics.uci.edu/static/public/942/rt-iot2022.zip
-	echo "bcaa24d62abbb1215be576d5cf9c02dfcb0bb7c4c2f5a00e03055afaa1ed109e  data/raw/rt-iot2022.zip" | sha256sum --check -
-	unzip -o data/raw/rt-iot2022.zip -d data/raw
-	echo "956956c09c1764584fa08acd0f6876475626bcedcd6a6b1f8c492c2e9a2089ea  data/raw/RT_IOT2022" | sha256sum --check -
+	$(MAKE) prepare-data
+
+prepare-data:
+	cd machine-learning && uv run iot-ids-prepare $(abspath $(DATA_ARCHIVE)) \
+		--output-dir $(abspath data/raw) \
+		--manifest-path $(abspath data/dataset-manifest.json) \
+		--expected-archive-sha256 $(ARCHIVE_SHA256) \
+		--expected-dataset-sha256 $(DATASET_SHA256)
 
 validate-data:
 	cd machine-learning && uv run iot-ids-profile $(abspath $(DATASET))
 
 train:
-	cd machine-learning && uv run iot-ids-train $(abspath $(DATASET)) --output-dir $(abspath models/artifacts)
+	cd machine-learning && uv run iot-ids-train $(abspath $(DATASET)) \
+		--output-dir $(abspath $(MODEL_RUN_DIR))
+	cd machine-learning && uv run iot-ids-promote \
+		--run-dir $(abspath $(MODEL_RUN_DIR)) \
+		--production-dir $(abspath $(PRODUCTION_MODEL_DIR)) \
+		--expected-dataset-sha256 $(DATASET_SHA256) \
+		--expected-row-count $(DATASET_ROWS)
+
+verify-model:
+	cd machine-learning && uv run iot-ids-verify \
+		--production-dir $(abspath $(PRODUCTION_MODEL_DIR)) \
+		--expected-dataset-sha256 $(DATASET_SHA256) \
+		--expected-row-count $(DATASET_ROWS)
 
 test:
 	cd backend && uv run pytest

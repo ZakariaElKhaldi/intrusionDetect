@@ -19,7 +19,9 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       IOT_IDS_DATABASE_URL: postgresql+psycopg://iot_ids:iot_ids@database:5432/iot_ids
-      IOT_IDS_MODEL_DIR: /app/models/artifacts
+      IOT_IDS_MODEL_DIR: /app/models/production
+      IOT_IDS_DATASET_PATH: /app/data/raw/RT_IOT2022.csv
+      IOT_IDS_ALLOW_FALLBACK: "false"
       IOT_IDS_CORS_ORIGINS: http://localhost:5173
     ports:
       - "8000:8000"

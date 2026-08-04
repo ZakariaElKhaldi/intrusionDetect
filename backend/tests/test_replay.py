@@ -64,3 +64,38 @@ async def test_replay_rejects_invalid_state_transitions(
     assert paused.status_code == 409
     resumed = await fallback_client.post("/replay/resume", json={"speed": 1})
     assert resumed.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_dataset_replay_is_server_managed_lazy_and_filterable(
+    fallback_client: httpx.AsyncClient,
+) -> None:
+    response = await fallback_client.post(
+        "/replay/start",
+        json={
+            "mode": "dataset",
+            "scenario": "attack",
+            "offset": 0,
+            "limit": 2,
+            "interval_ms": 0,
+            "speed": 100,
+        },
+    )
+    assert response.status_code == 202
+    assert response.json()["mode"] == "dataset"
+    assert response.json()["total"] == 2
+    await asyncio.sleep(0.1)
+    state = (await fallback_client.get("/replay/status")).json()
+    assert state["status"] == "completed"
+    assert state["processed"] == 2
+
+
+@pytest.mark.anyio
+async def test_dataset_replay_rejects_client_observations(
+    fallback_client: httpx.AsyncClient,
+) -> None:
+    response = await fallback_client.post(
+        "/replay/start",
+        json={"mode": "dataset", "observations": [observation()]},
+    )
+    assert response.status_code == 422

@@ -1,25 +1,36 @@
 # RT-IoT2022 ML foundation
 
-This package implements the reproducible Phase 0–1 baseline. It runs entirely
-offline once dependencies are installed.
+This package implements reproducible RT-IoT2022 preparation, repeated baseline
+evaluation, and verified champion promotion. It runs entirely offline once
+dependencies are installed.
 
 ```bash
 uv sync --extra dev
-uv run iot-ids-profile ../data/sample/rt_iot2022_sample.csv
-uv run iot-ids-train ../data/sample/rt_iot2022_sample.csv \
-  --output-dir ../models/artifacts
+uv run iot-ids-prepare ../data/raw/rt-iot2022.zip \
+  --output-dir ../data/raw \
+  --manifest-path ../data/dataset-manifest.json
+uv run iot-ids-profile ../data/raw/RT_IOT2022.csv
+uv run iot-ids-train ../data/raw/RT_IOT2022.csv \
+  --output-dir ../models/runs/latest
+uv run iot-ids-promote \
+  --run-dir ../models/runs/latest \
+  --production-dir ../models/production \
+  --expected-dataset-sha256 956956c09c1764584fa08acd0f6876475626bcedcd6a6b1f8c492c2e9a2089ea \
+  --expected-row-count 123117
 ```
 
-Both commands accept a real RT-IoT2022 CSV path. The trainer fits four
-leakage-safe scikit-learn pipelines for both binary and multiclass targets.
-Preprocessing is fitted inside each pipeline using training data only.
+The trainer fits four leakage-safe scikit-learn pipelines over three declared
+seeds. Binary candidates use all flows; attack-family candidates use attack
+rows only. Preprocessing is fitted inside each pipeline using training data
+only. The sample CSV remains suitable for tests, but promotion rejects fixture
+runs.
 
 ## Artifact integration
 
-`models/artifacts/manifest.json` is the registry. Select the entry whose
-`target` is `binary`, then resolve its `artifact` and `metadata` filenames
-relative to the manifest. Verify the artifact SHA-256 against
-`artifact_sha256` before calling `joblib.load`.
+`models/production/manifest.json` is the serving registry and contains exactly
+one `binary` detector plus one attack-only `multiclass` classifier. Promotion
+checks the report, metadata, artifacts, schema, dataset hash, row count, and all
+referenced checksums before replacing that directory atomically.
 
 The artifact is a direct scikit-learn `Pipeline` containing `preprocess` and
 `classifier` steps. Construct inference frames in the metadata's

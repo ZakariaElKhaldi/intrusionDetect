@@ -1,67 +1,89 @@
 # Canonical Feature Schema
 
-The compatibility boundary is versioned as `rt-iot2022-v1`. Its
-machine-readable definition is
-[`data/schema/rt_iot2022_v1.json`](../data/schema/rt_iot2022_v1.json), which is
-the source of truth for feature names and order.
+The compatibility boundary is `rt-iot2022-v1`. Its machine-readable source of
+truth is [`data/schema/rt_iot2022_v1.json`](../data/schema/rt_iot2022_v1.json).
+The contract freezes names, order, and runtime types; it does not establish that
+an external flow extractor produces equivalent values.
 
 ## Observation envelope
-
-Every replayed or live observation uses the same contract:
 
 ```json
 {
   "schema_version": "rt-iot2022-v1",
   "event_id": "UUID",
-  "flow_started_at": "ISO-8601",
-  "flow_ended_at": "ISO-8601",
+  "flow_started_at": "ISO-8601 timestamp",
+  "flow_ended_at": "ISO-8601 timestamp",
   "source": "dataset-replay",
   "features": {},
   "ground_truth": null
 }
 ```
 
-The end timestamp must not precede the start timestamp. Unknown top-level
-fields, blank feature names, nested feature values, missing model features,
-extra model features, non-finite numeric values, and unsupported schema
-versions are invalid.
+The API requires exactly the 83 features in canonical insertion order.
+`flow_ended_at` cannot precede `flow_started_at`. Unknown envelope fields,
+missing or extra features, blank categorical values, booleans in numeric
+fields, non-finite numbers, nested feature values, and unsupported schema
+versions are rejected.
 
-## Model feature profile
+`ground_truth` is optional serving metadata. It is never an input feature.
 
-- Target column: `Attack_type`.
-- Model inputs: the 83 ordered fields in the machine-readable schema.
-- Categorical fields: `proto` and `service`.
-- Numeric fields: every other model input, accepted only when finite and
+## Dataset and target profile
+
+- Source target: `Attack_type`.
+- Categorical model features: `proto` and `service`.
+- Numeric model features: the other 81 ordered fields, all finite and
   float-compatible.
-- Removed field: `Unnamed: 0`, because it is a CSV index artifact and an
-  identifier-like leakage risk.
-- Binary target: labels in `normal_labels` map to `normal`; all other labels
-  map to `attack`.
-- Multiclass target: the original `Attack_type` value.
+- Binary target: known normal aliases map to `normal`; every other label maps to
+  `attack`.
+- Second-stage target: original attack-family labels from attack rows only.
+- Removed source fields: `Unnamed:*` and `no`, which are CSV index artifacts.
 
-The preprocessing artifact owns categorical mappings, missing-value handling,
-scaling, and feature order. It is fitted only on a training partition and is
-packaged with the estimator. API inference must not recreate transformations
-independently.
+The verified archive contains these labels:
 
-## Units and extractor compatibility
+| Role | Observed labels |
+|---|---|
+| Normal | `MQTT_Publish`, `Thing_Speak`, `Wipro_bulb` |
+| Attack | `ARP_poisioning`, `DDOS_Slowloris`, `DOS_SYN_Hping`, `Metasploit_Brute_Force_SSH`, `NMAP_FIN_SCAN`, `NMAP_OS_DETECTION`, `NMAP_TCP_scan`, `NMAP_UDP_SCAN`, `NMAP_XMAS_TREE_SCAN` |
 
-The available UCI metadata does not reliably specify units for every field.
-The UCI description also names Zeek with a Flowmeter plugin while the
-introductory paper describes Wireshark/PCAP followed by CICFlowMeter. This
-project therefore freezes the dataset column contract but does **not** claim
-that either live extractor produces equivalent values.
+The schema retains normal-name aliases found in source descriptions or earlier
+variants (`MQTT`, `Thing_speak`, `Wipro_bulb_Dataset`, `Amazon-Alexa`) so binary
+mapping is explicit and conservative. Their presence in the alias list does not
+claim that those strings occur in the checksummed CSV.
 
-Before a PCAP or live adapter is promoted, controlled TCP, UDP, MQTT, DNS, SYN,
-and isolated scan scenarios must compare:
+## Training and serving ownership
 
-- names and order;
-- units and direction rules;
-- timeout behavior;
+The packaged scikit-learn pipeline owns imputation, categorical encoding,
+scaling where applicable, and feature order. These transformations are fitted
+only on training data. The API does not recreate preprocessing independently.
+
+Although candidate pipelines contain imputers, the current dataset and API
+contracts reject missing values before inference. The imputer is defensive
+pipeline encapsulation, not permission for upstream data loss.
+
+## Time semantics
+
+The source table has no validated observation timestamp. During dataset replay,
+the backend assigns current envelope timestamps as each row is emitted. Those
+timestamps measure replay processing and do not recover original capture time.
+CSV order is deterministic but must not be called chronological.
+
+## Extractor compatibility
+
+The [UCI record](https://archive.ics.uci.edu/dataset/942/rt-iot2022) says Zeek
+with a Flowmeter plugin captured bidirectional attributes. The
+[introductory paper](https://doi.org/10.1186/s42400-023-00178-5) describes
+Wireshark PCAP capture followed by CICFlowMeter CSV extraction. The UCI variable
+table also leaves most units unspecified.
+
+Therefore the repository's Zeek and CICFlowMeter modules are placeholders, not
+validated adapters. Before PCAP or live ingestion is enabled, controlled TCP,
+UDP, MQTT, DNS, SYN, and isolated scan scenarios must compare:
+
+- names, order, types, and categorical vocabulary;
+- units, directions, and flow timeout rules;
 - TCP flag encoding;
-- packet and byte counters; and
-- missing-value behavior.
+- packet, payload, bulk, active, and idle counters; and
+- missing, zero, infinity, and boundary behavior.
 
-Until those Phase 6 checks pass, dataset replay is the only validated ingestion
-mode.
-
+Until those experiments pass, prepared-dataset replay and directly validated
+observations are the only supported ingestion modes.

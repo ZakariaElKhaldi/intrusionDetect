@@ -10,7 +10,7 @@
     "storage_type": "string",
     "derived_targets": {
       "binary": ["normal", "attack"],
-      "multiclass": "original Attack_type values"
+      "multiclass": "original Attack_type values for attack rows only"
     }
   },
   "feature_order": [
@@ -56,7 +56,8 @@
     "Wipro_bulb_Dataset", "Wipro_bulb", "Amazon-Alexa"
   ],
   "documented_removals": {
-    "Unnamed: 0": "CSV index artifact; never a model feature"
+    "Unnamed:*": "blank/index-style CSV artifact; never a model feature",
+    "no": "named CSV index artifact; never a model feature"
   },
   "extraction_limitation": "UCI describes Zeek plus Flowmeter; the paper describes Wireshark/PCAP plus CICFlowMeter. Column compatibility does not establish value compatibility."
 }

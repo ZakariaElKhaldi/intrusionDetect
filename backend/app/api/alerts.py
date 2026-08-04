@@ -41,9 +41,13 @@ async def list_alerts(
                     status=alert.status,
                     created_at=alert.created_at,
                     model_version=prediction.model_version,
+                    detector_model_version=prediction.detector_model_version,
+                    classifier_model_version=prediction.classifier_model_version,
                     binary_prediction=prediction.binary_prediction,
                     attack_class=prediction.attack_class,
                     confidence=prediction.confidence,
+                    detection_score=prediction.detection_score,
+                    attack_class_score=prediction.attack_class_score,
                     raw_features=observation.raw_features,
                 )
             )
@@ -74,9 +78,13 @@ async def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
             status=alert.status,
             created_at=alert.created_at,
             model_version=prediction.model_version,
+            detector_model_version=prediction.detector_model_version,
+            classifier_model_version=prediction.classifier_model_version,
             binary_prediction=prediction.binary_prediction,
             attack_class=prediction.attack_class,
             confidence=prediction.confidence,
+            detection_score=prediction.detection_score,
+            attack_class_score=prediction.attack_class_score,
             raw_features=observation.raw_features,
             feedback=feedback,
         )

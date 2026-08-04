@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import resource
+import shutil
 import subprocess
+import tempfile
 import time
 import tracemalloc
 from dataclasses import asdict, dataclass
@@ -45,6 +48,42 @@ class TrainingConfig:
     random_seed: int = 42
     test_fraction: float = 0.20
     validation_fraction: float = 0.20
+
+
+DEFAULT_EVALUATION_SEEDS = (42, 1337, 2026)
+
+
+def _publish_run(staging: Path, destination: Path) -> None:
+    """Replace a generated run directory without mixing old and new artifacts."""
+
+    if destination.exists():
+        allowed_names = {"manifest.json", "evaluation-report.json", ".gitkeep"}
+        unknown = [
+            item.name
+            for item in destination.iterdir()
+            if item.name not in allowed_names
+            and not item.name.endswith((".joblib", ".metadata.json"))
+        ]
+        if unknown:
+            raise ValueError(
+                f"Refusing to replace non-run directory {destination}; "
+                f"unexpected entries: {unknown}"
+            )
+    backup = destination.with_name(f".{destination.name}-previous")
+    moved_old = False
+    if backup.exists():
+        shutil.rmtree(backup)
+    try:
+        if destination.exists():
+            os.replace(destination, backup)
+            moved_old = True
+        os.replace(staging, destination)
+        if moved_old:
+            shutil.rmtree(backup)
+    except Exception:
+        if moved_old and not destination.exists() and backup.exists():
+            os.replace(backup, destination)
+        raise
 
 
 def _preprocessor(*, scale: bool) -> ColumnTransformer:
@@ -342,11 +381,28 @@ def train_baselines(
     csv_path: str | Path,
     output_dir: str | Path,
     *,
-    seed: int = 42,
+    seed: int | None = None,
+    seeds: tuple[int, ...] | list[int] | None = None,
     group_column: str | None = None,
     time_column: str | None = None,
 ) -> dict[str, Any]:
-    """Train both targets, report all models, and save the best random-split pipelines."""
+    """Train both targets and select champions from repeated validation splits.
+
+    ``seed`` is retained for callers that intentionally need one small fixture run.
+    Production callers should omit it (or pass ``seeds``) to use the three declared
+    deterministic evaluations.
+    """
+
+    if seed is not None and seeds is not None:
+        raise ValueError("Pass either seed or seeds, not both")
+    requested_seeds = (
+        seeds
+        if seeds is not None
+        else ((seed,) if seed is not None else DEFAULT_EVALUATION_SEEDS)
+    )
+    evaluation_seeds = tuple(int(value) for value in requested_seeds)
+    if not evaluation_seeds or len(set(evaluation_seeds)) != len(evaluation_seeds):
+        raise ValueError("Evaluation seeds must be a non-empty list of unique integers")
 
     csv_path = Path(csv_path).expanduser().resolve()
     header = pd.read_csv(csv_path, nrows=0)
@@ -373,27 +429,34 @@ def train_baselines(
         frame = frame.drop_duplicates(subset=list(FEATURE_COLUMNS), keep="first").reset_index(
             drop=True
         )
-    config = TrainingConfig(random_seed=seed)
-    x = frame[list(FEATURE_COLUMNS)]
-    targets = {
-        "binary": frame[TARGET_COLUMN].map(
-            lambda value: "normal" if str(value) in NORMAL_LABELS else "attack"
-        ),
-        "multiclass": frame[TARGET_COLUMN].astype(str),
+    attack_mask = ~frame[TARGET_COLUMN].astype(str).isin(NORMAL_LABELS)
+    experiment_frames = {
+        "binary": frame,
+        "multiclass": frame.loc[attack_mask].reset_index(drop=True),
     }
-    output = Path(output_dir).expanduser().resolve()
-    output.mkdir(parents=True, exist_ok=True)
+    final_output = Path(output_dir).expanduser().resolve()
+    final_output.parent.mkdir(parents=True, exist_ok=True)
+    output = Path(
+        tempfile.mkdtemp(prefix=f".{final_output.name}-training-", dir=final_output.parent)
+    )
     repository = Path(__file__).resolve().parents[3]
+    try:
+        dataset_path = csv_path.relative_to(repository).as_posix()
+    except ValueError:
+        dataset_path = str(csv_path)
     common_metadata = {
         "schema_version": SCHEMA_VERSION,
-        "dataset_path": str(csv_path),
+        "dataset_path": dataset_path,
         "dataset_sha256": validated.profile["dataset_sha256"],
         "code_commit": _git_commit(repository),
         "code_worktree_dirty": _git_is_dirty(repository),
-        "random_seed": seed,
+        "evaluation_seeds": list(evaluation_seeds),
         "feature_order": list(FEATURE_COLUMNS),
         "library_versions": _library_versions(),
-        "training_configuration": asdict(config),
+        "training_configuration": {
+            **asdict(TrainingConfig(random_seed=evaluation_seeds[0])),
+            "evaluation_seeds": list(evaluation_seeds),
+        },
         "removed_rows": {
             "duplicate_feature_rows": duplicate_count,
             "reason": "prevent identical flows from crossing split boundaries",
@@ -401,10 +464,15 @@ def train_baselines(
     }
     report: dict[str, Any] = {
         **common_metadata,
-        "profile": validated.profile,
+        "profile": {**validated.profile, "dataset_path": dataset_path},
         "experiments": {},
+        "dataset_role": (
+            "fixture"
+            if "data/sample" in csv_path.as_posix() or validated.profile["row_count"] <= 1000
+            else "production_training"
+        ),
         "limitations": [
-            "The checked-in fixture is synthetic and only tests the software contract.",
+            "Small fixture runs only test the software contract and cannot be promoted.",
             "Random-split performance is not evidence of deployment readiness.",
             "Extractor value compatibility requires controlled PCAP experiments.",
             "Raw classifier probabilities are uncalibrated.",
@@ -414,27 +482,23 @@ def train_baselines(
     }
     saved_models: list[dict[str, Any]] = []
 
-    for target_name, y in targets.items():
-        random_partitions = stratified_split(y, config)
-        _assert_no_feature_overlap(x, random_partitions)
+    for target_name, experiment_frame in experiment_frames.items():
+        x = experiment_frame[list(FEATURE_COLUMNS)]
+        y = (
+            experiment_frame[TARGET_COLUMN].map(
+                lambda value: "normal" if str(value) in NORMAL_LABELS else "attack"
+            )
+            if target_name == "binary"
+            else experiment_frame[TARGET_COLUMN].astype(str)
+        )
+        primary_config = TrainingConfig(random_seed=evaluation_seeds[0])
         realistic_partitions, realistic_definition = realistic_split(
-            frame,
+            experiment_frame,
             y,
             group_column=selected_group,
             time_column=selected_time,
-            config=config,
+            config=primary_config,
         )
-        strategies: list[tuple[str, dict[str, np.ndarray], dict[str, Any]]] = [
-            (
-                "stratified_random",
-                random_partitions,
-                {"strategy": "stratified random", "shuffle": True},
-            )
-        ]
-        if realistic_partitions is not None:
-            _assert_no_feature_overlap(x, realistic_partitions)
-            strategies.append(("realistic", realistic_partitions, realistic_definition))
-
         target_report: dict[str, Any] = {
             "target_definition": (
                 {
@@ -442,42 +506,119 @@ def train_baselines(
                     "attack": "all remaining Attack_type labels",
                 }
                 if target_name == "binary"
-                else {"classes": sorted(y.unique().tolist())}
+                else {
+                    "classes": sorted(y.unique().tolist()),
+                    "population": "attack rows only; normal flows are gated by binary detection",
+                }
             ),
+            "training_row_count": int(len(experiment_frame)),
             "realistic_split": realistic_definition,
-            "splits": {},
+            "splits": {
+                "stratified_random": {
+                    "definition": {
+                        "strategy": "repeated stratified random",
+                        "shuffle": True,
+                        "seeds": list(evaluation_seeds),
+                    },
+                    "models": {},
+                }
+            },
         }
-        best_name: str | None = None
-        best_score = -1.0
-        best_estimator: Pipeline | None = None
-        for strategy_name, partitions, definition in strategies:
-            split_report: dict[str, Any] = {
-                "definition": definition,
-                "partitions": {
+        seed_evaluations: dict[str, dict[int, tuple[Pipeline, dict[str, Any]]]] = {
+            name: {} for name in model_candidates(evaluation_seeds[0])
+        }
+        primary_partitions: dict[str, np.ndarray] | None = None
+        for evaluation_seed in evaluation_seeds:
+            config = TrainingConfig(random_seed=evaluation_seed)
+            partitions = stratified_split(y, config)
+            _assert_no_feature_overlap(x, partitions)
+            if primary_partitions is None:
+                primary_partitions = partitions
+                target_report["splits"]["stratified_random"]["partitions"] = {
                     name: _partition_summary(y, indices)
                     for name, indices in partitions.items()
-                },
-                "models": {},
-            }
-            for model_name, candidate in model_candidates(seed).items():
-                fitted, evaluation = _fit_one(candidate, x, y, partitions)
-                split_report["models"][model_name] = evaluation
-                if strategy_name == "stratified_random":
-                    score = evaluation["validation"]["f1_macro"]
-                    if score > best_score:
-                        best_score = score
-                        best_name = model_name
-                        best_estimator = fitted
-            target_report["splits"][strategy_name] = split_report
+                }
+            for model_name, candidate in model_candidates(evaluation_seed).items():
+                seed_evaluations[model_name][evaluation_seed] = _fit_one(
+                    candidate, x, y, partitions
+                )
 
-        assert best_name is not None and best_estimator is not None
+        ranking: list[tuple[tuple[float, float, float, float, str], str]] = []
+        for model_name, runs in seed_evaluations.items():
+            evaluations = [result for _, result in runs.values()]
+            mean_f1 = float(np.mean([item["validation"]["f1_macro"] for item in evaluations]))
+            mean_fpr = float(
+                np.mean(
+                    [
+                        item["validation"].get(
+                            "false_positive_rate",
+                            item["validation"]["macro_one_vs_rest_false_positive_rate"],
+                        )
+                        for item in evaluations
+                    ]
+                )
+            )
+            mean_p95 = float(
+                np.mean([item["operational"]["p95_inference_latency_ms"] for item in evaluations])
+            )
+            mean_size = float(
+                np.mean(
+                    [
+                        item["operational"]["serialized_model_size_bytes"]
+                        for item in evaluations
+                    ]
+                )
+            )
+            representative = runs[evaluation_seeds[0]][1]
+            target_report["splits"]["stratified_random"]["models"][model_name] = {
+                **representative,
+                "seed_evaluations": {
+                    str(run_seed): result for run_seed, (_, result) in runs.items()
+                },
+                "selection_aggregate": {
+                    "mean_validation_macro_f1": mean_f1,
+                    "mean_validation_false_positive_rate": mean_fpr,
+                    "mean_p95_inference_latency_ms": mean_p95,
+                    "mean_serialized_model_size_bytes": mean_size,
+                },
+            }
+            ranking.append(((-mean_f1, mean_fpr, mean_p95, mean_size, model_name), model_name))
+
+        ranking.sort(key=lambda item: item[0])
+        best_name = ranking[0][1]
+        best_score = -ranking[0][0][0]
+        best_estimator = seed_evaluations[best_name][evaluation_seeds[0]][0]
+        best_aggregate = target_report["splits"]["stratified_random"]["models"][best_name][
+            "selection_aggregate"
+        ]
+        if realistic_partitions is not None:
+            _assert_no_feature_overlap(x, realistic_partitions)
+            _, realistic_evaluation = _fit_one(
+                model_candidates(evaluation_seeds[0])[best_name],
+                x,
+                y,
+                realistic_partitions,
+            )
+            target_report["splits"]["realistic"] = {
+                "definition": realistic_definition,
+                "partitions": {
+                    name: _partition_summary(y, indices)
+                    for name, indices in realistic_partitions.items()
+                },
+                "models": {best_name: realistic_evaluation},
+                "note": "Realistic split evaluates the already-selected architecture only.",
+            }
+
+        code_commit = common_metadata["code_commit"]
         version_material = json.dumps(
             {
                 "schema": SCHEMA_VERSION,
                 "dataset": validated.profile["dataset_sha256"],
                 "target": target_name,
                 "model": best_name,
-                "seed": seed,
+                "seeds": list(evaluation_seeds),
+                "configuration": common_metadata["training_configuration"],
+                "code_commit": code_commit,
             },
             sort_keys=True,
         ).encode()
@@ -492,6 +633,21 @@ def train_baselines(
             "model_name": best_name,
             "selection_metric": "validation_macro_f1",
             "selection_score": best_score,
+            "selection_policy": [
+                "highest mean validation macro-F1",
+                "lowest mean validation false-positive rate",
+                "lowest mean p95 inference latency",
+                "smallest mean serialized size",
+                "lexicographically smallest model name",
+            ],
+            "selection_aggregate": best_aggregate,
+            "dataset_role": report["dataset_role"],
+            "training_row_count": int(len(experiment_frame)),
+            "training_population": (
+                "all deduplicated flows"
+                if target_name == "binary"
+                else "attack-only deduplicated flows"
+            ),
             "artifact": artifact_path.name,
             "artifact_sha256": artifact_sha,
             "probability_calibrated": False,
@@ -500,6 +656,7 @@ def train_baselines(
         metadata_path.write_text(
             json.dumps(model_metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
+        metadata_sha = sha256_file(metadata_path)
         saved_models.append(
             {
                 "model_version": version,
@@ -507,6 +664,7 @@ def train_baselines(
                 "artifact": artifact_path.name,
                 "artifact_sha256": artifact_sha,
                 "metadata": metadata_path.name,
+                "metadata_sha256": metadata_sha,
             }
         )
         target_report["selected_model"] = model_metadata
@@ -524,8 +682,15 @@ def train_baselines(
     manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    try:
+        _publish_run(output, final_output)
+    except Exception:
+        shutil.rmtree(output, ignore_errors=True)
+        raise
+    report_path = final_output / report_path.name
+    manifest_path = final_output / manifest_path.name
     return {
-        "output_dir": str(output),
+        "output_dir": str(final_output),
         "evaluation_report": str(report_path),
         "manifest": str(manifest_path),
         "models": saved_models,

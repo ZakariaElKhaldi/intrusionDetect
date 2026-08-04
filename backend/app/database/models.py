@@ -39,10 +39,18 @@ class Prediction(Base):
         ForeignKey("observations.event_id"), unique=True, index=True
     )
     model_version: Mapped[str] = mapped_column(String(128), index=True)
+    detector_model_version: Mapped[str] = mapped_column(String(128), index=True)
+    classifier_model_version: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
     binary_prediction: Mapped[str] = mapped_column(String(16), index=True)
     attack_class: Mapped[str | None] = mapped_column(String(128), nullable=True)
     confidence: Mapped[float] = mapped_column(Float)
+    detection_score: Mapped[float] = mapped_column(Float)
+    attack_class_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     latency_ms: Mapped[float] = mapped_column(Float)
+    detector_latency_ms: Mapped[float] = mapped_column(Float)
+    classifier_latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     end_to_end_latency_ms: Mapped[float] = mapped_column(Float)
     top_features: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -93,4 +101,3 @@ class AnalystFeedback(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     alert: Mapped[Alert] = relationship(back_populates="feedback")
-

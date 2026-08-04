@@ -3,7 +3,10 @@ import { PanelHeading } from "../../components/PanelHeading";
 import type { ModelInfo } from "../../types";
 
 export function ModelAnalysis({ models }: { models: ModelInfo[] }) {
-  const active = models.find((model) => model.status === "active") ?? models[0];
+  const active = models.find((model) => model.status === "active" && model.role === "detector")
+    ?? models.find((model) => model.status === "active")
+    ?? models[0];
+  const classifier = models.find((model) => model.status === "active" && model.role === "classifier");
   return (
     <div className="models-grid">
       <section className="panel model-summary">
@@ -19,6 +22,8 @@ export function ModelAnalysis({ models }: { models: ModelInfo[] }) {
           <div><span>False-positive rate</span><b>{((active?.false_positive_rate ?? 0) * 100).toFixed(2)}%</b></div>
           <div><span>Median latency</span><b>{active?.inference_ms?.toFixed(2) ?? "—"} ms</b></div>
           <div><span>Evaluation scope</span><b>{active?.evaluation_scope ?? "Not reported"}</b></div>
+          <div><span>Serving role</span><b>{active?.role ?? "Not reported"}</b></div>
+          <div><span>Attack classifier</span><b className="mono">{classifier?.version ?? "Not reported"}</b></div>
           <div><span>Probability calibration</span><b>Not calibrated</b></div>
         </div>
       </section>
@@ -60,4 +65,3 @@ export function ModelAnalysis({ models }: { models: ModelInfo[] }) {
     </div>
   );
 }
-

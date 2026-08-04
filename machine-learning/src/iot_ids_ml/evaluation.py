@@ -24,6 +24,24 @@ def _finite(value: float) -> float | None:
     return float(value) if math.isfinite(float(value)) else None
 
 
+def _compact_pr_curve(
+    precision: np.ndarray, recall: np.ndarray, thresholds: np.ndarray, *, max_points: int = 256
+) -> dict[str, list[float]]:
+    """Keep an interpretable curve without embedding every held-out row."""
+
+    if len(thresholds) <= max_points - 1:
+        indices = np.arange(len(thresholds))
+    else:
+        indices = np.unique(
+            np.linspace(0, len(thresholds) - 1, max_points - 1, dtype=int)
+        )
+    return {
+        "precision": np.append(precision[indices], precision[-1]).astype(float).tolist(),
+        "recall": np.append(recall[indices], recall[-1]).astype(float).tolist(),
+        "thresholds": thresholds[indices].astype(float).tolist(),
+    }
+
+
 def classification_metrics(estimator: Any, x: Any, y: Any) -> dict[str, Any]:
     predictions = estimator.predict(x)
     labels = sorted(
@@ -127,11 +145,7 @@ def classification_metrics(estimator: Any, x: Any, y: Any) -> dict[str, Any]:
                 precision, recall, thresholds = precision_recall_curve(
                     binary_y, probabilities[:, positive_index]
                 )
-                pr_curves[label] = {
-                    "precision": precision.astype(float).tolist(),
-                    "recall": recall.astype(float).tolist(),
-                    "thresholds": thresholds.astype(float).tolist(),
-                }
+                pr_curves[label] = _compact_pr_curve(precision, recall, thresholds)
         else:
             encoded = np.column_stack(
                 [(np.asarray(y) == label).astype(int) for label in estimator_labels]
@@ -145,11 +159,7 @@ def classification_metrics(estimator: Any, x: Any, y: Any) -> dict[str, Any]:
                     precision, recall, thresholds = precision_recall_curve(
                         encoded[:, index], probabilities[:, index]
                     )
-                    pr_curves[label] = {
-                        "precision": precision.astype(float).tolist(),
-                        "recall": recall.astype(float).tolist(),
-                        "thresholds": thresholds.astype(float).tolist(),
-                    }
+                    pr_curves[label] = _compact_pr_curve(precision, recall, thresholds)
                 else:
                     pr_auc[label] = None
         result["one_vs_rest_pr_auc"] = pr_auc
@@ -160,25 +170,33 @@ def classification_metrics(estimator: Any, x: Any, y: Any) -> dict[str, Any]:
     return result
 
 
-def operational_metrics(estimator: Any, x: Any) -> dict[str, Any]:
+def operational_metrics(
+    estimator: Any, x: Any, *, max_benchmark_rows: int = 1_000
+) -> dict[str, Any]:
     if len(x) == 0:
         raise ValueError("Cannot benchmark an empty evaluation partition")
-    estimator.predict(x.iloc[: min(4, len(x))])
+    # Full-partition predictions are already measured by classification_metrics.
+    # A deterministic cap keeps repeated model selection practical while still
+    # providing far more latency samples than are useful for a percentile.
+    benchmark = x.iloc[: min(len(x), max_benchmark_rows)]
+    estimator.predict(benchmark.iloc[: min(4, len(benchmark))])
     per_row_ms: list[float] = []
-    for position in range(len(x)):
+    for position in range(len(benchmark)):
         started = time.perf_counter_ns()
-        estimator.predict(x.iloc[position : position + 1])
+        estimator.predict(benchmark.iloc[position : position + 1])
         per_row_ms.append((time.perf_counter_ns() - started) / 1_000_000)
 
     started = time.perf_counter()
-    estimator.predict(x)
+    estimator.predict(benchmark)
     batch_seconds = max(time.perf_counter() - started, np.finfo(float).eps)
     buffer = io.BytesIO()
     joblib.dump(estimator, buffer, compress=3)
     return {
         "median_inference_latency_ms": float(np.median(per_row_ms)),
         "p95_inference_latency_ms": float(np.percentile(per_row_ms, 95)),
-        "predictions_per_second": float(len(x) / batch_seconds),
+        "predictions_per_second": float(len(benchmark) / batch_seconds),
         "serialized_model_size_bytes": len(buffer.getvalue()),
-        "benchmark_rows": int(len(x)),
+        "benchmark_rows": int(len(benchmark)),
+        "evaluation_partition_rows": int(len(x)),
+        "benchmark_sampling": "first rows in deterministic test partition",
     }

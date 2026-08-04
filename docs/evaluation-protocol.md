@@ -1,208 +1,149 @@
-# Evaluation Protocol
+# Evaluation Protocol and Current Evidence
 
-## 1. Objectives
+This document distinguishes the evaluation that the repository performs today
+from the evidence still required before deployment claims are defensible.
 
-Evaluation must answer more than “Which model has the highest accuracy?”
+## 1. Questions and target definitions
 
-It should determine:
+Evaluation is stage-specific:
 
-- Detection quality for each attack class
-- False-alarm behavior
-- Robustness under more realistic splits
-- Inference speed
-- Model size and resource use
-- Stability of the feature-extraction pipeline
-- Suitability for server and edge deployment
+1. Can the detector separate normal from attack flows?
+2. Conditional on an attack decision, can the classifier identify one of the
+   nine observed attack families?
+3. Are those results stable across declared random seeds?
+4. Can the packaged cascade serve validated observations correctly and fast
+   enough on the measured host?
 
-## 2. Data validation
+The binary target maps the three observed normal labels to `normal` and all
+other labels to `attack`. The multiclass target excludes normal rows entirely.
+This mirrors serving behavior and avoids teaching the second stage a redundant
+normal class.
 
-Before training:
+## 2. Reproducible data checks
 
-- Confirm row and column counts.
-- Verify target labels and class frequencies.
-- Detect duplicates.
-- Verify missing and infinite values.
-- Inspect categorical cardinality.
-- Identify identifier-like or leakage-prone fields.
-- Confirm that train and test rows are not duplicate flows.
-- Document every removed feature.
+`iot-ids-prepare` and `iot-ids-profile` verify:
 
-## 3. Split strategies
+- archive and extracted-file SHA-256 values;
+- 123,117 source rows and 83 ordered model features;
+- target frequencies, missing and infinite values, categorical cardinality;
+- index artifacts (`Unnamed: 0` or `no`) and other leakage candidates; and
+- exact schema names and order.
 
-### Experiment A: stratified random split
+There are 5,202 duplicate feature rows. Training drops duplicate feature
+vectors before splitting so identical flows cannot cross partitions. That
+leaves 117,915 binary examples. This changes the experimental population and is
+recorded in every artifact.
 
-Purpose: comparable initial benchmark.
+## 3. Implemented experiment
 
-- Stratify by target.
-- Fit preprocessing only on the training partition.
-- Use validation data for tuning.
-- Keep the test set untouched.
+The current benchmark compares Logistic Regression, Decision Tree, Random
+Forest, and HistGradientBoosting. For each cascade stage it performs stratified
+60/20/20 train/validation/test splits for seeds `42`, `1337`, and `2026`.
+Preprocessing is inside each scikit-learn `Pipeline` and is fitted only on the
+training partition.
 
-### Experiment B: group-aware split
+Champion ranking is deterministic:
 
-Purpose: reduce leakage between related flows.
+1. highest mean validation macro-F1;
+2. lowest mean validation false-positive rate;
+3. lowest mean p95 single-row inference latency;
+4. smallest mean serialized size; and
+5. model name as a final stable tie-break.
 
-Potential grouping keys:
+The saved champion is the seed-42 estimator. Its test partition remains outside
+model selection. This is a repeated holdout benchmark, not cross-validation and
+not a nested hyperparameter search.
 
-- Capture session
-- Device
-- Source
-- Scenario
-- Time window
+## 4. Current results
 
-Use the strongest grouping information actually available in the data.
+| Stage | Champion | Mean validation macro-F1 | Test macro-F1 | Test error detail | p95 single-row latency* | Size |
+|---|---|---:|---:|---|---:|---:|
+| Binary | HistGradientBoosting | 0.9960 | 0.9961 | FPR 0.8739% | 9.23 ms | 123,471 B |
+| Attack family | Random Forest | 0.9681 | 0.9842 | macro one-vs-rest FPR 0.0076% | 11.33 ms | 547,454 B |
 
-### Experiment C: temporal split
+\* Local-host measurement over the first 1,000 rows of the deterministic test
+partition after warm-up. It is useful for comparison on this machine, not a
+portable service-level objective. Full test partitions are used for all
+classification metrics.
 
-Purpose: approximate deployment on future traffic.
+The binary test confusion matrix, with rows as actual and columns as predicted,
+is:
 
-- Train on earlier observations.
-- Validate on a later interval.
-- Test on the latest interval.
-- Do not shuffle across the time boundary.
+| | Predicted attack | Predicted normal |
+|---|---:|---:|
+| Actual attack | 21,167 | 13 |
+| Actual normal | 21 | 2,382 |
 
-If reliable timestamps are absent, document that limitation rather than inventing chronology.
+The attack classifier's rarest test class is `NMAP_FIN_SCAN`: six examples,
+five correctly recalled (recall 0.8333). `Metasploit_Brute_Force_SSH` has only
+seven test examples. These tiny supports make their apparently strong scores
+high-variance and unsuitable for broad claims.
 
-### Experiment D: replay evaluation
+The full report, including all candidates, seed-level results, class metrics,
+confusion matrices, and compact precision-recall curves, is
+[`models/production/evaluation-report.json`](../models/production/evaluation-report.json).
 
-Purpose: test the complete software path.
+## 5. What is not yet measured
 
-```text
-observation
-→ schema validation
-→ preprocessing
-→ inference
-→ database
-→ live event
-→ dashboard
-```
+The source CSV contains no trustworthy capture-session, device identifier, or
+timestamp suitable for group-aware or temporal splitting. Accordingly, the
+current report does not fabricate either experiment. Dataset order is used only
+for deterministic software replay.
 
-Measure prediction correctness and end-to-end latency.
+Still required:
 
-## 4. Imbalance handling
+- group-aware or chronological evaluation on data with reliable metadata;
+- external-network or cross-dataset evaluation;
+- controlled PCAP-to-feature compatibility testing;
+- calibrated probability evaluation (Brier score, reliability diagram, ECE);
+- full replay end-to-end latency and sustained-throughput measurement;
+- false alerts per real time window;
+- robustness to drift, unseen services, and malformed upstream data; and
+- hardware-specific server and edge benchmarks.
 
-Compare:
+This matters because cross-dataset NIDS research reports strong within-dataset
+results but substantial degradation across collection environments. See
+[Cantone, Marrocco, and Bria (2024)](https://doi.org/10.1109/ACCESS.2024.3472907).
 
-- No balancing
-- Class weights
-- Random undersampling
-- SMOTE or another oversampler
+## 6. Future experiment rules
 
-Rules:
+For group or temporal evaluation:
 
-- Resampling occurs only inside training folds.
-- The validation and test distributions remain unchanged.
-- Report per-class metrics.
-- Prefer class weights as the first baseline.
+- use only grouping or time metadata whose semantics are verified;
+- fit imputation, encoding, scaling, resampling, feature selection, and
+  calibration inside training folds;
+- leave validation and test distributions unchanged;
+- report both cascade-stage performance and end-to-end cascade errors; and
+- report support alongside every per-class metric.
 
-## 5. Metrics
+For imbalance experiments, compare class weights first, then undersampling or
+oversampling inside training folds. A higher aggregate score is not sufficient
+if rare-class recall or false-positive behavior becomes worse.
 
-### Classification
+For PCAP/live evaluation, compare extractor names, units, directions, timeout
+rules, TCP flag encoding, packet/byte counters, categorical values, and missing
+value behavior. No extractor may feed production inference until these checks
+pass.
 
-- Accuracy
-- Balanced accuracy
-- Precision
-- Recall
-- F1
-- Macro F1
-- Weighted F1
-- Per-class recall
-- Matthews correlation coefficient
-- Confusion matrix
-- One-vs-rest PR-AUC when meaningful
+## 7. Promotion criteria
 
-### Operational
+Current automated promotion requires:
 
-- Median latency
-- p95 latency
-- Predictions per second
-- Serialized model size
-- Peak RAM
-- CPU utilization
-- Invalid-observation rate
-- Alert rate
-- False alerts per time window
+- exactly one binary and one multiclass artifact;
+- compatible schema and exact 83-feature order;
+- expected source row count and dataset checksum;
+- matching report, metadata, and artifact checksums;
+- matching dataset identity across both stages; and
+- a non-fixture training role.
 
-### Calibration
+Promotion is atomic and explicit. It validates provenance and packaging; it does
+not certify real-world detection quality.
 
-When probabilities are shown in the UI:
+## 8. Evidence required for a deployment claim
 
-- Reliability diagram
-- Brier score
-- Expected calibration error
-- Calibrated vs uncalibrated comparison
-
-Do not present an uncalibrated classifier score as guaranteed probability.
-
-## 6. Model comparison table
-
-| Model | Macro F1 | Rare-class recall | FPR | p95 latency | Size | Notes |
-|---|---:|---:|---:|---:|---:|---|
-| Logistic Regression | | | | | | Baseline |
-| Decision Tree | | | | | | Interpretable |
-| Random Forest | | | | | | Strong tabular baseline |
-| HistGradientBoosting | | | | | | Efficient boosting |
-| XGBoost/LightGBM | | | | | | Tuned boosting |
-| Quantized Autoencoder | | | | | | Edge/anomaly experiment |
-
-## 7. Error analysis
-
-For every candidate:
-
-- List the most confused class pairs.
-- Inspect false positives.
-- Inspect false negatives.
-- Compare confidence distributions.
-- Check whether predictions depend excessively on a few features.
-- Test removal of identifier-like features.
-- Compare results across split strategies.
-- Inspect performance by IoT device or traffic source when available.
-
-## 8. Feature pipeline validation
-
-Create controlled PCAP scenarios:
-
-1. Short TCP connection
-2. UDP flow
-3. MQTT exchange
-4. DNS request
-5. Repeated SYN traffic
-6. Authorized scan in an isolated lab
-
-For every extractor candidate:
-
-- Compare column names.
-- Compare units.
-- Compare flow direction rules.
-- Compare timeout behavior.
-- Compare TCP flag encoding.
-- Compare packet and byte counters.
-- Compare missing-value behavior.
-
-A model should not be promoted to the live pipeline until feature compatibility is demonstrated.
-
-## 9. Acceptance criteria for the MVP
-
-- At least three models compared.
-- Macro F1 and per-class recall reported.
-- Random and realistic split results shown separately.
-- One model is packaged with its preprocessing pipeline.
-- API rejects invalid schemas clearly.
-- Dataset replay reaches the dashboard.
-- Alert details show model version and feature values.
-- End-to-end p95 latency is measured.
-- Known limitations are documented.
-
-## 10. Reproducibility
-
-Record:
-
-- Dataset checksum
-- Code commit
-- Random seed
-- Split definition
-- Feature schema version
-- Library versions
-- Training configuration
-- Model checksum
-- Evaluation output
+- realistic or external validation with acceptable class-specific error rates;
+- demonstrated extractor value compatibility;
+- calibrated thresholds tied to an operational false-alert budget;
+- replay/load measurements for the complete API, database, and event path;
+- drift and data-quality monitoring with analyst-reviewed escalation; and
+- documented authorization, retention, privacy, and failure-handling controls.

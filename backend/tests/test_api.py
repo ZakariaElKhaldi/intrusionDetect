@@ -20,8 +20,18 @@ async def test_health_models_and_packaged_prediction(client: httpx.AsyncClient) 
     body = prediction.json()
     assert body["model_version"] == health.json()["model_version"]
     assert body["binary_prediction"] in {"normal", "attack"}
+    assert body["detector_model_version"] == body["model_version"]
+    assert body["detection_score"] == body["confidence"]
+    if body["binary_prediction"] == "normal":
+        assert body["classifier_model_version"] is None
+        assert body["attack_class_score"] is None
+    else:
+        assert body["classifier_model_version"].startswith("multiclass-")
+        assert body["attack_class"]
+        assert body["attack_class_score"] is not None
     assert len(body["raw_features"]) == 83
     assert body["end_to_end_latency_ms"] >= body["latency_ms"]
+    assert body["total_latency_ms"] == body["end_to_end_latency_ms"]
 
 
 @pytest.mark.anyio
@@ -53,6 +63,10 @@ async def test_alert_detail_and_feedback(fallback_client: httpx.AsyncClient) -> 
     alerts = await fallback_client.get("/alerts")
     assert alerts.status_code == 200
     assert alerts.json()[0]["model_version"] == "deterministic-fallback-v1"
+    assert alerts.json()[0]["classifier_model_version"] == (
+        "deterministic-fallback-classifier-v1"
+    )
+    assert alerts.json()[0]["attack_class"] == "suspicious_activity"
     assert len(alerts.json()[0]["raw_features"]) == 83
 
     detail = await fallback_client.get(f"/alerts/{alert_id}")
@@ -65,4 +79,3 @@ async def test_alert_detail_and_feedback(fallback_client: httpx.AsyncClient) -> 
     )
     assert feedback.status_code == 201
     assert feedback.json()["status"] == "investigating"
-

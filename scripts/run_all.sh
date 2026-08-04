@@ -5,10 +5,11 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
-DATASET_PATH="${DATASET:-${REPOSITORY_DIR}/data/sample/rt_iot2022_sample.csv}"
+DATASET_PATH="${DATASET:-${REPOSITORY_DIR}/data/raw/RT_IOT2022.csv}"
 UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/iot-ids-uv-cache}"
 SKIP_SETUP=false
 CHECK_ONLY=false
+RETRAIN=false
 
 usage() {
   cat <<'EOF'
@@ -17,7 +18,7 @@ Usage: ./scripts/run_all.sh [options]
 Runs the IoT IDS workflow in the documented order:
   1. Install dependencies
   2. Validate and profile the dataset
-  3. Train and package baseline models
+  3. Verify (or explicitly retrain) promoted real-data models
   4. Run lint checks
   5. Run all tests
   6. Build production assets
@@ -26,7 +27,8 @@ Runs the IoT IDS workflow in the documented order:
 Options:
   --dataset PATH  Use a specific RT-IoT2022 CSV.
   --skip-setup    Reuse already-installed dependencies.
-  --check-only    Stop after validation, training, lint, tests, and build.
+  --retrain       Train and atomically promote models from the real dataset.
+  --check-only    Stop after validation, model verification, lint, tests, and build.
   -h, --help      Show this help.
 
 The DATASET environment variable may also provide the dataset path.
@@ -45,6 +47,10 @@ while (($#)); do
       ;;
     --skip-setup)
       SKIP_SETUP=true
+      shift
+      ;;
+    --retrain)
+      RETRAIN=true
       shift
       ;;
     --check-only)
@@ -97,15 +103,22 @@ fi
 
 run_step "Validating and profiling dataset" \
   make validate-data "DATASET=${DATASET_PATH}"
-run_step "Training and packaging baseline models" \
-  make train "DATASET=${DATASET_PATH}"
+if [[ "${RETRAIN}" == true ]]; then
+  run_step "Training and promoting real-data models" \
+    make train "DATASET=${DATASET_PATH}"
+fi
+run_step "Verifying promoted model provenance" make verify-model
 run_step "Running lint and type checks" make lint
 run_step "Running backend, ML, and frontend tests" make test
 run_step "Building production assets" make build
 
 if [[ "${CHECK_ONLY}" == true ]]; then
   echo
-  echo "All validation, training, test, and build steps passed."
+  if [[ "${RETRAIN}" == true ]]; then
+    echo "Validation, retraining, promotion, tests, and build passed."
+  else
+    echo "Validation, model verification, tests, and build passed."
+  fi
   exit 0
 fi
 

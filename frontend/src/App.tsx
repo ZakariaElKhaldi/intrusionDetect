@@ -10,11 +10,11 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import {
-  alertFromSocketMessage,
   checkHealth,
   getAlert,
   getAlerts,
   getModels,
+  liveEventFromSocketMessage,
   replayAction,
   socketUrl,
   startReplay,
@@ -25,9 +25,8 @@ import { Overview } from "./features/overview/Overview";
 import { ObservationLab } from "./features/testing/ObservationLab";
 import { TopologyWorkspace } from "./features/topology";
 import { sampleAlerts, sampleModels } from "./data";
-import { savedObservationCsv } from "./sampleObservation";
 import type { Alert, AlertStatus, HealthInfo, ModelInfo, Page } from "./types";
-import { pageTitles, parseCsv } from "./utils";
+import { pageTitles } from "./utils";
 
 type SocketState = "connecting" | "live" | "offline";
 type ReplayState = "idle" | "running" | "paused";
@@ -67,9 +66,11 @@ function App() {
   const [healthChecked, setHealthChecked] = useState(false);
   const [socketState, setSocketState] = useState<SocketState>("connecting");
   const [lastUpdate, setLastUpdate] = useState(() => new Date());
+  const [livePredictionCount, setLivePredictionCount] = useState(0);
   const [replayState, setReplayState] = useState<ReplayState>("idle");
   const [replaySpeed, setReplaySpeed] = useState(1);
   const pageRef = useRef(page);
+  const seenPredictions = useRef(new Set<string>());
 
   useEffect(() => {
     pageRef.current = page;
@@ -120,18 +121,27 @@ function App() {
         socket = new WebSocket(socketUrl());
         socket.onopen = () => setSocketState("live");
         socket.onmessage = (event) => {
-          const incoming = alertFromSocketMessage(event.data);
+          const incoming = liveEventFromSocketMessage(event.data);
           if (!incoming) return;
-          setLastUpdate(new Date(incoming.timestamp));
+          if (incoming.type === "prediction.created") {
+            setLastUpdate(new Date());
+            if (!seenPredictions.current.has(incoming.data.prediction_id)) {
+              seenPredictions.current.add(incoming.data.prediction_id);
+              setLivePredictionCount((current) => current + 1);
+            }
+            return;
+          }
+          const alert = incoming.data;
+          setLastUpdate(new Date(alert.timestamp));
           if (pageRef.current === "alerts") {
             setAlerts((current) => [
-              incoming,
-              ...current.filter((item) => item.id !== incoming.id),
+              alert,
+              ...current.filter((item) => item.id !== alert.id),
             ]);
           } else {
             setQueuedAlerts((current) => [
-              incoming,
-              ...current.filter((item) => item.id !== incoming.id),
+              alert,
+              ...current.filter((item) => item.id !== alert.id),
             ]);
           }
         };
@@ -178,7 +188,7 @@ function App() {
 
   const handleReplay = useCallback(async () => {
     if (replayState === "idle") {
-      const started = await startReplay(parseCsv(savedObservationCsv), replaySpeed);
+      const started = await startReplay(replaySpeed);
       if (started) setReplayState("running");
       return;
     }
@@ -304,6 +314,7 @@ function App() {
               health={health}
               socketState={socketState}
               lastUpdate={lastUpdate}
+              livePredictionCount={livePredictionCount}
               onOpenAlert={openAlert}
               onTimeBucket={openTimeBucket}
             />

@@ -1,284 +1,176 @@
-# IoT Intrusion Detection System
+# IoT Network-Flow Intrusion Detection
 
-A research-backed, real-time intrusion detection platform for IoT networks.
+A reproducible research system for classifying RT-IoT2022-compatible network
+flows, persisting predictions and alerts, replaying recorded observations, and
+investigating the results in a React dashboard.
 
-The system uses machine learning to classify network flows, detect suspicious activity, explain alerts, and present results through a modern React dashboard. The project is based on the **RT-IoT2022** dataset.
+> This is an academic prototype, not a validated production security control.
 
-> Academic and experimental project. It must not be treated as a production security control without additional validation.
+## What exists now
 
-## MVP status
+The implemented serving path is a two-stage cascade:
 
-Phases 0–4 of the implementation roadmap are implemented: reproducible data
-validation and baseline training, the prediction API and persistence layer, the
-investigation dashboard, and deterministic dataset replay over WebSocket.
-Later explainability, behavior-rule, PCAP-compatibility, drift, and edge phases
-remain research extensions and are not represented as deployment-ready.
+```text
+RT-IoT2022 CSV or validated API observation
+                    |
+                    v
+        rt-iot2022-v1 schema validation
+                    |
+                    v
+      binary detector: normal / attack
+                    |
+             attack only
+                    v
+          attack-family classifier
+                    |
+                    v
+ SQLite/PostgreSQL + prediction.created / alert.created
+                    |
+                    v
+             React investigation UI
+```
 
-The checked-in sample is a deterministic synthetic schema fixture so the
-software can be tested without redistributing the research dataset. Supply the
-original RT-IoT2022 CSV for meaningful evaluation.
+Implemented:
 
-## Quick start
+- checksum-verified dataset preparation and provenance;
+- four leakage-safe scikit-learn candidates evaluated over seeds `42`, `1337`,
+  and `2026`;
+- attack-only second-stage classification;
+- atomic, checksum-verified champion promotion;
+- strict FastAPI validation, single and batch prediction, persistence, analyst
+  feedback, and WebSocket events;
+- bounded server-side dataset replay with scenario, offset, limit, pause,
+  resume, and speed controls; and
+- functional overview, alert, topology, model-analysis, and observation-testing
+  views.
 
-Requirements are Python 3.11+, [uv](https://docs.astral.sh/uv/), and Node.js
-20+.
+Not implemented or not validated:
+
+- live packet capture or a value-compatible PCAP/Zeek/CICFlowMeter adapter;
+- a durable message queue or distributed streaming pipeline;
+- calibrated probabilities;
+- SHAP or causal explanations—the current UI shows highlighted raw values;
+- measured drift detection, destination reputation, or complete device/MUD
+  policy enforcement; and
+- external-network, temporal, group-aware, or hardware validation.
+
+The system therefore monitors **validated network-flow records**, not arbitrary
+application or system log text. Recorded CSV order is replay order, not a
+verified chronology.
+
+## Current measured baseline
+
+The production bundle in [`models/production`](models/production) was trained
+from the verified 123,117-row dataset. Duplicate feature rows are removed before
+splitting, leaving 117,915 binary examples; the multiclass stage uses attack
+rows only.
+
+| Stage | Champion | Validation macro-F1, 3-seed mean | Seed-42 test macro-F1 | Test FPR | Serialized size |
+|---|---|---:|---:|---:|---:|
+| Binary detector | HistGradientBoosting | 0.9960 | 0.9961 | 0.8739% | 123,471 B |
+| Attack-family classifier | Random Forest | 0.9681 | 0.9842 | 0.0076% macro one-vs-rest | 547,454 B |
+
+These are stratified random-split results from one dataset. The unusually high
+scores are useful as a reproducible in-dataset baseline, but they are not
+evidence of deployment readiness. The source table has no reliable timestamp,
+capture-session, or device grouping field, so the report explicitly marks a
+realistic split as unavailable. Scores returned by `predict_proba` are also
+uncalibrated.
+
+See [`models/production/evaluation-report.json`](models/production/evaluation-report.json)
+and [the evaluation protocol](docs/evaluation-protocol.md) for the exact
+confusion matrices, per-class metrics, limitations, and measurement method.
+
+## Dataset provenance
+
+The project uses the [UCI RT-IoT2022 dataset](https://archive.ics.uci.edu/dataset/942/rt-iot2022),
+licensed CC BY 4.0. Raw files are intentionally excluded from Git.
+
+| Item | Expected value |
+|---|---|
+| Archive | `data/raw/rt-iot2022.zip` |
+| Archive SHA-256 | `bcaa24d62abbb1215be576d5cf9c02dfcb0bb7c4c2f5a00e03055afaa1ed109e` |
+| Prepared CSV | `data/raw/RT_IOT2022.csv` |
+| CSV SHA-256 | `956956c09c1764584fa08acd0f6876475626bcedcd6a6b1f8c492c2e9a2089ea` |
+| Rows / model features | 123,117 / 83 |
+
+The downloaded file contains 12 observed labels: three normal traffic labels
+(`MQTT_Publish`, `Thing_Speak`, and `Wipro_bulb`) and nine attack labels. This
+differs from parts of the UCI descriptive text, which mention Amazon Alexa and
+publish inconsistent class counts. This repository treats the checksummed file,
+not the prose table, as the experimental source of truth.
+
+## Run the project
+
+Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), and Node.js 20+.
 
 ```bash
 make setup
+make prepare-data
 make validate-data
-make train
+make verify-model
 make test
 ```
 
-To execute the complete workflow in order and then start both development
-servers:
+Start the already-promoted model without retraining:
 
 ```bash
-./scripts/run_all.sh
+./scripts/run_all.sh --skip-setup
 ```
 
-Use `./scripts/run_all.sh --check-only` for validation/CI without starting
-servers, or `--dataset /absolute/path/to/RT_IOT2022.csv` to use the original
-dataset.
+Intentionally rerun the complete benchmark and atomically replace production:
 
-Run the API and dashboard in separate terminals:
+```bash
+./scripts/run_all.sh --skip-setup --retrain
+```
+
+Use `--check-only` to stop after validation, artifact verification, lint, tests,
+and build. Retraining is compute-intensive and is never implicit.
+
+For separate development servers:
 
 ```bash
 cd backend && uv run uvicorn app.main:app --reload
 cd frontend && npm run dev
 ```
 
-Open `http://localhost:5173`; interactive API documentation is available at
-`http://localhost:8000/docs`. Use `make docker-up` for the PostgreSQL-backed
+Open `http://localhost:5173`; OpenAPI documentation is at
+`http://localhost:8000/docs`. `make docker-up` starts the PostgreSQL-backed
 demonstration stack.
 
-To profile or train on the original dataset:
+## API and event surface
 
-```bash
-make validate-data DATASET=/absolute/path/to/RT_IOT2022.csv
-make train DATASET=/absolute/path/to/RT_IOT2022.csv
-```
+The API is available both at the root paths and under `/api/v1`:
 
-## Project goals
+- `POST /predict` and `POST /predict/batch`
+- `GET /alerts`, `GET /alerts/{id}`, and `POST /alerts/{id}/feedback`
+- `GET /models` and `GET /health`
+- `POST /replay/start`, `/pause`, `/resume`, and `/stop`; `GET /replay/status`
+- `WS /live`
 
-### AI and machine learning
+Every accepted observation emits `prediction.created`. Only a binary `attack`
+prediction creates an alert and emits `alert.created`; this prevents normal
+telemetry from being inserted into the investigation queue.
 
-- Explore and validate the RT-IoT2022 dataset.
-- Build binary classification: `normal` vs `attack`.
-- Build multiclass classification for attack categories where reliable.
-- Compare simple and advanced models.
-- Measure class-specific performance, not accuracy alone.
-- Add prediction explanations and model-health monitoring.
-- Investigate a lightweight model for edge deployment.
-
-### Software engineering
-
-- Build a reproducible traffic-to-prediction pipeline.
-- Replay dataset observations as a real-time stream.
-- Capture and transform network flows using a compatible feature schema.
-- Serve predictions through FastAPI.
-- Stream alerts to a React dashboard.
-- Store alerts, observations, model versions, and analyst feedback.
-- Add a testing harness for normal and malicious scenarios.
-- Package the platform with Docker.
-
-## Research-backed architecture
+## Repository map
 
 ```text
-Network / PCAP / Dataset Replay
-              |
-              v
-    Flow Feature Extraction
-              |
-              v
- Feature Schema Validation
-              |
-              v
- Preprocessing Pipeline
-              |
-              v
- ML Classifier + Behavior Rules
-              |
-              v
- Explanation and Severity Engine
-              |
-              v
- FastAPI + Database + WebSocket/SSE
-              |
-              v
-       React Investigation UI
+backend/             FastAPI, SQLAlchemy, cascade inference, replay, tests
+frontend/            React/TypeScript dashboard and component tests
+machine-learning/    preparation, evaluation, training, promotion, tests
+data/schema/         canonical machine-readable feature contract
+data/sample/         deterministic test fixture only
+data/raw/            ignored local archive and prepared CSV
+models/production/   tracked, verified serving bundle
+models/runs/         ignored candidate runs
+docs/                architecture, protocol, roadmap, schema, research
+scripts/run_all.sh   ordered validation/startup workflow
 ```
-
-The feature-extraction stage is a strict compatibility boundary. The UCI page describes Zeek with a Flowmeter plugin, while the introductory paper describes Wireshark PCAP capture followed by CICFlowMeter conversion. The project must verify the actual dataset columns and generated values before choosing a live extractor.
-
-## Recommended stack
-
-### Frontend
-
-- React
-- TypeScript
-- Vite
-- Tailwind CSS
-- shadcn/ui and Radix UI
-- TanStack Query
-- Zustand
-- Apache ECharts
-- Sigma.js
-- TanStack Table and TanStack Virtual
-- React Hook Form and Zod
-- Motion
-
-### Backend
-
-- Python
-- FastAPI
-- Pydantic
-- SQLAlchemy
-- PostgreSQL for the full version, SQLite for the MVP
-- WebSocket or Server-Sent Events
-- Zeek and/or CICFlowMeter compatibility adapter
-- Scapy for controlled traffic generation and testing
-
-### Machine learning
-
-- pandas
-- NumPy
-- scikit-learn
-- XGBoost or LightGBM
-- imbalanced-learn
-- SHAP
-- joblib
-- Evidently or custom drift metrics
-
-## Model candidates
-
-Start with models that are fast, explainable, and strong on tabular data:
-
-1. Logistic Regression
-2. Decision Tree
-3. Random Forest
-4. HistGradientBoosting
-5. XGBoost or LightGBM
-6. Quantized autoencoder as an optional edge/anomaly baseline
-
-Do not begin with Transformers or a large deep-learning architecture. First establish reliable baselines, realistic evaluation, and a correct feature pipeline.
-
-## Evaluation priorities
-
-Required metrics:
-
-- Precision
-- Recall
-- F1-score
-- Macro F1-score
-- Weighted F1-score
-- Per-class recall
-- False-positive rate
-- Confusion matrix
-- Precision-recall curves
-- Training time
-- Inference latency
-- Model size and memory use
-
-Required evaluation modes:
-
-1. Stratified random split for the initial benchmark.
-2. Group-aware or time-aware split for a more realistic test.
-3. Chronological dataset replay.
-4. Optional cross-dataset or external validation.
-
-All resampling, scaling, encoding, and feature selection must be fitted only on training data.
-
-## Main application pages
-
-### Live overview
-
-- Current traffic rate
-- Active IoT devices
-- Current threat level
-- Attack timeline
-- Protocol distribution
-- Recent critical alerts
-- Model and pipeline health
-
-### Alert investigation
-
-- Virtualized, filterable alert table
-- Attack type and confidence
-- Source and destination
-- Flow features
-- Top SHAP factors
-- Device behavior violations
-- Analyst status and notes
-
-### Network topology
-
-- IoT devices and communication edges
-- Suspicious connections
-- Risk levels
-- Device profile violations
-- Time-range filtering
-
-### Model analysis
-
-- Model comparison
-- Per-class metrics
-- Confusion matrices
-- Feature importance
-- Error analysis
-- Drift indicators
-- Model version and training metadata
-
-### Observation testing
-
-- Upload a one-row or batch CSV file
-- Select a saved test observation
-- Replay a traffic scenario
-- View prediction, confidence, severity, and explanation
-
-## Real-time modes
-
-### Phase 1: dataset replay
-
-Replay RT-IoT2022 observations through the same API and event pipeline used by live traffic. This provides a deterministic and safe demonstration.
-
-### Phase 2: PCAP replay
-
-Read captured PCAP files, generate compatible flow features, and compare them with known labels.
-
-### Phase 3: controlled live capture
-
-Capture authorized network traffic and classify completed or periodically updated flows.
-
-### Phase 4: edge deployment
-
-Run a reduced model or quantized anomaly detector on a Raspberry Pi or gateway and forward alerts to the central dashboard.
 
 ## Documentation
 
-- [Research foundations](docs/research-foundations.md)
-- [System architecture](docs/system-architecture.md)
-- [Evaluation protocol](docs/evaluation-protocol.md)
-- [Implementation roadmap](docs/implementation-roadmap.md)
+- [Research foundations and source audit](docs/research-foundations.md)
+- [Implemented architecture](docs/system-architecture.md)
+- [Evaluation protocol and current evidence](docs/evaluation-protocol.md)
+- [Status-based implementation roadmap](docs/implementation-roadmap.md)
 - [Canonical feature schema](docs/feature-schema.md)
-
-## Repository structure
-
-```text
-iot-intrusion-detection/
-├── frontend/
-├── backend/
-├── machine-learning/
-├── collector/
-├── simulator/
-├── data/
-├── models/
-├── tests/
-├── docs/
-├── docker-compose.yml
-└── README.md
-```
-
-## References
-
-See [docs/research-foundations.md](docs/research-foundations.md) for the literature review and design implications.

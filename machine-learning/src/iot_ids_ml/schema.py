@@ -109,7 +109,7 @@ NORMAL_LABELS = frozenset(
     }
 )
 
-IDENTIFIER_LIKE_COLUMNS = ("Unnamed: 0",)
+IDENTIFIER_LIKE_COLUMNS = ("Unnamed: 0", "no")
 GROUP_COLUMN_CANDIDATES = (
     "capture_session",
     "session_id",
