@@ -93,39 +93,42 @@ Next work:
 **Boundary:** no distributed broker or horizontally coordinated WebSocket
 publisher; production security and retention remain separate work.
 
-## Phase 7 — PCAP and live feature compatibility: extractor implemented, compatibility blocked
+## Phase 7 — NFStream-native offline PCAP path: implementation complete, data gate blocked
 
-NFStream now computes the complete canonical shape under a fingerprinted
-manifest. Validation/export, deterministic IDs, invariants, and controlled
-golden fixtures exist. Zeek/CICFlowMeter fail explicitly and live capture is
-disabled. Inference remains blocked because field-shape agreement does not
-prove value compatibility with the training extractor.
+NFStream computes the complete `nfstream-iot-v1` shape under a fingerprinted
+manifest. It is intentionally distinct from `rt-iot2022-v1`. Validation/export,
+deterministic IDs, invariants, and controlled fixtures exist. Corpus tooling
+requires denied external egress, allowlisted targets, fixed rate/duration,
+generator/five-tuple/time-bound labels, 15 sessions per family across three
+runs, and whole-session 60/20/20 splits. Four candidates are evaluated and the
+server accepts only checksum-bound bundles whose support and performance gates
+all pass. Caller-authored approval is rejected; live capture remains disabled.
 
-Next work:
+External work still required:
 
-- obtain paired source PCAP/RT-IoT2022 rows or build newly labelled NFStream data;
-- compare values, units, categorical vocabularies, and distributions;
-- approve a fingerprinted compatibility-evidence record only if tests pass; and
-- consider authorized live-interface capture in an isolated environment.
+- run the authorized isolated capture lab and collect the required genuine
+  sessions and labels;
+- execute `make native-corpus` and `make native-train` on those captures; and
+- install a native bundle only if every automated gate passes.
 
-## Phase 8 — Model health and drift: partially complete
+## Phase 8 — Model health and drift: implemented in shadow mode
 
-Completed foundations:
+Implemented:
 
-- versioned artifacts and active model records;
-- explicit candidate-to-production promotion;
-- data/model checksums and fixed training configuration; and
-- prediction, latency, alert, and analyst-feedback persistence.
+- checksum-bound `drift-reference-v1` artifacts generated from the exact fit
+  partition with held-out output baselines;
+- calibrated Jensen-Shannon thresholds, KS tests with Benjamini-Hochberg
+  correction, ranges, quantile movement, and unseen-category evidence;
+- bounded 24-hour and seven-day cohort windows, persisted for 90 days;
+- collecting, healthy, warning, and three-consecutive-alarm critical states;
+- read-only API, WebSocket aggregate updates, health integration, and exact-value
+  frontend tables; and
+- strict channel/schema/model/extractor cohort isolation.
 
-Missing:
-
-- reference distributions and rolling live windows;
-- missing/unseen-category telemetry;
-- tested PSI, Jensen-Shannon, KS, or streaming change signals;
-- a model-health API and evidence-based dashboard; and
-- retraining triggers and rollback policy.
-
-The current drift function returns `not_enough_data`; it is not a detector.
+Only server-assigned, approved `live_capture` cohorts can affect deployment
+health. Replay, HTTP uploads, tests, and offline PCAP observations remain
+non-deployment evidence. Shadow mode is enabled by default; no drift result
+re-trains, promotes, rolls back, or stops inference.
 
 ## Phase 9 — Edge experiment: optional, not started
 
@@ -137,7 +140,8 @@ The current drift function returns `not_enough_data`; it is not a detector.
 
 ## Recommended next milestone
 
-Prioritize PCAP value-compatibility evidence before live capture or additional
-model families. The largest validity risk is still domain/feature mismatch, not
-lack of classifier complexity. After compatible live observations exist, drift
-monitoring and behavior-policy evidence become meaningful.
+Prioritize genuine NFStream-native capture collection and gate evaluation. The
+software path is ready, but no native serving claim is valid until the required
+session support and untouched-test thresholds pass. After the two-week
+model-health shadow period, review observed false alarms before enabling its
+readiness degradation behavior.

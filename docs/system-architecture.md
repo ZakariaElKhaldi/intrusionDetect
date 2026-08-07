@@ -139,7 +139,7 @@ backend/app/
 ├── database/        SQLAlchemy records and engine/session setup
 ├── features/        canonical schema, NFStream plugin, unsupported adapters
 ├── inference/       strict registry, cascade predictor, TreeSHAP attribution
-├── detection/       simple severity; behavior/drift placeholders
+├── detection/       severity, behavior checks, calibrated drift primitives
 ├── ingestion/       durable queue, worker, producer, replay, and PCAP CLI
 ├── live.py          in-process WebSocket connection manager
 ├── service.py       validate-to-persist-to-broadcast orchestration
@@ -183,7 +183,7 @@ letter counts, and outbox backlog are available through `/ingestion/status`,
 
 ## 7. Offline PCAP extraction
 
-The `nfstream-rt-iot2022-v1` plugin calculates all 83 schema fields and records
+The `nfstream-iot-v1` plugin calculates all 83 schema fields and records
 direction, timeouts, accounting mode, time units, service fallbacks, and
 zero/statistical rules in a fingerprinted manifest. Event IDs derive from the
 PCAP checksum, five-tuple, and flow timestamps. Validation reports include

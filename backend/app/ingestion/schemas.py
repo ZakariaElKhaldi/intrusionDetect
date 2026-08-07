@@ -34,6 +34,10 @@ class IngestionTransitionResponse(BaseModel):
     reason: str | None
     details: dict
     occurred_at: datetime
+    action: str
+    attempt: int | None
+    actor: str | None
+    created_at: datetime
 
 
 class IngestionEventResponse(BaseModel):
@@ -50,8 +54,8 @@ class IngestionEventResponse(BaseModel):
     last_redriven_at: datetime | None
     last_redriven_by: str | None
     last_redrive_reason: str | None
-    source: str | None
-    schema_version: str | None
+    source: str
+    schema_version: str
     extractor_fingerprint: str | None
     model_version: str | None
     transitions: list[IngestionTransitionResponse]
@@ -65,8 +69,8 @@ class IngestionJobSummary(BaseModel):
     batch_id: UUID
     state: IngestionState
     attempts: int
-    source: str | None
-    schema_version: str | None
+    source: str
+    schema_version: str
     extractor_fingerprint: str | None
     error_code: str | None
     retryable: bool | None
@@ -81,6 +85,8 @@ class IngestionJobSummary(BaseModel):
 
 class IngestionJobListResponse(BaseModel):
     items: list[IngestionJobSummary]
+    total: int
+    limit: int
     next_cursor: str | None
 
 
@@ -88,7 +94,7 @@ class OutboxEventResponse(BaseModel):
     outbox_id: UUID
     event_id: UUID
     event_type: str
-    status: Literal["pending", "published", "failing"]
+    status: Literal["pending", "published", "failed"]
     publish_attempts: int
     last_error: str | None
     created_at: datetime
@@ -97,6 +103,8 @@ class OutboxEventResponse(BaseModel):
 
 class OutboxEventListResponse(BaseModel):
     items: list[OutboxEventResponse]
+    total: int
+    limit: int
     next_cursor: str | None
 
 

@@ -6,6 +6,10 @@ import {
   getAlertExplanation,
   getEvaluation,
   getIngestionStatus,
+  getIngestionJobs,
+  getOutboxEvents,
+  getModelHealth,
+  getModelHealthHistory,
   liveEventFromSocketMessage,
   startReplay,
   submitAlertFeedback,
@@ -59,6 +63,31 @@ describe("frontend API adapter", () => {
       status: 502,
       message: "Ingestion status response is invalid.",
     });
+  });
+
+  it("uses the read-only operations and model-health filter contracts", async () => {
+    const jobs = { items: [], total: 0, limit: 20, next_cursor: null };
+    const outbox = { items: [], total: 0, limit: 20, next_cursor: null };
+    const health = { status: "collecting", reason: "More observations required.", features: [] };
+    const history = { items: [] };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(jobs))
+      .mockResolvedValueOnce(jsonResponse(outbox))
+      .mockResolvedValueOnce(jsonResponse(health))
+      .mockResolvedValueOnce(jsonResponse(history));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getIngestionJobs({ state: "retrying", source: "sensor-a", limit: 20 });
+    await getOutboxEvents({ status: "failed", limit: 20 });
+    await getModelHealth({ window: "fast", source: "sensor-a", extractor_fingerprint: "extractor-1" });
+    await getModelHealthHistory({ window: "fast", source: "sensor-a", limit: 50 });
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/v1/ingestion/jobs?state=retrying&source=sensor-a&limit=20",
+      "/api/v1/ingestion/outbox/events?status=failed&limit=20",
+      "/api/v1/model-health?window=fast&source=sensor-a&extractor_fingerprint=extractor-1",
+      "/api/v1/model-health/history?window=fast&source=sensor-a&limit=50",
+    ]);
   });
 
   it("maps raw top feature values without calling them contributions", async () => {

@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from .drift_reference import canonical_json_sha256
 from .schema import FEATURE_COLUMNS, SCHEMA_VERSION
 from .validation import sha256_file
 
@@ -49,6 +50,25 @@ def verify_bundle(
     if reject_fixture and report.get("dataset_role") == "fixture":
         raise ProductionBundleError("Fixture-trained models cannot be promoted to production")
 
+    drift_name = manifest.get("drift_reference")
+    drift_checksum = manifest.get("drift_reference_sha256")
+    if (drift_name is None) != (drift_checksum is None):
+        raise ProductionBundleError("Drift reference manifest fields are incomplete")
+    drift_reference: dict[str, Any] | None = None
+    if drift_name is not None:
+        drift_path = directory / str(drift_name)
+        drift_reference = _load_json(drift_path)
+        if sha256_file(drift_path) != drift_checksum:
+            raise ProductionBundleError("Drift reference checksum does not match manifest")
+        content = dict(drift_reference)
+        content_checksum = content.pop("content_sha256", None)
+        if (
+            drift_reference.get("reference_schema_version") != "drift-reference-v1"
+            or content_checksum != canonical_json_sha256(content)
+            or drift_reference.get("dataset_sha256") != expected_dataset_sha256
+        ):
+            raise ProductionBundleError("Drift reference provenance is invalid")
+
     models = manifest.get("models")
     if not isinstance(models, list) or {item.get("target") for item in models} != {
         "binary",
@@ -88,6 +108,13 @@ def verify_bundle(
                 "artifact_sha256": actual_artifact_sha,
             }
         )
+    if drift_reference is not None:
+        versions = {item["target"]: item["model_version"] for item in verified_models}
+        if (
+            drift_reference.get("detector_model_version") != versions["binary"]
+            or drift_reference.get("classifier_model_version") != versions["multiclass"]
+        ):
+            raise ProductionBundleError("Drift reference model versions are stale")
     return {
         "valid": True,
         "bundle_dir": str(directory),
@@ -120,6 +147,8 @@ def promote_bundle(
     try:
         manifest = _load_json(source / "manifest.json")
         names = {"manifest.json", str(manifest["evaluation_report"])}
+        if manifest.get("drift_reference"):
+            names.add(str(manifest["drift_reference"]))
         for model in manifest["models"]:
             names.update((str(model["artifact"]), str(model["metadata"])))
         for name in sorted(names):

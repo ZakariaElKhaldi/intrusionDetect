@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Calibrated, evidence-first distribution monitoring primitives.
 
 These functions deliberately separate distribution change from model quality.

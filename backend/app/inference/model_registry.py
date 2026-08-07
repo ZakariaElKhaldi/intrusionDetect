@@ -203,8 +203,15 @@ def _verify_native_compatibility_evidence(
     fingerprint = _require_sha256(
         evidence.get("extractor_fingerprint"), "extractor_fingerprint"
     )
-    for field in ("corpus_manifest_sha256", "label_manifest_sha256"):
+    for field in (
+        "extractor_manifest_sha256",
+        "corpus_manifest_sha256",
+        "label_manifest_sha256",
+        "evaluation_report_sha256",
+    ):
         _require_sha256(evidence.get(field), field)
+    if evidence["evaluation_report_sha256"] != manifest.get("evaluation_report_sha256"):
+        raise ValueError("native evidence does not bind the evaluation report")
     if evidence.get("training_split_policy") != "capture-session-60-20-20-v1":
         raise ValueError("native evidence uses an unsupported training split policy")
     if not isinstance(evidence.get("evaluation_policy_version"), str):
@@ -244,6 +251,9 @@ class ModelRoute:
     detector: Predictor
     classifier: Predictor
     compatibility_evidence: dict[str, Any] | None = None
+    artifact_paths: dict[str, str | None] | None = None
+    bundle_dir: Path | None = None
+    manifest: dict[str, Any] | None = None
 
 
 def _is_fixture_run(model_dir: Path) -> bool:
@@ -370,6 +380,9 @@ class ModelRegistry:
             extractor_fingerprint=None,
             detector=self.detector,
             classifier=self.classifier,
+            artifact_paths=dict(self.artifact_paths),
+            bundle_dir=self.bundle_dir,
+            manifest=self.manifest,
         )
         if nfstream_model_dir:
             try:
@@ -403,6 +416,11 @@ class ModelRegistry:
             detector=detector,
             classifier=classifier,
             compatibility_evidence=evidence,
+            artifact_paths={
+                target: str(paths[0]) for target, paths in discovered.items()
+            },
+            bundle_dir=model_dir,
+            manifest=manifest,
         )
 
     def resolve_route(
@@ -411,25 +429,41 @@ class ModelRegistry:
         if schema_version == RT_SCHEMA_VERSION:
             if extractor_fingerprint is not None:
                 raise ModelRouteError(
-                    "rt-iot2022-v1 serving does not accept extractor-authored observations"
+                    "no approved rt-iot2022-v1 model route accepts extractor-authored "
+                    "observations"
                 )
             return self.routes[(RT_SCHEMA_VERSION, None)]
         route = self.routes.get((schema_version, extractor_fingerprint))
         if route is not None:
             return route
-        reason = f"; configured native bundle is invalid: {self.native_route_error}" if self.native_route_error else ""
+        reason = (
+            f"; configured native bundle is invalid: {self.native_route_error}"
+            if self.native_route_error
+            else ""
+        )
         raise ModelRouteError(
             f"no approved model route for schema={schema_version!r}, "
             f"extractor_fingerprint={extractor_fingerprint!r}{reason}"
         )
 
-    def _descriptor(self, predictor: Predictor) -> ModelDescriptor:
+    def _descriptor(
+        self,
+        predictor: Predictor,
+        *,
+        schema_version: str = SCHEMA_VERSION,
+        artifact_path: str | None = None,
+    ) -> ModelDescriptor:
         metadata = dict(predictor.metadata)
         metadata["feature_order"] = list(FEATURE_ORDER)
         return ModelDescriptor(
             model_version=predictor.version,
             model_type=predictor.model_type,
-            artifact_path=self.artifact_paths[predictor.target],
+            artifact_path=(
+                artifact_path
+                if artifact_path is not None
+                else self.artifact_paths[predictor.target]
+            ),
+            schema_version=schema_version,
             metadata_json=metadata,
         )
 
@@ -439,7 +473,23 @@ class ModelRegistry:
 
     @property
     def descriptors(self) -> list[ModelDescriptor]:
-        return [self._descriptor(self.detector), self._descriptor(self.classifier)]
+        descriptors: list[ModelDescriptor] = []
+        seen: set[tuple[str, str]] = set()
+        for route in self.routes.values():
+            for predictor in (route.detector, route.classifier):
+                identity = (route.schema_version, predictor.version)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                paths = route.artifact_paths or {}
+                descriptors.append(
+                    self._descriptor(
+                        predictor,
+                        schema_version=route.schema_version,
+                        artifact_path=paths.get(predictor.target),
+                    )
+                )
+        return descriptors
 
     def evaluation(self, stage: str) -> dict[str, Any]:
         """Return a compact, task-specific view of the promoted evaluation evidence."""

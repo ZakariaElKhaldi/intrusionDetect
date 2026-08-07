@@ -191,7 +191,7 @@ export function Overview({
       </section>
 
       <IngestionStatusPanel status={ingestion} loading={ingestionLoading} error={ingestionError} fixtureMode={fixtureMode} onRetry={onRetryIngestion}/>
-      <IngestionOperations fixtureMode={fixtureMode}/>
+      <IngestionOperations fixtureMode={fixtureMode} refreshKey={ingestion?.generated_at}/>
 
       <section className="panel timeline-panel">
         <PanelHeading

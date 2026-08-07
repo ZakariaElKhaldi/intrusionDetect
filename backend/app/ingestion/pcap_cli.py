@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 from app.features.nfstream_extractor import extract_pcap, file_sha256, validation_report
-from app.ingestion.pcap_replay import load_compatibility_evidence, require_validated_extractor
 
 
 def _write_json(value: Any, output: str | None) -> None:
@@ -22,7 +21,7 @@ def _write_json(value: Any, output: str | None) -> None:
 
 
 def _post_batch(api_url: str, observations: list[dict[str, Any]]) -> dict[str, Any]:
-    endpoint = f"{api_url.rstrip('/')}/api/v1/ingestion/events"
+    endpoint = f"{api_url.rstrip('/')}/api/v1/ingestion/offline-pcap/events"
     request = urllib.request.Request(
         endpoint,
         data=json.dumps({"observations": observations}).encode(),
@@ -46,8 +45,6 @@ def validate_command(args: argparse.Namespace) -> int:
 
 def ingest_command(args: argparse.Namespace) -> int:
     checksum = file_sha256(Path(args.capture).expanduser().resolve())
-    evidence = load_compatibility_evidence(args.compatibility_evidence)
-    require_validated_extractor(evidence)
     accepted = duplicates = rejected = 0
     batch: list[dict[str, Any]] = []
     responses: list[dict[str, Any]] = []
@@ -87,18 +84,20 @@ def ingest_command(args: argparse.Namespace) -> int:
 def parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(
         prog="python -m app.ingestion.pcap_cli",
-        description="Validate offline PCAP features or enqueue compatibility-approved flows.",
+        description=(
+            "Validate offline PCAP features or enqueue native flows. The server, not a "
+            "caller-supplied file, decides whether a compatible route is installed."
+        ),
     )
     actions = command.add_subparsers(dest="command", required=True)
     validate = actions.add_parser("validate", help="extract flows without inference")
     validate.add_argument("capture")
     validate.add_argument("--output")
     validate.set_defaults(handler=validate_command)
-    ingest = actions.add_parser("ingest", help="enqueue a compatibility-approved PCAP")
+    ingest = actions.add_parser("ingest", help="enqueue a PCAP for server-side routing")
     ingest.add_argument("capture")
     ingest.add_argument("--api-url", default="http://127.0.0.1:8000")
     ingest.add_argument("--batch-size", type=int, choices=range(1, 1001), default=100)
-    ingest.add_argument("--compatibility-evidence", required=True)
     ingest.add_argument("--output")
     ingest.set_defaults(handler=ingest_command)
     return command

@@ -13,7 +13,7 @@ function State({ value }: { value: string }) {
   return <span className={`ops-state ops-state--${value.replaceAll("_", "-")}`}>{value.replaceAll("_", " ")}</span>;
 }
 
-export function IngestionOperations({ fixtureMode }: { fixtureMode: boolean }) {
+export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: boolean; refreshKey?: string }) {
   const [tab, setTab] = useState<OperationsTab>("jobs");
   const [jobPage, setJobPage] = useState<CursorPage<IngestionJob> | null>(null);
   const [outboxPage, setOutboxPage] = useState<CursorPage<OutboxEvent> | null>(null);
@@ -48,7 +48,7 @@ export function IngestionOperations({ fixtureMode }: { fixtureMode: boolean }) {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [appliedJobs, cursor, fixtureMode, outboxFilter, tab]);
+  }, [appliedJobs, cursor, fixtureMode, outboxFilter, refreshKey, tab]);
 
   const changeTab = (next: OperationsTab) => {
     setTab(next);

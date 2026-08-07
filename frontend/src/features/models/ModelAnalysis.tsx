@@ -3,6 +3,7 @@ import { getEvaluation } from "../../api";
 import { ConfusionMatrixChart, ModelComparisonChart } from "../../components/charts";
 import { PanelHeading } from "../../components/PanelHeading";
 import type { EvaluationReport, ModelInfo, ThresholdAnalysis } from "../../types";
+import { ModelHealth } from "./ModelHealth";
 
 type Stage = "binary" | "multiclass";
 
@@ -63,6 +64,7 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
 
   return (
     <div className="models-page">
+      <ModelHealth fixtureMode={fixtureMode}/>
       <div className="stage-tabs" role="tablist" aria-label="Evaluation stage">
         <button role="tab" aria-selected={stage === "binary"} onClick={() => setStage("binary")}>Detector</button>
         <button role="tab" aria-selected={stage === "multiclass"} onClick={() => setStage("multiclass")}>Classifier</button>

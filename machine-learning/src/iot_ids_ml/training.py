@@ -29,6 +29,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.tree import DecisionTreeClassifier
 
+from .drift_reference import build_drift_reference
 from .evaluation import (
     classification_metrics,
     detector_threshold_curve,
@@ -62,7 +63,12 @@ def _publish_run(staging: Path, destination: Path) -> None:
     """Replace a generated run directory without mixing old and new artifacts."""
 
     if destination.exists():
-        allowed_names = {"manifest.json", "evaluation-report.json", ".gitkeep"}
+        allowed_names = {
+            "manifest.json",
+            "evaluation-report.json",
+            "drift-reference.json",
+            ".gitkeep",
+        }
         unknown = [
             item.name
             for item in destination.iterdir()
@@ -797,12 +803,35 @@ def train_baselines(
         ),
     )
 
+    model_versions = {
+        item["target"]: item["model_version"] for item in saved_models
+    }
+    drift_reference = build_drift_reference(
+        frame,
+        train_indices=primary_shared["train"],
+        test_indices=primary_shared["test"],
+        detector=selected_estimators["binary"],
+        classifier=selected_estimators["multiclass"],
+        detector_model_version=model_versions["binary"],
+        classifier_model_version=model_versions["multiclass"],
+        dataset_sha256=validated.profile["dataset_sha256"],
+        schema_version=SCHEMA_VERSION,
+        random_seed=evaluation_seeds[0],
+    )
+    drift_reference_path = output / "drift-reference.json"
+    drift_reference_path.write_text(
+        json.dumps(drift_reference, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
     report_path = output / "evaluation-report.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "evaluation_report": report_path.name,
         "evaluation_report_sha256": sha256_file(report_path),
+        "drift_reference": drift_reference_path.name,
+        "drift_reference_sha256": sha256_file(drift_reference_path),
         "models": saved_models,
     }
     manifest_path = output / "manifest.json"

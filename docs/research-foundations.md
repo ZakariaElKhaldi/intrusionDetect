@@ -208,7 +208,11 @@ change detectors are candidate signals—not interchangeable proof of harmful
 drift. Thresholds must be validated against known changes, and model promotion
 must remain explicit rather than automatic.
 
-The current `drift.py` response (`not_enough_data`) is an honest placeholder.
+The implemented model-health path compares bounded, isolated cohorts with a
+checksum-bound training reference using calibrated Jensen-Shannon effect limits,
+KS tests with multiple-test correction, range/quantile movement, categorical
+novelty, and model-output summaries. It remains in shadow mode: distribution
+change is evidence of changed traffic, not proof of accuracy loss.
 
 ## 10. Updated research questions
 

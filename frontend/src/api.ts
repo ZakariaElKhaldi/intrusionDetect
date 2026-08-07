@@ -317,8 +317,15 @@ function queryString(values: Record<string, string | number | undefined>) {
   return query.toString();
 }
 
+function cursorPage<T>(value: unknown, label: string): CursorPage<T> {
+  if (!value || typeof value !== "object" || !("items" in value) || !Array.isArray(value.items) || !("total" in value) || !("limit" in value)) {
+    throw new ApiError(`${label} response is invalid.`, 502, value);
+  }
+  return value as CursorPage<T>;
+}
+
 export async function getIngestionJobs(filters: { state?: string; error_code?: string; source?: string; limit?: number; cursor?: string } = {}): Promise<CursorPage<IngestionJob>> {
-  return request<CursorPage<IngestionJob>>(`/ingestion/jobs?${queryString(filters)}`);
+  return cursorPage<IngestionJob>(await request<unknown>(`/ingestion/jobs?${queryString(filters)}`), "Ingestion jobs");
 }
 
 export async function getIngestionEvent(eventId: string): Promise<IngestionJobDetail> {
@@ -326,15 +333,23 @@ export async function getIngestionEvent(eventId: string): Promise<IngestionJobDe
 }
 
 export async function getOutboxEvents(filters: { status?: string; limit?: number; cursor?: string } = {}): Promise<CursorPage<OutboxEvent>> {
-  return request<CursorPage<OutboxEvent>>(`/ingestion/outbox/events?${queryString(filters)}`);
+  return cursorPage<OutboxEvent>(await request<unknown>(`/ingestion/outbox/events?${queryString(filters)}`), "Outbox events");
 }
 
 export async function getModelHealth(filters: { window: "fast" | "slow"; source?: string; extractor_fingerprint?: string }): Promise<ModelHealthSnapshot> {
-  return request<ModelHealthSnapshot>(`/model-health?${queryString(filters)}`);
+  const value = await request<unknown>(`/model-health?${queryString(filters)}`);
+  if (!value || typeof value !== "object" || !("status" in value) || !("features" in value) || !Array.isArray(value.features)) {
+    throw new ApiError("Model-health response is invalid.", 502, value);
+  }
+  return value as ModelHealthSnapshot;
 }
 
 export async function getModelHealthHistory(filters: { window: "fast" | "slow"; source?: string; extractor_fingerprint?: string; from?: string; to?: string; limit?: number }): Promise<ModelHealthHistory> {
-  return request<ModelHealthHistory>(`/model-health/history?${queryString(filters)}`);
+  const value = await request<unknown>(`/model-health/history?${queryString(filters)}`);
+  if (!value || typeof value !== "object" || !("items" in value) || !Array.isArray(value.items)) {
+    throw new ApiError("Model-health history response is invalid.", 502, value);
+  }
+  return value as ModelHealthHistory;
 }
 
 export async function getAlerts(): Promise<Alert[]> {

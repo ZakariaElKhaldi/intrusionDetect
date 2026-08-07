@@ -200,7 +200,11 @@ class DatasetReplay:
                 await self._resume.wait()
                 with app.state.SessionLocal() as session:
                     await process_observation(
-                        observation, session, app.state.registry, app.state.live
+                        observation,
+                        session,
+                        app.state.registry,
+                        app.state.live,
+                        ingestion_channel="dataset_replay",
                     )
                 self.state.processed += 1
                 if self._base_interval_ms:

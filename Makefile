@@ -1,4 +1,4 @@
-.PHONY: help setup download-data prepare-data validate-data train verify-model test lint build dev migrate worker ingest-events pcap-validate pcap-ingest run-all check-all demo demo-preflight project-preflight e2e benchmark docker-up docker-down
+.PHONY: help setup download-data prepare-data validate-data train verify-model native-corpus native-train test lint build dev migrate worker model-health-worker ingest-events ingestion-ops pcap-validate pcap-ingest run-all check-all demo demo-preflight project-preflight e2e benchmark benchmark-postgres docker-up docker-down
 
 DATASET ?= data/raw/RT_IOT2022.csv
 DATA_ARCHIVE ?= data/raw/rt-iot2022.zip
@@ -10,7 +10,13 @@ PRODUCTION_MODEL_DIR ?= models/production
 PCAP ?=
 INGESTION_INPUT ?= -
 API_URL ?= http://127.0.0.1:8000
-COMPATIBILITY_EVIDENCE ?=
+NATIVE_CAPTURE_MANIFEST ?=
+NATIVE_LABEL_MANIFEST ?=
+NATIVE_EXTRACTOR_MANIFEST ?= backend/app/features/nfstream_extractor_manifest.json
+NATIVE_EXTRACTOR_FINGERPRINT ?=
+NATIVE_CORPUS_MANIFEST ?= data/nfstream/corpus-manifest.json
+NATIVE_DATASET ?=
+NATIVE_MODEL_RUN_DIR ?= models/runs/nfstream-latest
 export UV_CACHE_DIR ?= /tmp/iot-ids-uv-cache
 
 help:
@@ -21,14 +27,18 @@ help:
 	@echo "  make validate-data  Validate and profile DATASET=$(DATASET)"
 	@echo "  make train          Train, evaluate, and promote real-data champions"
 	@echo "  make verify-model   Verify the promoted artifacts and dataset provenance"
+	@echo "  make native-corpus  Validate capture/label provenance and freeze session splits"
+	@echo "  make native-train   Evaluate NFStream-native candidates against frozen splits"
 	@echo "  make test           Run backend, ML, and frontend tests"
 	@echo "  make lint           Run Python and TypeScript linters"
 	@echo "  make build          Build the frontend and validate Python imports"
 	@echo "  make migrate        Upgrade the configured database to the latest schema"
 	@echo "  make worker         Run the durable ingestion/outbox worker"
+	@echo "  make model-health-worker Run the five-minute model-health evaluator"
 	@echo "  make ingest-events INGESTION_INPUT=path Stream canonical NDJSON (stdin by default)"
+	@echo "  make ingestion-ops ARGS='list --state dead_letter' Inspect/recover ingestion jobs"
 	@echo "  make pcap-validate PCAP=path Validate offline PCAP-derived features"
-	@echo "  make pcap-ingest PCAP=path COMPATIBILITY_EVIDENCE=path Queue approved PCAP flows"
+	@echo "  make pcap-ingest PCAP=path Queue PCAP flows for server-side route verification"
 	@echo "  make dev            Print commands for local development"
 	@echo "  make run-all        Run the full workflow, then start the application"
 	@echo "  make check-all      Run the full workflow without starting servers"
@@ -37,6 +47,7 @@ help:
 	@echo "  make project-preflight Run every acceptance check, including browser E2E"
 	@echo "  make e2e            Run Playwright against real local services/models"
 	@echo "  make benchmark      Measure normal and attack dataset replay"
+	@echo "  make benchmark-postgres INGESTION_INPUT=path Benchmark the PostgreSQL queue"
 	@echo "  make docker-up      Start the demonstration stack"
 
 setup:
@@ -74,6 +85,23 @@ verify-model:
 		--expected-dataset-sha256 $(DATASET_SHA256) \
 		--expected-row-count $(DATASET_ROWS)
 
+native-corpus:
+	@test -n "$(NATIVE_CAPTURE_MANIFEST)" || (echo "error: set NATIVE_CAPTURE_MANIFEST" >&2; exit 2)
+	@test -n "$(NATIVE_LABEL_MANIFEST)" || (echo "error: set NATIVE_LABEL_MANIFEST" >&2; exit 2)
+	@test -n "$(NATIVE_EXTRACTOR_FINGERPRINT)" || (echo "error: set NATIVE_EXTRACTOR_FINGERPRINT" >&2; exit 2)
+	cd machine-learning && uv run iot-ids-native-corpus \
+		--capture-manifest $(abspath $(NATIVE_CAPTURE_MANIFEST)) \
+		--label-manifest $(abspath $(NATIVE_LABEL_MANIFEST)) \
+		--extractor-manifest $(abspath $(NATIVE_EXTRACTOR_MANIFEST)) \
+		--extractor-fingerprint $(NATIVE_EXTRACTOR_FINGERPRINT) \
+		--output $(abspath $(NATIVE_CORPUS_MANIFEST))
+
+native-train:
+	@test -n "$(NATIVE_DATASET)" || (echo "error: set NATIVE_DATASET" >&2; exit 2)
+	cd machine-learning && uv run iot-ids-native-train $(abspath $(NATIVE_DATASET)) \
+		--corpus-manifest $(abspath $(NATIVE_CORPUS_MANIFEST)) \
+		--output-dir $(abspath $(NATIVE_MODEL_RUN_DIR))
+
 test:
 	cd backend && uv run pytest
 	cd machine-learning && uv run pytest
@@ -95,9 +123,15 @@ migrate:
 worker:
 	cd backend && uv run python -m app.ingestion.worker
 
+model-health-worker:
+	cd backend && uv run python -m app.monitoring.worker
+
 ingest-events:
 	cd backend && uv run python -m app.ingestion.producer $(INGESTION_INPUT) \
 		--url $(API_URL)/api/v1/ingestion/events
+
+ingestion-ops:
+	cd backend && uv run python -m app.ingestion.operator_cli $(ARGS)
 
 pcap-validate:
 	@test -n "$(PCAP)" || (echo "error: set PCAP=/path/to/capture.pcap" >&2; exit 2)
@@ -105,10 +139,8 @@ pcap-validate:
 
 pcap-ingest:
 	@test -n "$(PCAP)" || (echo "error: set PCAP=/path/to/capture.pcap" >&2; exit 2)
-	@test -n "$(COMPATIBILITY_EVIDENCE)" || (echo "error: set COMPATIBILITY_EVIDENCE=/path/to/evidence.json" >&2; exit 2)
 	cd backend && uv run python -m app.ingestion.pcap_cli ingest $(abspath $(PCAP)) \
-		--api-url $(API_URL) \
-		--compatibility-evidence $(abspath $(COMPATIBILITY_EVIDENCE))
+		--api-url $(API_URL)
 
 dev:
 	@echo "Backend: cd backend && uv run uvicorn app.main:app --reload"
@@ -136,6 +168,12 @@ e2e:
 
 benchmark:
 	./scripts/run_replay_benchmark.sh
+
+benchmark-postgres:
+	@test -n "$(INGESTION_INPUT)" || (echo "error: set INGESTION_INPUT=/path/to/events.ndjson" >&2; exit 2)
+	@test -n "$(IOT_IDS_DATABASE_URL)" || (echo "error: set IOT_IDS_DATABASE_URL to PostgreSQL" >&2; exit 2)
+	cd backend && uv run python ../scripts/postgres_ingestion_benchmark.py \
+		$(abspath $(INGESTION_INPUT)) --database-url "$(IOT_IDS_DATABASE_URL)" --api-url $(API_URL)
 
 docker-up:
 	docker compose up --build

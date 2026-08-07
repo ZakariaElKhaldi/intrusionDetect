@@ -8,7 +8,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import alerts, dashboard, ingestion, live, models, predictions, replay
+from app.api import alerts, dashboard, ingestion, live, model_health, models, predictions, replay
 from app.config import Settings
 from app.database.models import Base, ModelVersion
 from app.database.session import create_engine_and_session
@@ -19,6 +19,8 @@ from app.ingestion.dataset_replay import DatasetReplay
 from app.ingestion.outbox import dispatch_loop, stop_dispatcher
 from app.ingestion.service import ingestion_status
 from app.live import LiveConnectionManager
+from app.monitoring.service import ModelHealthService
+from app.monitoring.worker import monitoring_loop
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -28,6 +30,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.model_artifact_path,
         settings.model_dir,
         allow_fallback=settings.allow_fallback,
+        nfstream_model_dir=settings.nfstream_model_dir,
     )
     dataset_health = DatasetHealthCache(
         settings.replay_dataset_path, registry.detector.metadata.get("dataset_sha256")
@@ -57,9 +60,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 poll_seconds=settings.outbox_poll_seconds,
             )
         )
+        monitor = asyncio.create_task(
+            monitoring_loop(
+                app.state.model_health,
+                app.state.live,
+                interval_seconds=settings.model_health_interval_seconds,
+            )
+        )
         yield
         app.state.replay.stop()
         await stop_dispatcher(dispatcher)
+        monitor.cancel()
+        try:
+            await monitor
+        except asyncio.CancelledError:
+            pass
         engine.dispose()
 
     app = FastAPI(
@@ -73,6 +88,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.live = LiveConnectionManager()
     app.state.replay = DatasetReplay(settings.replay_dataset_path)
     app.state.explanations = ExplanationService(registry)
+    app.state.model_health = ModelHealthService(
+        session_factory,
+        registry,
+        shadow_mode=settings.model_health_shadow_mode,
+        fast_minimum=settings.model_health_fast_minimum,
+        slow_minimum=settings.model_health_slow_minimum,
+        retention_days=settings.model_health_retention_days,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
@@ -117,7 +140,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             database_status = "blocked"
             database_error = str(exc)
             ingestion_health = None
+        model_health_component = app.state.model_health.component()
+        model_health_degrades_readiness = (
+            model_health_component.get("monitoring_status") == "critical"
+            and not model_health_component.get("shadow_mode", True)
+        )
         component_states = [dataset["status"], model_status, database_status]
+        if model_health_degrades_readiness:
+            component_states.append("degraded")
         readiness = (
             "blocked"
             if "blocked" in component_states
@@ -249,6 +279,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "oldest_pending_age_seconds": None,
                     }
                 ),
+                "model_health": model_health_component,
             },
         }
 
@@ -260,6 +291,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     router.include_router(replay.router)
     router.include_router(live.router)
     router.include_router(ingestion.router)
+    router.include_router(model_health.router)
     app.include_router(router)
     app.include_router(router, prefix="/api/v1", include_in_schema=False)
     return app

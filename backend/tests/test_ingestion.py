@@ -173,7 +173,8 @@ def test_unapproved_pcap_extractor_is_permanent_failure(tmp_path) -> None:
         job = session.scalar(select(IngestionJob))
         assert job.state == "dead_letter"
         assert job.attempts == 1
-        assert "not approved" in job.last_error
+        assert "extractor-authored observations" in job.last_error
+        assert job.error_code == "extractor_incompatible"
         assert session.get(Observation, payload["event_id"]) is None
     engine.dispose()
 

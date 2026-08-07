@@ -220,14 +220,14 @@ def test_deterministic_event_id_uses_checksum_tuple_and_timestamps(golden: dict)
 
 
 def test_manifest_is_versioned_deterministic_and_not_inference_compatible() -> None:
-    assert MANIFEST.schema_version == "rt-iot2022-v1"
-    assert MANIFEST.extractor_version == "1.0.0"
+    assert MANIFEST.schema_version == "nfstream-iot-v1"
+    assert MANIFEST.extractor_version == "2.0.0"
     assert len(MANIFEST.fingerprint) == 64
     assert MANIFEST.inference_compatible is False
 
 
-def test_inference_gate_requires_matching_explicit_evidence() -> None:
-    with pytest.raises(PcapCompatibilityError, match="blocked"):
+def test_inference_gate_rejects_caller_authored_evidence() -> None:
+    with pytest.raises(PcapCompatibilityError, match="caller-authored"):
         require_validated_extractor()
     evidence = {
         "schema_version": MANIFEST.schema_version,
@@ -236,13 +236,8 @@ def test_inference_gate_requires_matching_explicit_evidence() -> None:
         "validated_fixture_checksums": ["a" * 64],
         "compatible_model_versions": {"detector": "detector-v1", "classifier": "classifier-v1"},
     }
-    require_validated_extractor(
-        evidence,
-        detector_model_version="detector-v1",
-        classifier_model_version="classifier-v1",
-    )
-    with pytest.raises(PcapCompatibilityError, match="does not cover"):
-        require_validated_extractor(evidence, detector_model_version="detector-v2")
+    with pytest.raises(PcapCompatibilityError, match="server verifies"):
+        require_validated_extractor(evidence)
 
 
 def test_unvalidated_legacy_adapters_and_live_capture_fail_explicitly() -> None:
@@ -267,22 +262,6 @@ def test_pcap_ingest_cli_counts_api_dispositions(
         source="pcap-validation",
         features=flow_to_features(flow),
     )
-    evidence = tmp_path / "evidence.json"
-    evidence.write_text(
-        json.dumps(
-            {
-                "schema_version": MANIFEST.schema_version,
-                "extractor_fingerprint": MANIFEST.fingerprint,
-                "inference_compatible": True,
-                "validated_fixture_checksums": ["a" * 64],
-                "compatible_model_versions": {
-                    "detector": "detector-v1",
-                    "classifier": "classifier-v1",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
     output = tmp_path / "result.json"
     monkeypatch.setattr(pcap_cli, "extract_pcap", lambda _path: iter([(observation, {})]))
     monkeypatch.setattr(
@@ -300,8 +279,6 @@ def test_pcap_ingest_cli_counts_api_dispositions(
             [
                 "ingest",
                 str(capture),
-                "--compatibility-evidence",
-                str(evidence),
                 "--output",
                 str(output),
             ]

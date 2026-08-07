@@ -6,7 +6,10 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
+from .native_corpus import NativeCorpusError, build_corpus_manifest
+from .native_training import train_native_models
 from .preparation import prepare_dataset
 from .promotion import ProductionBundleError, promote_bundle, verify_bundle
 from .training import train_baselines
@@ -79,6 +82,31 @@ def _bundle_parser(program: str, *, promotion: bool) -> argparse.ArgumentParser:
     parser.add_argument("--production-dir", required=True)
     parser.add_argument("--expected-dataset-sha256", required=True)
     parser.add_argument("--expected-row-count", type=int, required=True)
+    return parser
+
+
+def _native_corpus_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="iot-ids-native-corpus",
+        description="Validate NFStream capture provenance and freeze session-level splits.",
+    )
+    parser.add_argument("--capture-manifest", required=True)
+    parser.add_argument("--label-manifest", required=True)
+    parser.add_argument("--extractor-manifest", required=True)
+    parser.add_argument("--extractor-fingerprint", required=True)
+    parser.add_argument("--output", required=True)
+    return parser
+
+
+def _native_train_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="iot-ids-native-train",
+        description="Train and gate models on a frozen NFStream-native corpus.",
+    )
+    parser.add_argument("csv")
+    parser.add_argument("--corpus-manifest", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--seed", type=int, default=42)
     return parser
 
 
@@ -156,4 +184,39 @@ def verify_main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps({"valid": False, "error": str(exc)}, indent=2), file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+def native_corpus_main(argv: Sequence[str] | None = None) -> int:
+    args = _native_corpus_parser().parse_args(argv)
+    try:
+        result = build_corpus_manifest(
+            args.capture_manifest,
+            args.label_manifest,
+            args.extractor_manifest,
+            extractor_fingerprint=args.extractor_fingerprint,
+        )
+        output = Path(args.output).expanduser()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except (NativeCorpusError, ValueError, OSError, json.JSONDecodeError) as exc:
+        print(json.dumps({"valid": False, "error": str(exc)}, indent=2), file=sys.stderr)
+        return 2
+    print(json.dumps({"valid": True, "output": str(output), **result}, indent=2))
+    return 0
+
+
+def native_train_main(argv: Sequence[str] | None = None) -> int:
+    args = _native_train_parser().parse_args(argv)
+    try:
+        result = train_native_models(
+            args.csv,
+            args.corpus_manifest,
+            args.output_dir,
+            seed=args.seed,
+        )
+    except (NativeCorpusError, ValueError, OSError, json.JSONDecodeError) as exc:
+        print(json.dumps({"trained": False, "error": str(exc)}, indent=2), file=sys.stderr)
+        return 2
+    print(json.dumps({"trained": True, **result}, indent=2, sort_keys=True))
     return 0

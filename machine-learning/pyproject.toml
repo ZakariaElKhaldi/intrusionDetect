@@ -22,6 +22,8 @@ iot-ids-prepare = "iot_ids_ml.cli:prepare_main"
 iot-ids-train = "iot_ids_ml.cli:train_main"
 iot-ids-promote = "iot_ids_ml.cli:promote_main"
 iot-ids-verify = "iot_ids_ml.cli:verify_main"
+iot-ids-native-corpus = "iot_ids_ml.cli:native_corpus_main"
+iot-ids-native-train = "iot_ids_ml.cli:native_train_main"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import TypeAdapter, ValidationError
 
+from app.database.models import ValidationFailure
 from app.features.canonical_schema import FlowObservation
 from app.ingestion.schemas import (
     IngestionBatchResponse,
     IngestionEventResponse,
+    IngestionJobListResponse,
+    IngestionState,
     IngestionStatusResponse,
+    OutboxEventListResponse,
 )
 from app.ingestion.service import (
     IdempotencyConflictError,
@@ -17,6 +22,8 @@ from app.ingestion.service import (
     enqueue_observations,
     get_event,
     ingestion_status,
+    list_jobs,
+    list_outbox_events,
 )
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
@@ -65,17 +72,30 @@ async def _parse_observations(request: Request) -> list[FlowObservation]:
     return observations
 
 
-@router.post(
-    "/events", response_model=IngestionBatchResponse, status_code=status.HTTP_202_ACCEPTED
-)
-async def ingest_events(request: Request, response: Response) -> IngestionBatchResponse:
-    observations = await _parse_observations(request)
+async def _ingest(
+    request: Request, response: Response, *, ingestion_channel: str
+) -> IngestionBatchResponse:
+    try:
+        observations = await _parse_observations(request)
+    except HTTPException as exc:
+        if exc.status_code == 422:
+            with request.app.state.SessionLocal() as session:
+                session.add(
+                    ValidationFailure(
+                        error_code="schema_rejected",
+                        ingestion_channel=ingestion_channel,
+                        details={"status_code": 422},
+                    )
+                )
+                session.commit()
+        raise
     with request.app.state.SessionLocal() as session:
         try:
             return enqueue_observations(
                 observations,
                 session,
                 queue_limit=request.app.state.settings.ingestion_queue_limit,
+                ingestion_channel=ingestion_channel,
             )
         except QueueFullError as exc:
             session.rollback()
@@ -90,6 +110,25 @@ async def ingest_events(request: Request, response: Response) -> IngestionBatchR
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post(
+    "/events", response_model=IngestionBatchResponse, status_code=status.HTTP_202_ACCEPTED
+)
+async def ingest_events(request: Request, response: Response) -> IngestionBatchResponse:
+    return await _ingest(request, response, ingestion_channel="http_ingestion")
+
+
+@router.post(
+    "/offline-pcap/events",
+    response_model=IngestionBatchResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def ingest_offline_pcap_events(
+    request: Request, response: Response
+) -> IngestionBatchResponse:
+    """Server-owned channel for the local, offline PCAP ingestion command."""
+    return await _ingest(request, response, ingestion_channel="offline_pcap")
+
+
 @router.get("/events/{event_id}", response_model=IngestionEventResponse)
 async def ingestion_event(event_id: str, request: Request) -> IngestionEventResponse:
     with request.app.state.SessionLocal() as session:
@@ -97,6 +136,58 @@ async def ingestion_event(event_id: str, request: Request) -> IngestionEventResp
     if result is None:
         raise HTTPException(status_code=404, detail="ingestion event not found")
     return result
+
+
+@router.get("/jobs", response_model=IngestionJobListResponse)
+async def ingestion_jobs(
+    request: Request,
+    state: IngestionState | None = None,
+    error_code: str | None = Query(default=None, min_length=1, max_length=64),
+    source: str | None = Query(default=None, min_length=1, max_length=64),
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    cursor: str | None = Query(default=None, max_length=1024),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> IngestionJobListResponse:
+    if created_from and created_to and created_from > created_to:
+        raise HTTPException(status_code=422, detail="created_from must not follow created_to")
+    with request.app.state.SessionLocal() as session:
+        try:
+            return list_jobs(
+                session,
+                state=state,
+                error_code=error_code,
+                source=source,
+                created_from=created_from,
+                created_to=created_to,
+                cursor=cursor,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/outbox/events", response_model=OutboxEventListResponse)
+async def outbox_events(
+    request: Request,
+    status_filter: str | None = Query(
+        default=None, alias="status", pattern="^(pending|failed|published)$"
+    ),
+    event_type: str | None = Query(default=None, min_length=1, max_length=64),
+    cursor: str | None = Query(default=None, max_length=1024),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> OutboxEventListResponse:
+    with request.app.state.SessionLocal() as session:
+        try:
+            return list_outbox_events(
+                session,
+                status=status_filter,
+                event_type=event_type,
+                cursor=cursor,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/status", response_model=IngestionStatusResponse)

@@ -23,6 +23,12 @@ class Observation(Base):
     flow_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     flow_ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     source: Mapped[str] = mapped_column(String(64), index=True)
+    ingestion_channel: Mapped[str] = mapped_column(
+        String(32), default="direct_prediction", index=True
+    )
+    extractor_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     raw_features: Mapped[dict] = mapped_column(JSON)
     network_context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     ground_truth: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -114,6 +120,9 @@ class IngestionJob(Base):
     event_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
     payload_hash: Mapped[str] = mapped_column(String(64))
     payload: Mapped[dict] = mapped_column(JSON)
+    ingestion_channel: Mapped[str] = mapped_column(
+        String(32), default="http_ingestion", index=True
+    )
     state: Mapped[str] = mapped_column(String(24), default="queued", index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -192,3 +201,44 @@ class WorkerState(Base):
     worker_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DriftSnapshot(Base):
+    __tablename__ = "drift_snapshots"
+
+    snapshot_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    window: Mapped[str] = mapped_column(String(16), index=True)
+    cohort_key: Mapped[str] = mapped_column(String(512), index=True)
+    cohort: Mapped[dict] = mapped_column(JSON, default=dict)
+    reference: Mapped[dict] = mapped_column(JSON, default=dict)
+    observation_count: Mapped[int] = mapped_column(Integer, default=0)
+    aggregate_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    aggregate_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    deployment_eligible: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    shadow_mode: Mapped[bool] = mapped_column(Boolean, default=True)
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
+class ValidationFailure(Base):
+    __tablename__ = "validation_failures"
+
+    failure_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    error_code: Mapped[str] = mapped_column(String(64), index=True)
+    ingestion_channel: Mapped[str] = mapped_column(String(32), index=True)
+    schema_version: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    extractor_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )

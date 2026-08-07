@@ -5,7 +5,7 @@ from time import perf_counter
 from typing import Any
 
 from .explanations import explain_features
-from .model_registry import ModelRegistry
+from .model_registry import ModelRegistry, ModelRoute
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +24,9 @@ class InferenceResult:
     top_features: list[dict[str, Any]]
 
 
-def run_inference(registry: ModelRegistry, features: dict[str, Any]) -> InferenceResult:
+def run_inference(
+    registry: ModelRegistry | ModelRoute, features: dict[str, Any]
+) -> InferenceResult:
     started = perf_counter()
     detector_started = perf_counter()
     prediction, detection_score = registry.detector.predict_label(features)

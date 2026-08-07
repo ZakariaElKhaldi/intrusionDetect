@@ -6,6 +6,8 @@ import httpx
 import pytest
 from conftest import observation
 
+from app.features.canonical_schema import FlowObservation
+
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
@@ -58,3 +60,20 @@ async def test_envelope_is_strict_and_times_are_ordered(
     invalid_time = await fallback_client.post("/predict", json=payload)
     assert invalid_time.status_code == 422
     assert "flow_ended_at" in invalid_time.text
+
+
+def test_nfstream_schema_requires_extractor_identity() -> None:
+    payload = observation()
+    payload["schema_version"] = "nfstream-iot-v1"
+    with pytest.raises(ValueError, match="extractor_fingerprint"):
+        FlowObservation.model_validate(payload)
+    payload["network_context"] = {"extractor_fingerprint": "a" * 64}
+    native = FlowObservation.model_validate(payload)
+    assert native.schema_version == "nfstream-iot-v1"
+
+
+def test_unknown_schema_is_rejected() -> None:
+    payload = observation()
+    payload["schema_version"] = "caller-invented-v1"
+    with pytest.raises(ValueError, match="schema_version must be one of"):
+        FlowObservation.model_validate(payload)

@@ -25,6 +25,8 @@ def stage_observation(
     observation: FlowObservation,
     session: Session,
     registry: ModelRegistry,
+    *,
+    ingestion_channel: str = "direct_prediction",
 ) -> StagedObservation:
     started = perf_counter()
     event_id = str(observation.event_id)
@@ -37,6 +39,12 @@ def stage_observation(
         flow_started_at=observation.flow_started_at,
         flow_ended_at=observation.flow_ended_at,
         source=observation.source,
+        ingestion_channel=ingestion_channel,
+        extractor_fingerprint=(
+            observation.network_context.extractor_fingerprint
+            if observation.network_context
+            else None
+        ),
         raw_features=observation.features,
         network_context=(
             observation.network_context.model_dump(mode="json")
@@ -46,7 +54,13 @@ def stage_observation(
         ground_truth=observation.ground_truth,
     )
     session.add(observation_row)
-    inference = run_inference(registry, observation.features)
+    fingerprint = (
+        observation.network_context.extractor_fingerprint
+        if observation.network_context
+        else None
+    )
+    route = registry.resolve_route(observation.schema_version, fingerprint)
+    inference = run_inference(route, observation.features)
     prediction_row = Prediction(
         event_id=event_id,
         model_version=inference.model_version,
@@ -156,8 +170,12 @@ async def process_observation(
     session: Session,
     registry: ModelRegistry,
     live: LiveConnectionManager,
+    *,
+    ingestion_channel: str = "direct_prediction",
 ) -> PredictionResponse:
-    staged = stage_observation(observation, session, registry)
+    staged = stage_observation(
+        observation, session, registry, ingestion_channel=ingestion_channel
+    )
     session.commit()
     await broadcast_staged(staged, live)
     return staged.response

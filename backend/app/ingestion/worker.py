@@ -12,11 +12,12 @@ from app.config import Settings
 from app.database.models import IngestionJob, OutboxEvent
 from app.database.session import create_engine_and_session
 from app.features.canonical_schema import FlowObservation
-from app.inference.model_registry import ModelRegistry
+from app.inference.model_registry import ModelRegistry, ModelRouteError
 from app.ingestion.service import (
     claim_next_job,
     heartbeat,
     now_utc,
+    record_transition,
     recover_expired_leases,
 )
 from app.service import stage_observation
@@ -28,33 +29,30 @@ class PermanentIngestionError(RuntimeError):
     """An event cannot succeed without changing its immutable payload or artifacts."""
 
 
+def classify_failure(exc: Exception) -> tuple[str, bool]:
+    message = str(exc).casefold()
+    if isinstance(exc, PermanentIngestionError):
+        if "extractor" in message or "fingerprint" in message:
+            return "extractor_incompatible", False
+        if "canonical schema" in message:
+            return "schema_invalid", False
+        return "permanent_ingestion_error", False
+    if isinstance(exc, ValueError):
+        return "validation_error", False
+    if isinstance(exc, TimeoutError):
+        return "inference_timeout", True
+    return "inference_error", True
+
+
 def validate_extractor_compatibility(
     observation: FlowObservation, registry: ModelRegistry
 ) -> None:
     context = observation.network_context
     fingerprint = context.extractor_fingerprint if context else None
-    from_pcap = observation.source.casefold().startswith("pcap") or fingerprint is not None
-    if not from_pcap:
-        return
-    if not fingerprint:
-        raise PermanentIngestionError(
-            "PCAP-derived observations require an extractor fingerprint"
-        )
-    for stage, predictor in (
-        ("detector", registry.detector),
-        ("classifier", registry.classifier),
-    ):
-        approved = predictor.metadata.get("approved_extractor_fingerprints", [])
-        legacy = predictor.metadata.get("extractor_fingerprint")
-        if isinstance(approved, str):
-            approved = [approved]
-        if legacy:
-            approved = [*approved, legacy]
-        if fingerprint not in approved:
-            raise PermanentIngestionError(
-                f"{stage} model {predictor.version} is not approved for extractor "
-                f"fingerprint {fingerprint}"
-            )
+    try:
+        registry.resolve_route(observation.schema_version, fingerprint)
+    except ModelRouteError as exc:
+        raise PermanentIngestionError(str(exc)) from exc
 
 
 class IngestionWorker:
@@ -103,7 +101,12 @@ class IngestionWorker:
                         f"stored observation no longer satisfies the canonical schema: {exc}"
                     ) from exc
                 validate_extractor_compatibility(observation, self.registry)
-                staged = stage_observation(observation, session, self.registry)
+                staged = stage_observation(
+                    observation,
+                    session,
+                    self.registry,
+                    ingestion_channel=job.ingestion_channel,
+                )
                 for event in staged.events:
                     session.add(
                         OutboxEvent(
@@ -112,11 +115,22 @@ class IngestionWorker:
                             payload=event,
                         )
                     )
+                record_transition(
+                    session,
+                    job,
+                    from_state="processing",
+                    to_state="succeeded",
+                    reason_code="processing_succeeded",
+                    worker_id=self.worker_id,
+                    details={"outbox_events": len(staged.events)},
+                )
                 job.state = "succeeded"
                 job.completed_at = now_utc()
                 job.lease_expires_at = None
                 job.worker_id = None
                 job.last_error = None
+                job.error_code = None
+                job.retryable = None
                 session.commit()
             return True
         except Exception as exc:
@@ -126,17 +140,44 @@ class IngestionWorker:
                     raise
                 now = now_utc()
                 job.last_error = f"{type(exc).__name__}: {exc}"[:10_000]
+                error_code, retryable = classify_failure(exc)
+                job.error_code = error_code
+                job.retryable = retryable
                 job.lease_expires_at = None
                 job.worker_id = None
-                permanent = isinstance(exc, (PermanentIngestionError, ValueError))
-                if permanent or job.attempts > len(RETRY_DELAYS_SECONDS):
+                if not retryable or job.attempts > len(RETRY_DELAYS_SECONDS):
+                    record_transition(
+                        session,
+                        job,
+                        from_state="processing",
+                        to_state="dead_letter",
+                        reason_code=(
+                            "permanent_failure" if not retryable else "retries_exhausted"
+                        ),
+                        error_code=error_code,
+                        retryable=retryable,
+                        worker_id=self.worker_id,
+                        reason=job.last_error,
+                        details={"attempt": job.attempts},
+                    )
                     job.state = "dead_letter"
                     job.completed_at = now
                 else:
-                    job.state = "retrying"
-                    job.available_at = now + timedelta(
-                        seconds=RETRY_DELAYS_SECONDS[job.attempts - 1]
+                    delay = RETRY_DELAYS_SECONDS[job.attempts - 1]
+                    record_transition(
+                        session,
+                        job,
+                        from_state="processing",
+                        to_state="retrying",
+                        reason_code="retry_scheduled",
+                        error_code=error_code,
+                        retryable=True,
+                        worker_id=self.worker_id,
+                        reason=job.last_error,
+                        details={"attempt": job.attempts, "delay_seconds": delay},
                     )
+                    job.state = "retrying"
+                    job.available_at = now + timedelta(seconds=delay)
                 session.commit()
             return True
 
@@ -148,6 +189,7 @@ def run_worker() -> None:
         settings.model_artifact_path,
         settings.model_dir,
         allow_fallback=settings.allow_fallback,
+        nfstream_model_dir=settings.nfstream_model_dir,
     )
     worker = IngestionWorker(
         session_factory,

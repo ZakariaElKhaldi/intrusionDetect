@@ -1,7 +1,7 @@
 # IoT Network-Flow Intrusion Detection
 
-A reproducible research system for durably ingesting and classifying
-RT-IoT2022-compatible network flows, persisting predictions and alerts,
+A reproducible research system for durably ingesting and classifying versioned
+network-flow observations, persisting predictions and alerts,
 replaying recorded observations, and investigating the results in a React
 dashboard.
 
@@ -15,7 +15,7 @@ The implemented serving path is a two-stage cascade:
           JSON or NDJSON canonical observation
                     |
                     v
-        rt-iot2022-v1 schema validation
+       schema + extractor route validation
                     |
                     v
        durable inbox + ingestion worker
@@ -50,18 +50,23 @@ Implemented:
 - bounded server-side dataset replay with scenario, offset, limit, pause,
   resume, and speed controls; and
 - functional monitoring, alert, topology, model-evidence, and observation-lab
-  views, including ingestion queue/worker/outbox status;
+  views, including read-only ingestion job/dead-letter/outbox operations;
 - on-demand TreeSHAP attribution with explicit non-causal language; and
 - an offline NFStream extractor with deterministic event IDs, a versioned
-  manifest, and validation reports.
+  `nfstream-iot-v1` contract, validation reports, corpus-provenance checks,
+  session-level splitting, four-candidate training, and checksum-bound promotion
+  gates;
+- five-minute fast/slow model-health evaluation with calibrated reference
+  artifacts, feature/output evidence, 90-day history, and shadow-mode readiness
+  semantics.
 
 Not implemented or not validated:
 
-- live network-interface capture or empirically proven PCAP-to-RT-IoT2022 value
-  compatibility;
+- a collected NFStream-native labelled corpus or promoted native model bundle;
+- live network-interface capture (deliberately disabled);
 - a distributed broker or horizontally coordinated WebSocket publisher;
 - calibrated probabilities;
-- causal explanations, measured drift detection, destination reputation, or
+- causal explanations, automatic drift response, destination reputation, or
   complete device/MUD policy enforcement; and
 - external-network, temporal, group-aware, or hardware validation.
 
@@ -183,10 +188,24 @@ Validate an offline capture without inference:
 make pcap-validate PCAP=/path/to/capture.pcap
 ```
 
-PCAP inference is deliberately blocked until independent compatibility evidence
-approves the extractor fingerprint for the active model versions and those
-model artifacts declare that fingerprint. Once both gates are satisfied, use
-`make pcap-ingest PCAP=... COMPATIBILITY_EVIDENCE=...`.
+PCAP inference is deliberately blocked until a newly labelled NFStream-native
+corpus passes the support and performance gates. Approval is read only from the
+server-controlled model bundle; callers cannot grant compatibility. Build the
+content-addressed corpus manifest with `make native-corpus`, train/evaluate it
+with `make native-train`, and use `make pcap-ingest PCAP=...` only after a valid
+native bundle is installed through `IOT_IDS_NFSTREAM_MODEL_DIR`.
+
+Inspect queue failures without adding unauthenticated browser mutations:
+
+```bash
+make ingestion-ops ARGS='list --state dead_letter'
+make ingestion-ops ARGS='redrive --event-id EVENT_ID --operator NAME --reason REASON --dry-run'
+```
+
+The API process runs model-health evaluation every five minutes. A standalone
+evaluator is also available as `make model-health-worker`; deploy one scheduler,
+not both. Model health starts in shadow mode and distribution shift is presented
+as changed-traffic evidence, never as proof of accuracy loss.
 
 Open `http://localhost:5173`; OpenAPI documentation is at
 `http://localhost:8000/docs`. `make docker-up` starts the PostgreSQL-backed
@@ -198,9 +217,10 @@ The API is available both at the root paths and under `/api/v1`:
 
 - `POST /predict` and `POST /predict/batch`
 - `POST /ingestion/events` (JSON or NDJSON), `GET /ingestion/events/{event_id}`,
-  and `GET /ingestion/status`
+  `GET /ingestion/jobs`, `GET /ingestion/outbox/events`, and `GET /ingestion/status`
 - `GET /alerts`, `GET /alerts/{id}`, and `POST /alerts/{id}/feedback`
 - `GET /models` and `GET /health`
+- `GET /model-health` and `GET /model-health/history`
 - `POST /replay/start`, `/pause`, `/resume`, and `/stop`; `GET /replay/status`
 - `WS /live`
 

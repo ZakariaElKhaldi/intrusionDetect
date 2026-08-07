@@ -4,8 +4,9 @@ import hashlib
 import json
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections import Counter
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any, Callable
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import and_, func, or_, select, text
@@ -105,11 +106,11 @@ def record_transition(
     )
 
 
-def _payload_identity(row: IngestionJob) -> tuple[str | None, str | None, str | None]:
+def _payload_identity(row: IngestionJob) -> tuple[str, str, str | None]:
     context = row.payload.get("network_context") or {}
     return (
-        row.payload.get("source"),
-        row.payload.get("schema_version"),
+        str(row.payload.get("source") or "unknown"),
+        str(row.payload.get("schema_version") or "unknown"),
         context.get("extractor_fingerprint"),
     )
 
@@ -129,7 +130,11 @@ def _decode_cursor(cursor: str) -> tuple[datetime, str]:
 
 
 def enqueue_observations(
-    observations: list[FlowObservation], session: Session, *, queue_limit: int
+    observations: list[FlowObservation],
+    session: Session,
+    *,
+    queue_limit: int,
+    ingestion_channel: str = "http_ingestion",
 ) -> IngestionBatchResponse:
     """Atomically enqueue a fully validated batch with event-id idempotency."""
     if session.bind is not None and session.bind.dialect.name == "postgresql":
@@ -187,6 +192,7 @@ def enqueue_observations(
             event_id=event_id,
             payload_hash=digest,
             payload=payload,
+            ingestion_channel=ingestion_channel,
             state="queued",
         )
         session.add(job)
@@ -270,12 +276,162 @@ def get_event(session: Session, event_id: str) -> IngestionEventResponse | None:
                 reason=item.reason,
                 details=item.details,
                 occurred_at=item.occurred_at,
+                action=item.reason_code,
+                attempt=item.details.get("attempt"),
+                actor=item.operator or item.worker_id,
+                created_at=item.occurred_at,
             )
             for item in transitions
         ],
         created_at=row.created_at,
         updated_at=row.updated_at,
         completed_at=row.completed_at,
+    )
+
+
+def list_jobs(
+    session: Session,
+    *,
+    state: str | None = None,
+    error_code: str | None = None,
+    source: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    cursor: str | None = None,
+    limit: int = 100,
+) -> IngestionJobListResponse:
+    query = select(IngestionJob)
+    if state:
+        query = query.where(IngestionJob.state == state)
+    if error_code:
+        query = query.where(IngestionJob.error_code == error_code)
+    if source:
+        query = query.where(IngestionJob.payload["source"].as_string() == source)
+    if created_from:
+        query = query.where(IngestionJob.created_at >= created_from)
+    if created_to:
+        query = query.where(IngestionJob.created_at <= created_to)
+    total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+    if cursor:
+        cursor_time, cursor_id = _decode_cursor(cursor)
+        query = query.where(
+            or_(
+                IngestionJob.created_at < cursor_time,
+                and_(
+                    IngestionJob.created_at == cursor_time,
+                    IngestionJob.job_id < cursor_id,
+                ),
+            )
+        )
+    rows = list(
+        session.scalars(
+            query.order_by(IngestionJob.created_at.desc(), IngestionJob.job_id.desc()).limit(
+                limit + 1
+            )
+        )
+    )
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    items = []
+    for row in rows:
+        row_source, schema_version, extractor_fingerprint = _payload_identity(row)
+        items.append(
+            IngestionJobSummary(
+                event_id=row.event_id,
+                batch_id=row.batch_id,
+                state=row.state,
+                attempts=row.attempts,
+                source=row_source,
+                schema_version=schema_version,
+                extractor_fingerprint=extractor_fingerprint,
+                error_code=row.error_code,
+                retryable=row.retryable,
+                redrive_count=row.redrive_count,
+                last_error=row.last_error,
+                available_at=row.available_at,
+                lease_expires_at=row.lease_expires_at,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                completed_at=row.completed_at,
+            )
+        )
+    next_cursor = (
+        _encode_cursor(rows[-1].created_at, rows[-1].job_id) if has_more and rows else None
+    )
+    return IngestionJobListResponse(
+        items=items, total=total, limit=limit, next_cursor=next_cursor
+    )
+
+
+def list_outbox_events(
+    session: Session,
+    *,
+    status: str | None = None,
+    event_type: str | None = None,
+    cursor: str | None = None,
+    limit: int = 100,
+) -> OutboxEventListResponse:
+    query = select(OutboxEvent)
+    if status == "pending":
+        query = query.where(
+            OutboxEvent.published_at.is_(None), OutboxEvent.publish_attempts == 0
+        )
+    elif status == "failed":
+        query = query.where(
+            OutboxEvent.published_at.is_(None), OutboxEvent.publish_attempts > 0
+        )
+    elif status == "published":
+        query = query.where(OutboxEvent.published_at.is_not(None))
+    if event_type:
+        query = query.where(OutboxEvent.event_type == event_type)
+    total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+    if cursor:
+        cursor_time, cursor_id = _decode_cursor(cursor)
+        query = query.where(
+            or_(
+                OutboxEvent.created_at < cursor_time,
+                and_(
+                    OutboxEvent.created_at == cursor_time,
+                    OutboxEvent.outbox_id < cursor_id,
+                ),
+            )
+        )
+    rows = list(
+        session.scalars(
+            query.order_by(OutboxEvent.created_at.desc(), OutboxEvent.outbox_id.desc()).limit(
+                limit + 1
+            )
+        )
+    )
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    return OutboxEventListResponse(
+        items=[
+            OutboxEventResponse(
+                outbox_id=row.outbox_id,
+                event_id=row.event_id,
+                event_type=row.event_type,
+                status=(
+                    "published"
+                    if row.published_at
+                    else "failed"
+                    if row.publish_attempts
+                    else "pending"
+                ),
+                publish_attempts=row.publish_attempts,
+                last_error=row.last_error,
+                created_at=row.created_at,
+                published_at=row.published_at,
+            )
+            for row in rows
+        ],
+        total=total,
+        limit=limit,
+        next_cursor=(
+            _encode_cursor(rows[-1].created_at, rows[-1].outbox_id)
+            if has_more and rows
+            else None
+        ),
     )
 
 
@@ -383,11 +539,24 @@ def recover_expired_leases(session: Session) -> int:
         )
     )
     for row in rows:
+        previous_worker = row.worker_id
         row.state = "retrying"
         row.available_at = now
         row.lease_expires_at = None
         row.worker_id = None
         row.last_error = "processing lease expired; recovered for retry"
+        row.error_code = "lease_expired"
+        row.retryable = True
+        record_transition(
+            session,
+            row,
+            from_state="processing",
+            to_state="retrying",
+            reason_code="lease_recovered",
+            error_code=row.error_code,
+            retryable=True,
+            worker_id=previous_worker,
+        )
     session.commit()
     return len(rows)
 
@@ -410,13 +579,134 @@ def claim_next_job(
     row = session.scalar(query)
     if row is None:
         return None
-    row.state = "processing"
+    previous_state = row.state
     row.attempts += 1
     row.worker_id = worker_id
     row.lease_expires_at = now + timedelta(seconds=lease_seconds)
     row.updated_at = now
+    record_transition(
+        session,
+        row,
+        from_state=previous_state,
+        to_state="processing",
+        reason_code="claimed",
+        worker_id=worker_id,
+        details={"attempt": row.attempts},
+    )
+    row.state = "processing"
     session.commit()
     return row
+
+
+def evaluate_redrive(
+    session: Session,
+    event_id: str,
+    *,
+    compatibility_check: Callable[[dict], None] | None = None,
+) -> tuple[IngestionJob | None, str | None]:
+    query = select(IngestionJob).where(IngestionJob.event_id == event_id)
+    if session.bind is not None and session.bind.dialect.name == "postgresql":
+        query = query.with_for_update()
+    row = session.scalar(query)
+    if row is None:
+        return None, "event was not found"
+    if row.state == "succeeded":
+        return row, "succeeded jobs cannot be redriven"
+    if row.state != "dead_letter":
+        return row, f"job is {row.state}, not dead_letter"
+    if row.lease_expires_at is not None and _as_utc(row.lease_expires_at) > now_utc():
+        return row, "job has an active processing lease"
+    if payload_hash(row.payload) != row.payload_hash:
+        return row, "stored payload conflicts with its immutable hash"
+    if session.scalar(select(Prediction.prediction_id).where(Prediction.event_id == event_id)):
+        return row, "a persisted prediction already exists"
+    if session.get(Observation, event_id) is not None:
+        return row, "a persisted observation already exists"
+    if row.retryable:
+        return row, None
+    if row.error_code == "extractor_incompatible" and compatibility_check:
+        try:
+            compatibility_check(row.payload)
+        except Exception as exc:
+            return row, f"extractor remains incompatible: {exc}"
+        return row, None
+    return row, "failure is permanent and not eligible for redrive"
+
+
+def redrive_events(
+    session: Session,
+    event_ids: list[str],
+    *,
+    operator: str,
+    reason: str,
+    compatibility_check: Callable[[dict], None] | None = None,
+    dry_run: bool = False,
+) -> list[dict[str, Any]]:
+    if not operator.strip() or not reason.strip():
+        raise ValueError("operator and reason are required")
+    if not event_ids:
+        raise ValueError("at least one event_id is required")
+    if len(set(event_ids)) != len(event_ids):
+        raise ValueError("event_ids must be unique")
+    results: list[dict[str, Any]] = []
+    eligible: list[IngestionJob] = []
+    for event_id in event_ids:
+        row, refusal = evaluate_redrive(
+            session, event_id, compatibility_check=compatibility_check
+        )
+        results.append(
+            {
+                "event_id": event_id,
+                "eligible": refusal is None,
+                "reason": refusal or "eligible",
+            }
+        )
+        if refusal is None and row is not None:
+            eligible.append(row)
+    refusals = [item for item in results if not item["eligible"]]
+    if refusals and not dry_run:
+        session.rollback()
+        summary = "; ".join(f"{item['event_id']}: {item['reason']}" for item in refusals)
+        raise RedriveRefusedError(summary)
+    if dry_run:
+        session.rollback()
+        return results
+
+    now = now_utc()
+    for row in eligible:
+        previous_error_code = row.error_code
+        previous_error = row.last_error
+        record_transition(
+            session,
+            row,
+            from_state="dead_letter",
+            to_state="queued",
+            reason_code="manual_redrive",
+            error_code=previous_error_code,
+            retryable=row.retryable,
+            operator=operator.strip(),
+            reason=reason.strip(),
+            details={
+                "previous_attempts": row.attempts,
+                "previous_error": previous_error,
+                "redrive_number": row.redrive_count + 1,
+            },
+        )
+        row.state = "queued"
+        row.attempts = 0
+        row.available_at = now
+        row.completed_at = None
+        row.worker_id = None
+        row.lease_expires_at = None
+        row.last_error = None
+        row.error_code = None
+        row.retryable = None
+        row.redrive_count += 1
+        row.last_redriven_at = now
+        row.last_redriven_by = operator.strip()
+        row.last_redrive_reason = reason.strip()
+    session.commit()
+    return results
 
 
 def heartbeat(session: Session, worker_id: str) -> None:
