@@ -16,6 +16,7 @@ import type {
   ReplayStatus,
   DashboardSummary,
   AlertPage,
+  IngestionStatus,
 } from "./types";
 
 const configuredApi = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
@@ -50,6 +51,16 @@ interface AlertWire {
   attack_class?: string | null;
   confidence?: number;
   raw_features?: Record<string, string | number>;
+  network_context?: {
+    source_ip?: string | null;
+    destination_ip?: string | null;
+    source_port?: number | null;
+    destination_port?: number | null;
+    protocol?: string | null;
+    interface?: string | null;
+    capture_id?: string | null;
+    extractor_fingerprint?: string | null;
+  } | null;
   evidence_type?: string;
   explanation_type?: string;
   model_metadata?: {
@@ -143,6 +154,12 @@ function identityQuality(features: Record<string, string | number>): IdentityQua
 
 function alertFromWire(value: AlertWire): Alert {
   const features = value.raw_features ?? {};
+  const context = value.network_context ?? {};
+  const identityFeatures = {
+    ...features,
+    ...(context.source_ip ? { source_ip: context.source_ip } : {}),
+    ...(context.destination_ip ? { destination_ip: context.destination_ip } : {}),
+  };
   const alertEvidenceType = evidenceTypeForAlert(value);
   return {
     id: value.alert_id,
@@ -150,9 +167,9 @@ function alertFromWire(value: AlertWire): Alert {
     attack_type: value.attack_class ?? value.reasons?.[0] ?? "Suspicious activity",
     confidence: value.detection_score ?? value.confidence ?? 0,
     severity: asSeverity(value.severity),
-    source_ip: String(features.source_ip ?? features.src_ip ?? (features["id.orig_p"] !== undefined ? `port ${features["id.orig_p"]}` : "Source in details")),
-    destination_ip: String(features.destination_ip ?? features.dst_ip ?? (features["id.resp_p"] !== undefined ? `port ${features["id.resp_p"]}` : "Destination in details")),
-    protocol: String(features.proto ?? features.protocol ?? features.service ?? "—"),
+    source_ip: String(context.source_ip ?? features.source_ip ?? features.src_ip ?? (context.source_port !== undefined && context.source_port !== null ? `port ${context.source_port}` : features["id.orig_p"] !== undefined ? `port ${features["id.orig_p"]}` : "Source in details")),
+    destination_ip: String(context.destination_ip ?? features.destination_ip ?? features.dst_ip ?? (context.destination_port !== undefined && context.destination_port !== null ? `port ${context.destination_port}` : features["id.resp_p"] !== undefined ? `port ${features["id.resp_p"]}` : "Destination in details")),
+    protocol: String(context.protocol ?? features.proto ?? features.protocol ?? features.service ?? "—"),
     status: asAlertStatus(value.status),
     features,
     model_version: value.model_version,
@@ -165,7 +182,7 @@ function alertFromWire(value: AlertWire): Alert {
     total_latency_ms: value.total_latency_ms,
     reasons: value.reasons ?? [],
     evidence_type: alertEvidenceType,
-    identity_quality: identityQuality(features),
+    identity_quality: identityQuality(identityFeatures),
     explanations: value.top_features?.map((feature) => ({
       feature: String(feature.feature ?? feature.name ?? "feature"),
       impact: Number(
@@ -276,6 +293,14 @@ export async function checkHealth(): Promise<HealthInfo | null> {
   } catch {
     return null;
   }
+}
+
+export async function getIngestionStatus(): Promise<IngestionStatus> {
+  const value = await request<unknown>("/ingestion/status");
+  if (!value || typeof value !== "object" || !("queue_depth" in value) || !("worker" in value) || !("outbox" in value)) {
+    throw new ApiError("Ingestion status response is invalid.", 502, value);
+  }
+  return value as IngestionStatus;
 }
 
 export async function getAlerts(): Promise<Alert[]> {

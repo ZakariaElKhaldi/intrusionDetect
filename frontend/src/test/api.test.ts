@@ -5,6 +5,7 @@ import {
   getAlerts,
   getAlertExplanation,
   getEvaluation,
+  getIngestionStatus,
   liveEventFromSocketMessage,
   startReplay,
   submitAlertFeedback,
@@ -35,6 +36,29 @@ describe("frontend API adapter", () => {
 
     await expect(checkHealth()).resolves.toEqual(health);
     await expect(checkHealth()).resolves.toBeNull();
+  });
+
+  it("loads independently reported ingestion and worker status", async () => {
+    const status = {
+      queue_depth: 3, queued: 2, processing: 1, retrying: 0, succeeded: 48,
+      dead_letter: 0, retries: 2, failures: 0, oldest_pending_age_seconds: 4.2,
+      throughput_per_minute: 24,
+      worker: { status: "ready", reason: "Worker heartbeat is current.", last_heartbeat_at: "2026-08-07T10:00:00Z" },
+      outbox: { status: "ready", reason: "Outbox is draining.", pending: 1, published: 47, oldest_pending_age_seconds: 1 },
+      generated_at: "2026-08-07T10:00:01Z",
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(status)));
+
+    await expect(getIngestionStatus()).resolves.toEqual(status);
+    expect(fetch).toHaveBeenCalledWith("/api/v1/ingestion/status", expect.any(Object));
+  });
+
+  it("rejects malformed ingestion status instead of displaying invented zeroes", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ queue_depth: 0 })));
+    await expect(getIngestionStatus()).rejects.toMatchObject({
+      status: 502,
+      message: "Ingestion status response is invalid.",
+    });
   });
 
   it("maps raw top feature values without calling them contributions", async () => {
@@ -89,6 +113,35 @@ describe("frontend API adapter", () => {
     expect(alert.explanations?.[0]).toMatchObject({
       impact: -0.42,
       evidence_type: "model_contribution",
+    });
+  });
+
+  it("uses non-model network context for alert route identity", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([{
+      alert_id: "alert-context",
+      event_id: "event-context",
+      severity: "high",
+      reasons: [],
+      top_features: [],
+      status: "new",
+      created_at: "2026-08-07T10:00:00Z",
+      confidence: 0.94,
+      raw_features: { "id.orig_p": 41000, "id.resp_p": 1883, proto: "tcp" },
+      network_context: {
+        source_ip: "10.0.0.15",
+        destination_ip: "10.0.0.20",
+        source_port: 41000,
+        destination_port: 1883,
+        protocol: "mqtt",
+      },
+    }])));
+
+    const [alert] = await getAlerts();
+    expect(alert).toMatchObject({
+      source_ip: "10.0.0.15",
+      destination_ip: "10.0.0.20",
+      protocol: "mqtt",
+      identity_quality: "explicit",
     });
   });
 

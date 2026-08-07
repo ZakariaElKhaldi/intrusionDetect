@@ -1,8 +1,9 @@
 # IoT Network-Flow Intrusion Detection
 
-A reproducible research system for classifying RT-IoT2022-compatible network
-flows, persisting predictions and alerts, replaying recorded observations, and
-investigating the results in a React dashboard.
+A reproducible research system for durably ingesting and classifying
+RT-IoT2022-compatible network flows, persisting predictions and alerts,
+replaying recorded observations, and investigating the results in a React
+dashboard.
 
 > This is an academic prototype, not a validated production security control.
 
@@ -11,10 +12,13 @@ investigating the results in a React dashboard.
 The implemented serving path is a two-stage cascade:
 
 ```text
-RT-IoT2022 CSV or validated API observation
+          JSON or NDJSON canonical observation
                     |
                     v
         rt-iot2022-v1 schema validation
+                    |
+                    v
+       durable inbox + ingestion worker
                     |
                     v
       binary detector: normal / attack
@@ -24,11 +28,14 @@ RT-IoT2022 CSV or validated API observation
           attack-family classifier
                     |
                     v
- SQLite/PostgreSQL + prediction.created / alert.created
+ SQLite/PostgreSQL + transactional outbox
                     |
                     v
-             React investigation UI
+    prediction.created / alert.created + React UI
 ```
+
+Dataset replay and `/predict` remain synchronous compatibility paths; durable
+ingestion uses the worker and transactional outbox shown above.
 
 Implemented:
 
@@ -37,21 +44,25 @@ Implemented:
   and `2026`;
 - attack-only second-stage classification;
 - atomic, checksum-verified champion promotion;
-- strict FastAPI validation, single and batch prediction, persistence, analyst
-  feedback, and WebSocket events;
+- strict FastAPI validation, synchronous prediction compatibility endpoints,
+  durable JSON/NDJSON ingestion, idempotency, retries, persistence, analyst
+  feedback, and post-commit WebSocket events;
 - bounded server-side dataset replay with scenario, offset, limit, pause,
   resume, and speed controls; and
-- functional overview, alert, topology, model-analysis, and observation-testing
-  views.
+- functional monitoring, alert, topology, model-evidence, and observation-lab
+  views, including ingestion queue/worker/outbox status;
+- on-demand TreeSHAP attribution with explicit non-causal language; and
+- an offline NFStream extractor with deterministic event IDs, a versioned
+  manifest, and validation reports.
 
 Not implemented or not validated:
 
-- live packet capture or a value-compatible PCAP/Zeek/CICFlowMeter adapter;
-- a durable message queue or distributed streaming pipeline;
+- live network-interface capture or empirically proven PCAP-to-RT-IoT2022 value
+  compatibility;
+- a distributed broker or horizontally coordinated WebSocket publisher;
 - calibrated probabilities;
-- SHAP or causal explanations—the current UI shows highlighted raw values;
-- measured drift detection, destination reputation, or complete device/MUD
-  policy enforcement; and
+- causal explanations, measured drift detection, destination reputation, or
+  complete device/MUD policy enforcement; and
 - external-network, temporal, group-aware, or hardware validation.
 
 The system therefore monitors **validated network-flow records**, not arbitrary
@@ -146,9 +157,36 @@ and build. Retraining is compute-intensive and is never implicit.
 For separate development servers:
 
 ```bash
+make migrate
+cd backend && uv run python -m app.ingestion.worker
 cd backend && uv run uvicorn app.main:app --reload
 cd frontend && npm run dev
 ```
+
+Run the worker and backend in separate terminals. `./scripts/run_all.sh` and
+`make demo` perform the migration and manage all three processes automatically.
+To stream canonical NDJSON from stdin or a file, run `make ingest-events` or
+`make ingest-events INGESTION_INPUT=/path/to/events.ndjson`. The producer batches
+records, honors queue backpressure, retries transient failures, and reports
+accepted, duplicate, and rejected counts.
+
+Follow a file that another process is appending to:
+
+```bash
+cd backend
+uv run python -m app.ingestion.producer /path/to/events.ndjson --follow
+```
+
+Validate an offline capture without inference:
+
+```bash
+make pcap-validate PCAP=/path/to/capture.pcap
+```
+
+PCAP inference is deliberately blocked until independent compatibility evidence
+approves the extractor fingerprint for the active model versions and those
+model artifacts declare that fingerprint. Once both gates are satisfied, use
+`make pcap-ingest PCAP=... COMPATIBILITY_EVIDENCE=...`.
 
 Open `http://localhost:5173`; OpenAPI documentation is at
 `http://localhost:8000/docs`. `make docker-up` starts the PostgreSQL-backed
@@ -159,19 +197,22 @@ demonstration stack.
 The API is available both at the root paths and under `/api/v1`:
 
 - `POST /predict` and `POST /predict/batch`
+- `POST /ingestion/events` (JSON or NDJSON), `GET /ingestion/events/{event_id}`,
+  and `GET /ingestion/status`
 - `GET /alerts`, `GET /alerts/{id}`, and `POST /alerts/{id}/feedback`
 - `GET /models` and `GET /health`
 - `POST /replay/start`, `/pause`, `/resume`, and `/stop`; `GET /replay/status`
 - `WS /live`
 
-Every accepted observation emits `prediction.created`. Only a binary `attack`
-prediction creates an alert and emits `alert.created`; this prevents normal
-telemetry from being inserted into the investigation queue.
+Every successfully processed observation emits `prediction.created`. Only a
+binary `attack` prediction creates an alert and emits `alert.created`; this
+prevents normal telemetry from being inserted into the investigation queue.
 
 ## Repository map
 
 ```text
 backend/             FastAPI, SQLAlchemy, cascade inference, replay, tests
+backend/alembic/     versioned database migrations
 frontend/            React/TypeScript dashboard and component tests
 machine-learning/    preparation, evaluation, training, promotion, tests
 data/schema/         canonical machine-readable feature contract

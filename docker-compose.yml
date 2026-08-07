@@ -13,21 +13,49 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  migration:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment: &backend-environment
+      IOT_IDS_DATABASE_URL: postgresql+psycopg://iot_ids:iot_ids@database:5432/iot_ids
+      IOT_IDS_MODEL_DIR: /app/models/production
+      IOT_IDS_DATASET_PATH: /app/data/raw/RT_IOT2022.csv
+      IOT_IDS_SCHEMA_PATH: /app/data/schema/rt_iot2022_v1.json
+      IOT_IDS_ALLOW_FALLBACK: "false"
+      IOT_IDS_CORS_ORIGINS: http://localhost:5173
+      IOT_IDS_INGESTION_QUEUE_LIMIT: "10000"
+      IOT_IDS_WORKER_POLL_SECONDS: "0.5"
+      IOT_IDS_WORKER_LEASE_SECONDS: "60"
+      IOT_IDS_OUTBOX_POLL_SECONDS: "0.5"
+    depends_on:
+      database:
+        condition: service_healthy
+
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    environment:
-      IOT_IDS_DATABASE_URL: postgresql+psycopg://iot_ids:iot_ids@database:5432/iot_ids
-      IOT_IDS_MODEL_DIR: /app/models/production
-      IOT_IDS_DATASET_PATH: /app/data/raw/RT_IOT2022.csv
-      IOT_IDS_ALLOW_FALLBACK: "false"
-      IOT_IDS_CORS_ORIGINS: http://localhost:5173
+    environment: *backend-environment
     ports:
       - "8000:8000"
     depends_on:
-      database:
-        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "app.ingestion.worker"]
+    environment: *backend-environment
+    restart: unless-stopped
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
 
   frontend:
     build:

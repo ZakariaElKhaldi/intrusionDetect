@@ -1,0 +1,48 @@
+{
+  "tcp": {
+    "protocol": 6, "src_port": 41000, "dst_port": 443, "application_name": "TLS",
+    "packets": [
+      {"time_ms": 1000, "direction": 0, "payload_size": 0, "ip_size": 40, "syn": true, "window": 64240},
+      {"time_ms": 1010, "direction": 1, "payload_size": 0, "ip_size": 40, "syn": true, "ack": true, "window": 65535},
+      {"time_ms": 1020, "direction": 0, "payload_size": 12, "ip_size": 52, "ack": true, "psh": true, "window": 64000}
+    ]
+  },
+  "udp": {
+    "protocol": 17, "src_port": 51000, "dst_port": 9999, "application_name": "Unknown",
+    "packets": [
+      {"time_ms": 2000, "direction": 0, "payload_size": 20, "ip_size": 48},
+      {"time_ms": 2025, "direction": 1, "payload_size": 8, "ip_size": 36}
+    ]
+  },
+  "mqtt": {
+    "protocol": 6, "src_port": 52000, "dst_port": 1883, "application_name": "MQTT",
+    "packets": [
+      {"time_ms": 3000, "direction": 0, "payload_size": 10, "ip_size": 50, "psh": true, "ack": true, "window": 4096},
+      {"time_ms": 3020, "direction": 1, "payload_size": 4, "ip_size": 44, "ack": true, "window": 2048}
+    ]
+  },
+  "dns": {
+    "protocol": 17, "src_port": 53000, "dst_port": 53, "application_name": "DNS",
+    "packets": [
+      {"time_ms": 4000, "direction": 0, "payload_size": 28, "ip_size": 56},
+      {"time_ms": 4040, "direction": 1, "payload_size": 64, "ip_size": 92}
+    ]
+  },
+  "syn_flood": {
+    "protocol": 6, "src_port": 54000, "dst_port": 80, "application_name": "HTTP",
+    "packets": [
+      {"time_ms": 5000, "direction": 0, "payload_size": 0, "ip_size": 40, "syn": true, "window": 1024},
+      {"time_ms": 5001, "direction": 0, "payload_size": 0, "ip_size": 40, "syn": true, "window": 1024},
+      {"time_ms": 5002, "direction": 0, "payload_size": 0, "ip_size": 40, "syn": true, "window": 1024},
+      {"time_ms": 5003, "direction": 0, "payload_size": 0, "ip_size": 40, "syn": true, "window": 1024}
+    ]
+  },
+  "scan": {
+    "protocol": 6, "src_port": 55000, "dst_port": 22, "application_name": "Unknown",
+    "packets": [
+      {"time_ms": 6000, "direction": 0, "payload_size": 0, "ip_size": 40, "fin": true, "window": 512},
+      {"time_ms": 8000, "direction": 0, "payload_size": 0, "ip_size": 40, "rst": true, "window": 0},
+      {"time_ms": 14000, "direction": 0, "payload_size": 0, "ip_size": 40, "syn": true, "window": 512}
+    ]
+  }
+}

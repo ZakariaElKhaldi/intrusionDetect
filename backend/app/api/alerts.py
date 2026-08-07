@@ -43,6 +43,7 @@ def _alert_response(
         classifier_latency_ms=prediction.classifier_latency_ms,
         total_latency_ms=prediction.end_to_end_latency_ms,
         raw_features=observation.raw_features,
+        network_context=observation.network_context,
     )
 
 
@@ -107,13 +108,22 @@ async def page_alerts(
             def matches(row) -> bool:
                 alert, prediction, observation = row
                 features = observation.raw_features
+                context = observation.network_context or {}
                 values = (
                     alert.alert_id,
                     prediction.attack_class or "",
-                    str(features.get("source_ip", features.get("src_ip", ""))),
-                    str(features.get("destination_ip", features.get("dst_ip", ""))),
-                    str(features.get("id.orig_p", "")),
-                    str(features.get("id.resp_p", "")),
+                    str(context.get("source_ip", features.get("source_ip", ""))),
+                    str(
+                        context.get(
+                            "destination_ip", features.get("destination_ip", "")
+                        )
+                    ),
+                    str(context.get("source_port", features.get("id.orig_p", ""))),
+                    str(
+                        context.get(
+                            "destination_port", features.get("id.resp_p", "")
+                        )
+                    ),
                     str(features.get("proto", "")),
                     str(features.get("service", "")),
                 )
@@ -190,6 +200,7 @@ async def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
             classifier_latency_ms=prediction.classifier_latency_ms,
             total_latency_ms=prediction.end_to_end_latency_ms,
             raw_features=observation.raw_features,
+            network_context=observation.network_context,
             feedback=feedback,
         )
 

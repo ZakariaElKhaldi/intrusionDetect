@@ -65,7 +65,48 @@ export interface HealthInfo {
   instance_id?: string;
   dataset_checksum_matches_training?: boolean | null;
   dataset_error?: string | null;
-  components?: Record<string, { status: string; reason?: string; [key: string]: unknown }>;
+  components?: Record<string, HealthComponent>;
+}
+
+export interface HealthComponent {
+  status: string;
+  reason?: string;
+  checked_at?: string;
+  [key: string]: unknown;
+}
+
+export type IngestionPipelineState =
+  | "healthy"
+  | "idle"
+  | "backlogged"
+  | "retrying"
+  | "dead_letter"
+  | "offline";
+
+export interface IngestionStatus {
+  queue_depth: number;
+  queued: number;
+  processing: number;
+  succeeded: number;
+  oldest_pending_age_seconds: number | null;
+  retries: number;
+  retrying: number;
+  failures: number;
+  dead_letter: number;
+  throughput_per_minute: number;
+  worker: {
+    status: "ready" | "degraded" | "blocked" | string;
+    reason?: string;
+    last_heartbeat_at: string | null;
+  };
+  outbox: {
+    status: "ready" | "degraded" | "blocked" | string;
+    reason?: string;
+    pending: number;
+    published: number;
+    oldest_pending_age_seconds: number | null;
+  };
+  generated_at: string;
 }
 
 export interface DashboardSummary {

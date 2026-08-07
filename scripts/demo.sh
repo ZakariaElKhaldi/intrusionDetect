@@ -11,6 +11,7 @@ DEMO_DATABASE_PATH="${DEMO_TEMP_DIR}/project-demo.sqlite3"
 DEMO_INSTANCE_ID="project-demo-$(date +%s)-$$-${RANDOM}"
 BACKEND_PID=""
 FRONTEND_PID=""
+WORKER_PID=""
 
 validate_port() {
   local value="$1"
@@ -62,12 +63,12 @@ wait_for_owned_health() {
 
 cleanup() {
   trap - EXIT INT TERM
-  for process_id in "${FRONTEND_PID}" "${BACKEND_PID}"; do
+  for process_id in "${FRONTEND_PID}" "${BACKEND_PID}" "${WORKER_PID}"; do
     if [[ -n "${process_id}" ]] && kill -0 "${process_id}" 2>/dev/null; then
       kill "${process_id}" 2>/dev/null || true
     fi
   done
-  wait "${FRONTEND_PID}" "${BACKEND_PID}" 2>/dev/null || true
+  wait "${FRONTEND_PID}" "${BACKEND_PID}" "${WORKER_PID}" 2>/dev/null || true
   if [[ "${DEMO_DATABASE_PATH}" == /tmp/iot-ids-demo.*/* ]]; then
     rm -f -- "${DEMO_DATABASE_PATH}"
     rmdir -- "${DEMO_TEMP_DIR}" 2>/dev/null || true
@@ -104,6 +105,17 @@ export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/iot-ids-uv-cache}"
 
 (
   cd backend
+  .venv/bin/alembic upgrade head
+)
+
+(
+  cd backend
+  exec .venv/bin/python -m app.ingestion.worker
+) &
+WORKER_PID=$!
+
+(
+  cd backend
   exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "${BACKEND_PORT}"
 ) &
 BACKEND_PID=$!
@@ -123,10 +135,11 @@ echo "Clean project demo is ready (database: disposable)."
 echo "Instance:  ${DEMO_INSTANCE_ID}"
 echo "Dashboard: http://127.0.0.1:${FRONTEND_PORT}"
 echo "API docs:  http://127.0.0.1:${BACKEND_PORT}/docs"
+echo "Worker:    durable ingestion/outbox processing active"
 echo "Press Ctrl-C to stop and remove the demo database."
 
 set +e
-wait -n "${BACKEND_PID}" "${FRONTEND_PID}"
+wait -n "${WORKER_PID}" "${BACKEND_PID}" "${FRONTEND_PID}"
 exit_status=$?
 set -e
 echo "A demo service exited; stopping the other service." >&2

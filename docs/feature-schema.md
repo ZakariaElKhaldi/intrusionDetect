@@ -14,6 +14,7 @@ an external flow extractor produces equivalent values.
   "flow_started_at": "ISO-8601 timestamp",
   "flow_ended_at": "ISO-8601 timestamp",
   "source": "dataset-replay",
+  "network_context": null,
   "features": {},
   "ground_truth": null
 }
@@ -26,6 +27,10 @@ fields, non-finite numbers, nested feature values, and unsupported schema
 versions are rejected.
 
 `ground_truth` is optional serving metadata. It is never an input feature.
+`network_context` is also optional metadata outside the model vector. It may
+carry source/destination IP and port, protocol, interface, capture ID, and
+extractor fingerprint. It is persisted for investigation but never changes the
+83-feature order or enters either model stage.
 
 ## Dataset and target profile
 
@@ -75,9 +80,12 @@ with a Flowmeter plugin captured bidirectional attributes. The
 Wireshark PCAP capture followed by CICFlowMeter CSV extraction. The UCI variable
 table also leaves most units unspecified.
 
-Therefore the repository's Zeek and CICFlowMeter modules are placeholders, not
-validated adapters. Before PCAP or live ingestion is enabled, controlled TCP,
-UDP, MQTT, DNS, SYN, and isolated scan scenarios must compare:
+The repository now contains a versioned NFStream plugin that computes all 83
+fields, deterministic capture-derived event IDs, and validation reports.
+Controlled TCP, UDP, MQTT, DNS, SYN, and scan fixtures test deterministic
+calculation and invariants. Zeek and CICFlowMeter mappings remain explicitly
+unsupported. Before PCAP inference or live capture is enabled, paired-source or
+newly labelled compatibility experiments must compare:
 
 - names, order, types, and categorical vocabulary;
 - units, directions, and flow timeout rules;
@@ -85,5 +93,9 @@ UDP, MQTT, DNS, SYN, and isolated scan scenarios must compare:
 - packet, payload, bulk, active, and idle counters; and
 - missing, zero, infinity, and boundary behavior.
 
-Until those experiments pass, prepared-dataset replay and directly validated
-observations are the only supported ingestion modes.
+Until those experiments pass, PCAP mode is validation/export only. Dataset
+replay and directly validated canonical observations are the only inputs that
+may reach the promoted models. The compatibility gate checks the extractor
+fingerprint, validated golden-corpus evidence, and active model versions rather
+than treating matching field names as evidence. Each validation report still
+records its target capture checksum for provenance.

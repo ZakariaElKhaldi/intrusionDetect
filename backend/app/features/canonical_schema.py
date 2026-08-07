@@ -41,6 +41,21 @@ CATEGORICAL_FEATURES = frozenset(
 NUMERIC_FEATURES = frozenset(FEATURE_ORDER) - CATEGORICAL_FEATURES
 
 
+class NetworkContext(BaseModel):
+    """Optional transport metadata; never passed to the model feature vector."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_ip: str | None = Field(default=None, max_length=64)
+    destination_ip: str | None = Field(default=None, max_length=64)
+    source_port: int | None = Field(default=None, ge=0, le=65_535)
+    destination_port: int | None = Field(default=None, ge=0, le=65_535)
+    protocol: str | None = Field(default=None, max_length=32)
+    interface: str | None = Field(default=None, max_length=128)
+    capture_id: str | None = Field(default=None, max_length=256)
+    extractor_fingerprint: str | None = Field(default=None, max_length=256)
+
+
 class FlowObservation(BaseModel):
     """Versioned compatibility boundary shared by replay and live ingestion."""
 
@@ -53,6 +68,7 @@ class FlowObservation(BaseModel):
     source: str = Field(min_length=1, max_length=64)
     features: dict[str, Any]
     ground_truth: str | None = None
+    network_context: NetworkContext | None = None
 
     @field_validator("features")
     @classmethod
@@ -111,6 +127,7 @@ class PredictionContract(BaseModel):
 class PredictionResponse(PredictionContract):
     prediction_id: UUID
     raw_features: dict[str, Any]
+    network_context: NetworkContext | None = None
     top_features: list[dict[str, Any]]
     end_to_end_latency_ms: float = Field(ge=0)
     total_latency_ms: float = Field(ge=0)

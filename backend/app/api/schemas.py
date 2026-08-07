@@ -29,6 +29,7 @@ class AlertResponse(BaseModel):
     classifier_latency_ms: float | None
     total_latency_ms: float
     raw_features: dict
+    network_context: dict | None = None
 
 
 class FeedbackRequest(BaseModel):

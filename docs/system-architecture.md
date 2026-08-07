@@ -6,14 +6,20 @@ separately so the architecture is not mistaken for a deployment claim.
 ## 1. Implemented serving path
 
 ```text
-Prepared CSV replay                 POST /predict or /predict/batch
-       |                                         |
-       +--------------------+--------------------+
-                            v
-                 FlowObservation validation
-                exact rt-iot2022-v1 contract
-                            |
-                            v
+POST /ingestion/events (JSON/NDJSON)
+               |
+    FlowObservation validation
+    exact rt-iot2022-v1 contract
+               |
+    durable ingestion_jobs inbox
+               |
+       lease/retry worker ------------------+
+                                             |
+Prepared CSV replay or /predict              |
+               |                             |
+    FlowObservation validation --------------+
+                                             |
+                                             v
              production manifest/checksum registry
                             |
                             v
@@ -21,14 +27,16 @@ Prepared CSV replay                 POST /predict or /predict/batch
                     |                 |
                   normal            attack
                     |                 v
-                    |       Random Forest attack family
+                    |   HistGradientBoosting attack family
                     |                 |
                     +--------+--------+
                              v
-          persist observation + prediction (+ alert for attack)
+ persist observation + prediction (+ alert) atomically
+       worker transactions also add outbox records
                   SQLite local / PostgreSQL Docker
                              |
                              v
+      outbox or direct post-commit live publication
              prediction.created for every result
                 alert.created for alerts only
                              |
@@ -36,9 +44,12 @@ Prepared CSV replay                 POST /predict or /predict/batch
                   React investigation dashboard
 ```
 
-Inference and database persistence are synchronous within the API/replay
-process. WebSocket broadcast happens after commit. There is no Kafka/Redis
-queue, worker pool, SSE path, or durable event log.
+`/predict`, `/predict/batch`, and dataset replay retain their backward-compatible
+synchronous behavior. The production-capable ingestion route validates and
+enqueues observations before returning `202`; a separate worker claims jobs,
+performs inference, and commits the observation, prediction, optional alert,
+and outbox events in one transaction. The outbox is published only after that
+commit. There is no Kafka/Redis broker or SSE path.
 
 ## 2. Model registry and cascade
 
@@ -63,6 +74,16 @@ standalone multiclass metrics do not measure the complete cascade.
   "flow_started_at": "2026-08-04T12:00:00Z",
   "flow_ended_at": "2026-08-04T12:00:01Z",
   "source": "dataset-replay",
+  "network_context": {
+    "source_ip": "optional",
+    "destination_ip": "optional",
+    "source_port": 12345,
+    "destination_port": 1883,
+    "protocol": "tcp",
+    "interface": "optional",
+    "capture_id": "optional",
+    "extractor_fingerprint": "optional"
+  },
   "features": { "83 ordered fields": "..." },
   "ground_truth": "optional label"
 }
@@ -116,10 +137,10 @@ from a prediction message.
 backend/app/
 ├── api/             predictions, alerts/feedback, models, replay, WebSocket
 ├── database/        SQLAlchemy records and engine/session setup
-├── features/        canonical schema; placeholder extractor mappings
-├── inference/       strict registry, cascade predictor, raw-value highlighting
-├── ingestion/       functional dataset replay; PCAP/live guards only
+├── features/        canonical schema, NFStream plugin, unsupported adapters
+├── inference/       strict registry, cascade predictor, TreeSHAP attribution
 ├── detection/       simple severity; behavior/drift placeholders
+├── ingestion/       durable queue, worker, producer, replay, and PCAP CLI
 ├── live.py          in-process WebSocket connection manager
 ├── service.py       validate-to-persist-to-broadcast orchestration
 └── main.py          FastAPI construction and lifecycle
@@ -145,7 +166,37 @@ Because RT-IoT2022 omits source/destination IP identities, topology labels may
 fall back to port-derived routes. The graph is an investigation projection of
 available alert data, not a discovered physical network map.
 
-## 6. Replay behavior
+## 6. Durable ingestion behavior
+
+`POST /ingestion/events` accepts 1–1,000 canonical observations as a JSON array,
+an `observations` wrapper, or NDJSON. The entire request is validated before any
+job is stored. `event_id` is the idempotency key: an identical resubmission
+reports a duplicate, while changed content under the same ID returns `409`.
+Queue saturation returns `429` with `Retry-After`.
+
+PostgreSQL workers claim rows with `FOR UPDATE SKIP LOCKED`; SQLite is restricted
+to one local worker. Processing leases expire after 60 seconds by default.
+Transient failures retry after 1, 5, then 30 seconds and become `dead_letter`
+after the third failed attempt. Worker heartbeat, queue age/depth, retry/dead
+letter counts, and outbox backlog are available through `/ingestion/status`,
+`/health`, and the Monitor page.
+
+## 7. Offline PCAP extraction
+
+The `nfstream-rt-iot2022-v1` plugin calculates all 83 schema fields and records
+direction, timeouts, accounting mode, time units, service fallbacks, and
+zero/statistical rules in a fingerprinted manifest. Event IDs derive from the
+PCAP checksum, five-tuple, and flow timestamps. Validation reports include
+per-flow features and invariant failures.
+
+This is schema-compatible extraction, not proven model-input compatibility.
+The manifest therefore sets `inference_compatible` to false, and PCAP ingestion
+requires external compatibility evidence that matches the extractor fingerprint
+and active detector/classifier versions; the active artifacts must also approve
+that fingerprint. Zeek and CICFlowMeter adapters fail explicitly instead of
+guessing mappings. Live-interface capture remains disabled.
+
+## 8. Replay behavior
 
 Dataset mode scans the prepared CSV on the server, filters by `all`, `normal`,
 `attack`, or `class:<label>`, applies offset and limit, and emits observations at
@@ -155,7 +206,7 @@ browser. The dashboard starts a bounded 100-row replay by default.
 The backend assigns current timestamps when rows are emitted. This supports UI
 and end-to-end pipeline testing but does not imply original packet chronology.
 
-## 7. Deployment modes
+## 9. Deployment modes
 
 ### Local development
 
@@ -168,17 +219,19 @@ and end-to-end pipeline testing but does not imply original packet chronology.
 
 - static frontend container;
 - FastAPI backend container;
+- one-shot Alembic migration container;
+- durable ingestion/outbox worker container;
 - PostgreSQL 17; and
 - production artifacts and prepared dataset copied into the backend image.
 
-Neither mode currently includes authentication, TLS termination, horizontal
-coordination, durable event delivery, secrets management, database migrations,
-or observability infrastructure.
+Neither mode currently includes authentication, TLS termination, distributed
+broker infrastructure, horizontally coordinated WebSocket publication,
+secrets management, or production observability infrastructure.
 
-## 8. Planned boundaries
+## 10. Planned boundaries
 
-Before adding live capture, implement and validate one extractor adapter against
-controlled PCAP golden cases. Before claiming behavior-aware or explainable
-detection, add device identity outside the 83-feature vector, real policy data,
-and model attributions. Before scaling, define queueing, idempotency, retry,
-backpressure, and multi-process WebSocket behavior.
+Before enabling live capture or PCAP inference, validate the NFStream values
+against paired source evidence or newly labelled extractor data. Before
+claiming behavior-aware detection, add device identity outside the 83-feature
+vector and real policy data. Before horizontal scaling, introduce coordinated
+event publication and load-test PostgreSQL queue contention.

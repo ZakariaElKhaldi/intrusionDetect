@@ -22,7 +22,8 @@ Runs the IoT IDS workflow in the documented order:
   4. Run lint checks
   5. Run all tests
   6. Build production assets
-  7. Start FastAPI and Vite
+  7. Upgrade the database schema
+  8. Start the ingestion worker, FastAPI, and Vite
 
 Options:
   --dataset PATH  Use a specific RT-IoT2022 CSV.
@@ -124,6 +125,7 @@ fi
 
 BACKEND_PID=""
 FRONTEND_PID=""
+WORKER_PID=""
 
 cleanup() {
   trap - EXIT INT TERM
@@ -133,13 +135,26 @@ cleanup() {
   if [[ -n "${BACKEND_PID}" ]] && kill -0 "${BACKEND_PID}" 2>/dev/null; then
     kill "${BACKEND_PID}" 2>/dev/null || true
   fi
-  wait "${FRONTEND_PID}" "${BACKEND_PID}" 2>/dev/null || true
+  if [[ -n "${WORKER_PID}" ]] && kill -0 "${WORKER_PID}" 2>/dev/null; then
+    kill "${WORKER_PID}" 2>/dev/null || true
+  fi
+  wait "${FRONTEND_PID}" "${BACKEND_PID}" "${WORKER_PID}" 2>/dev/null || true
 }
 
 trap cleanup EXIT INT TERM
 
 echo
-echo "==> Starting application"
+echo "==> Upgrading database schema"
+make migrate
+
+echo
+echo "==> Starting application and ingestion worker"
+(
+  cd backend
+  exec uv run python -m app.ingestion.worker
+) &
+WORKER_PID=$!
+
 (
   cd backend
   exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -155,10 +170,11 @@ FRONTEND_PID=$!
 echo "API:       http://localhost:8000"
 echo "API docs:  http://localhost:8000/docs"
 echo "Dashboard: http://localhost:5173"
-echo "Press Ctrl-C to stop both services."
+echo "Worker:    durable ingestion/outbox processing active"
+echo "Press Ctrl-C to stop all services."
 
 set +e
-wait -n "${BACKEND_PID}" "${FRONTEND_PID}"
+wait -n "${WORKER_PID}" "${BACKEND_PID}" "${FRONTEND_PID}"
 EXIT_STATUS=$?
 set -e
 

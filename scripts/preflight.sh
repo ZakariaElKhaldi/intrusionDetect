@@ -37,12 +37,30 @@ actual_rows="$(awk 'END { print NR - 1 }' "${DATASET_PATH}")"
   fail "production manifest missing (model promotion is required)"
 [[ -x "${REPOSITORY_DIR}/backend/.venv/bin/uvicorn" ]] || \
   fail "backend environment missing (run 'make setup')"
+[[ -x "${REPOSITORY_DIR}/backend/.venv/bin/alembic" ]] || \
+  fail "backend migration tooling missing (run 'make setup')"
 [[ -x "${REPOSITORY_DIR}/machine-learning/.venv/bin/python" ]] || \
   fail "machine-learning environment missing (run 'make setup')"
 if [[ "${RUNTIME_ONLY}" == true ]]; then
   [[ -f "${REPOSITORY_DIR}/frontend/dist/index.html" ]] || \
     fail "production frontend bundle missing (run 'make build')"
 fi
+
+MIGRATION_TEMP_DIR="$(mktemp -d /tmp/iot-ids-migration-check.XXXXXX)"
+cleanup_migration_check() {
+  if [[ "${MIGRATION_TEMP_DIR}" == /tmp/iot-ids-migration-check.* ]]; then
+    rm -f -- "${MIGRATION_TEMP_DIR}/preflight.sqlite3"
+    rmdir -- "${MIGRATION_TEMP_DIR}" 2>/dev/null || true
+  fi
+}
+trap cleanup_migration_check EXIT
+(
+  cd backend
+  IOT_IDS_DATABASE_URL="sqlite:///${MIGRATION_TEMP_DIR}/preflight.sqlite3" \
+    .venv/bin/alembic upgrade head
+  IOT_IDS_DATABASE_URL="sqlite:///${MIGRATION_TEMP_DIR}/preflight.sqlite3" \
+    .venv/bin/alembic check
+)
 
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/iot-ids-uv-cache}"
 cd "${REPOSITORY_DIR}"
@@ -55,7 +73,7 @@ cd "${REPOSITORY_DIR}"
 )
 
 if [[ "${RUNTIME_ONLY}" == true ]]; then
-  echo "Demo preflight passed: verified dataset, promoted models, and frontend bundle."
+  echo "Demo preflight passed: verified dataset, migrations, promoted models, and frontend bundle."
   exit 0
 fi
 
@@ -84,4 +102,4 @@ fi
 [[ -f "${REPOSITORY_DIR}/frontend/dist/index.html" ]] || \
   fail "frontend build completed without dist/index.html"
 make e2e
-echo "Project preflight passed: data, artifacts, backend, ML, frontend, build, and E2E."
+echo "Project preflight passed: data, migrations, artifacts, backend, ML, frontend, build, and E2E."

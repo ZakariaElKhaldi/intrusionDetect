@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 
-def require_authorized_capture(authorized: bool) -> None:
-    if not authorized:
-        raise PermissionError("live capture must be explicitly authorized")
+class LiveCaptureDisabledError(RuntimeError):
+    pass
 
+
+def require_authorized_capture(authorized: bool) -> None:
+    del authorized
+    raise LiveCaptureDisabledError(
+        "live network-interface capture is disabled until offline PCAP feature "
+        "compatibility is demonstrated and a separate capture authorization is implemented"
+    )

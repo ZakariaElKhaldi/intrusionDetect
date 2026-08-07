@@ -15,6 +15,10 @@ class Settings:
     replay_dataset_path: str | None = None
     cors_origins: tuple[str, ...] = ("http://localhost:5173",)
     instance_id: str = field(default_factory=lambda: f"iot-ids-{uuid4().hex[:12]}")
+    ingestion_queue_limit: int = 10_000
+    worker_poll_seconds: float = 0.5
+    worker_lease_seconds: int = 60
+    outbox_poll_seconds: float = 0.5
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -42,4 +46,10 @@ class Settings:
             ),
             cors_origins=origins,
             instance_id=os.getenv("IOT_IDS_INSTANCE_ID") or f"iot-ids-{uuid4().hex[:12]}",
+            ingestion_queue_limit=int(
+                os.getenv("IOT_IDS_INGESTION_QUEUE_LIMIT", "10000")
+            ),
+            worker_poll_seconds=float(os.getenv("IOT_IDS_WORKER_POLL_SECONDS", "0.5")),
+            worker_lease_seconds=int(os.getenv("IOT_IDS_WORKER_LEASE_SECONDS", "60")),
+            outbox_poll_seconds=float(os.getenv("IOT_IDS_OUTBOX_POLL_SECONDS", "0.5")),
         )

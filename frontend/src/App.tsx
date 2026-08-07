@@ -14,6 +14,7 @@ import {
   getAlerts,
   getReplayStatus,
   getDashboardSummary,
+  getIngestionStatus,
   getModels,
   liveEventFromSocketMessage,
   replayAction,
@@ -22,7 +23,7 @@ import {
 } from "./api";
 import { sampleAlerts, sampleModels } from "./data";
 import { ReplayPanel } from "./features/overview/ReplayPanel";
-import type { Alert, AlertStatus, DashboardSummary, HealthInfo, ModelInfo, Page, ReplayScenario, ReplayStatus } from "./types";
+import type { Alert, AlertStatus, DashboardSummary, HealthInfo, IngestionStatus, ModelInfo, Page, ReplayScenario, ReplayStatus } from "./types";
 import { pageTitles } from "./utils";
 
 type SocketState = "connecting" | "live" | "offline";
@@ -75,6 +76,9 @@ function App() {
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [healthChecked, setHealthChecked] = useState(false);
   const [healthError, setHealthError] = useState("");
+  const [ingestion, setIngestion] = useState<IngestionStatus | null>(null);
+  const [ingestionLoading, setIngestionLoading] = useState(!fixtureMode);
+  const [ingestionError, setIngestionError] = useState("");
   const [alertsError, setAlertsError] = useState("");
   const [modelsError, setModelsError] = useState("");
   const [socketState, setSocketState] = useState<SocketState>("connecting");
@@ -148,6 +152,36 @@ function App() {
     }
     void loadConnectedData();
   }, [fixtureMode, loadConnectedData]);
+
+  const loadIngestionStatus = useCallback(async () => {
+    if (fixtureMode) return;
+    setIngestionError("");
+    try {
+      setIngestion(await getIngestionStatus());
+    } catch (error) {
+      setIngestionError(error instanceof Error ? error.message : "Ingestion status is unavailable.");
+    } finally {
+      setIngestionLoading(false);
+    }
+  }, [fixtureMode]);
+
+  useEffect(() => {
+    if (fixtureMode) {
+      setIngestionLoading(false);
+      return;
+    }
+    let disposed = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      await loadIngestionStatus();
+      if (!disposed) timer = window.setTimeout(poll, 5_000);
+    };
+    void poll();
+    return () => {
+      disposed = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [fixtureMode, loadIngestionStatus]);
 
   const hydrateReplay = useCallback(async () => {
     if (fixtureMode) return;
@@ -445,6 +479,11 @@ function App() {
               <Overview
                 alerts={alerts}
                 health={health}
+                ingestion={ingestion}
+                ingestionLoading={ingestionLoading}
+                ingestionError={ingestionError}
+                fixtureMode={fixtureMode}
+                onRetryIngestion={() => void loadIngestionStatus()}
                 socketState={socketState}
                 lastUpdate={lastUpdate}
                 livePredictionCount={livePredictionCount}

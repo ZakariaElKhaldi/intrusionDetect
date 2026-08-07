@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -7,7 +8,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import alerts, dashboard, live, models, predictions, replay
+from app.api import alerts, dashboard, ingestion, live, models, predictions, replay
 from app.config import Settings
 from app.database.models import Base, ModelVersion
 from app.database.session import create_engine_and_session
@@ -15,6 +16,8 @@ from app.health import DatasetHealthCache
 from app.inference.model_registry import ModelRegistry
 from app.inference.shap_explanations import ExplanationService
 from app.ingestion.dataset_replay import DatasetReplay
+from app.ingestion.outbox import dispatch_loop, stop_dispatcher
+from app.ingestion.service import ingestion_status
 from app.live import LiveConnectionManager
 
 
@@ -47,8 +50,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     session.add(row)
             session.commit()
+        dispatcher = asyncio.create_task(
+            dispatch_loop(
+                session_factory,
+                app.state.live,
+                poll_seconds=settings.outbox_poll_seconds,
+            )
+        )
         yield
         app.state.replay.stop()
+        await stop_dispatcher(dispatcher)
         engine.dispose()
 
     app = FastAPI(
@@ -57,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.SessionLocal = session_factory
+    app.state.settings = settings
     app.state.registry = registry
     app.state.live = LiveConnectionManager()
     app.state.replay = DatasetReplay(settings.replay_dataset_path)
@@ -97,10 +109,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             with session_factory() as session:
                 session.execute(text("SELECT 1"))
+                ingestion_health = ingestion_status(
+                    session, lease_seconds=settings.worker_lease_seconds
+                )
             database_status = "ready"
         except Exception as exc:  # pragma: no cover - depends on external database failure
             database_status = "blocked"
             database_error = str(exc)
+            ingestion_health = None
         component_states = [dataset["status"], model_status, database_status]
         readiness = (
             "blocked"
@@ -194,6 +210,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ),
                     "lifecycle": app.state.replay.state.status,
                 },
+                "ingestion": (
+                    {
+                        "status": (
+                            "degraded"
+                            if ingestion_health.dead_letter
+                            else "ready"
+                        ),
+                        "reason": (
+                            f"{ingestion_health.dead_letter} events are dead-lettered"
+                            if ingestion_health.dead_letter
+                            else "durable ingestion queue is available"
+                        ),
+                        "queue_depth": ingestion_health.queue_depth,
+                        "oldest_pending_age_seconds": ingestion_health.oldest_pending_age_seconds,
+                        "dead_letter": ingestion_health.dead_letter,
+                    }
+                    if ingestion_health
+                    else {"status": "blocked", "reason": "database is unavailable"}
+                ),
+                "worker": (
+                    ingestion_health.worker.model_dump(mode="json")
+                    if ingestion_health
+                    else {
+                        "status": "blocked",
+                        "reason": "database is unavailable",
+                        "last_heartbeat_at": None,
+                    }
+                ),
+                "outbox": (
+                    ingestion_health.outbox.model_dump(mode="json")
+                    if ingestion_health
+                    else {
+                        "status": "blocked",
+                        "reason": "database is unavailable",
+                        "pending": 0,
+                        "published": 0,
+                        "oldest_pending_age_seconds": None,
+                    }
+                ),
             },
         }
 
@@ -204,6 +259,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     router.include_router(models.router)
     router.include_router(replay.router)
     router.include_router(live.router)
+    router.include_router(ingestion.router)
     app.include_router(router)
     app.include_router(router, prefix="/api/v1", include_in_schema=False)
     return app

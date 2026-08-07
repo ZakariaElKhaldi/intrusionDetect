@@ -1,4 +1,4 @@
-.PHONY: help setup download-data prepare-data validate-data train verify-model test lint build dev run-all check-all demo demo-preflight project-preflight e2e benchmark docker-up docker-down
+.PHONY: help setup download-data prepare-data validate-data train verify-model test lint build dev migrate worker ingest-events pcap-validate pcap-ingest run-all check-all demo demo-preflight project-preflight e2e benchmark docker-up docker-down
 
 DATASET ?= data/raw/RT_IOT2022.csv
 DATA_ARCHIVE ?= data/raw/rt-iot2022.zip
@@ -7,6 +7,10 @@ ARCHIVE_SHA256 ?= bcaa24d62abbb1215be576d5cf9c02dfcb0bb7c4c2f5a00e03055afaa1ed10
 DATASET_ROWS ?= 123117
 MODEL_RUN_DIR ?= models/runs/latest
 PRODUCTION_MODEL_DIR ?= models/production
+PCAP ?=
+INGESTION_INPUT ?= -
+API_URL ?= http://127.0.0.1:8000
+COMPATIBILITY_EVIDENCE ?=
 export UV_CACHE_DIR ?= /tmp/iot-ids-uv-cache
 
 help:
@@ -20,6 +24,11 @@ help:
 	@echo "  make test           Run backend, ML, and frontend tests"
 	@echo "  make lint           Run Python and TypeScript linters"
 	@echo "  make build          Build the frontend and validate Python imports"
+	@echo "  make migrate        Upgrade the configured database to the latest schema"
+	@echo "  make worker         Run the durable ingestion/outbox worker"
+	@echo "  make ingest-events INGESTION_INPUT=path Stream canonical NDJSON (stdin by default)"
+	@echo "  make pcap-validate PCAP=path Validate offline PCAP-derived features"
+	@echo "  make pcap-ingest PCAP=path COMPATIBILITY_EVIDENCE=path Queue approved PCAP flows"
 	@echo "  make dev            Print commands for local development"
 	@echo "  make run-all        Run the full workflow, then start the application"
 	@echo "  make check-all      Run the full workflow without starting servers"
@@ -31,7 +40,7 @@ help:
 	@echo "  make docker-up      Start the demonstration stack"
 
 setup:
-	cd backend && uv sync --extra dev
+	cd backend && uv sync --extra dev --extra pcap
 	cd machine-learning && uv sync --extra dev
 	cd frontend && npm install
 
@@ -80,8 +89,30 @@ build:
 	cd machine-learning && uv run python -m compileall -q src
 	cd frontend && npm run build
 
+migrate:
+	cd backend && uv run alembic upgrade head
+
+worker:
+	cd backend && uv run python -m app.ingestion.worker
+
+ingest-events:
+	cd backend && uv run python -m app.ingestion.producer $(INGESTION_INPUT) \
+		--url $(API_URL)/api/v1/ingestion/events
+
+pcap-validate:
+	@test -n "$(PCAP)" || (echo "error: set PCAP=/path/to/capture.pcap" >&2; exit 2)
+	cd backend && uv run python -m app.ingestion.pcap_cli validate $(abspath $(PCAP))
+
+pcap-ingest:
+	@test -n "$(PCAP)" || (echo "error: set PCAP=/path/to/capture.pcap" >&2; exit 2)
+	@test -n "$(COMPATIBILITY_EVIDENCE)" || (echo "error: set COMPATIBILITY_EVIDENCE=/path/to/evidence.json" >&2; exit 2)
+	cd backend && uv run python -m app.ingestion.pcap_cli ingest $(abspath $(PCAP)) \
+		--api-url $(API_URL) \
+		--compatibility-evidence $(abspath $(COMPATIBILITY_EVIDENCE))
+
 dev:
 	@echo "Backend: cd backend && uv run uvicorn app.main:app --reload"
+	@echo "Worker:  cd backend && uv run python -m app.ingestion.worker"
 	@echo "Frontend: cd frontend && npm run dev"
 	@echo "API docs: http://localhost:8000/docs"
 

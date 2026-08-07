@@ -38,6 +38,11 @@ def stage_observation(
         flow_ended_at=observation.flow_ended_at,
         source=observation.source,
         raw_features=observation.features,
+        network_context=(
+            observation.network_context.model_dump(mode="json")
+            if observation.network_context
+            else None
+        ),
         ground_truth=observation.ground_truth,
     )
     session.add(observation_row)
@@ -95,6 +100,7 @@ def stage_observation(
         detector_latency_ms=inference.detector_latency_ms,
         classifier_latency_ms=inference.classifier_latency_ms,
         raw_features=observation.features,
+        network_context=observation.network_context,
         top_features=inference.top_features,
         end_to_end_latency_ms=end_to_end,
         total_latency_ms=end_to_end,
@@ -127,6 +133,11 @@ def stage_observation(
                     "classifier_latency_ms": inference.classifier_latency_ms,
                     "total_latency_ms": end_to_end,
                     "raw_features": observation.features,
+                    "network_context": (
+                        observation.network_context.model_dump(mode="json")
+                        if observation.network_context
+                        else None
+                    ),
                 },
             }
         )

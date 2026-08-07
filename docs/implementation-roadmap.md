@@ -1,6 +1,6 @@
 # Implementation Roadmap
 
-Status reviewed on 2026-08-04. A file or placeholder does not count as an
+Status reviewed on 2026-08-07. A file or placeholder does not count as an
 implemented capability; phases below are marked by observable behavior and
 evidence.
 
@@ -35,8 +35,8 @@ evidence.
 - Persisted observations, predictions, stage scores/latencies, alerts, model
   versions, and analyst feedback.
 
-**Boundary:** no authentication, authorization, retention policy, migration
-framework, job queue, or production hardening yet.
+**Boundary:** no authentication, authorization, retention policy, distributed
+broker, or production hardening yet.
 
 ## Phase 3 — Investigation dashboard: complete for the prototype
 
@@ -51,7 +51,7 @@ framework, job queue, or production hardening yet.
 **Boundary:** the topology is inferred from available route labels/ports; the
 dataset does not provide verified device identities or IP addresses.
 
-## Phase 4 — Dataset replay: functional, evaluation incomplete
+## Phase 4 — Dataset replay: complete for the prototype
 
 Implemented:
 
@@ -59,45 +59,56 @@ Implemented:
 - all/normal/attack/exact-class filters, offset, limit, speed, pause/resume/stop;
 - bounded real-data replay from the dashboard;
 - `prediction.created` for every observation and `alert.created` for attacks;
-- end-to-end latency captured per prediction; and
+- end-to-end latency captured per prediction;
+- completion/status hydration and polling in the dashboard;
+- fixed normal/attack replay benchmark evidence with throughput and p50/p95; and
 - stable alert handling while analysts inspect the interface.
 
-Still required:
+**Boundary:** replay is a deterministic demonstration input, not original
+chronology or a production-scale concurrency benchmark.
 
-- a formal sustained-load and end-to-end p95 report;
-- replay completion/status polling in the dashboard;
-- explicit backpressure and failure-recovery behavior; and
-- tests at production-scale concurrency.
+## Phase 5 — Explainability complete; behavior policy not complete
 
-## Phase 5 — Explainability and behavior policy: not complete
-
-Current code ranks raw numeric magnitudes and applies score-based severity. A
-minimal hook can accept a `device_profile_violation` value, but the canonical
-83-feature contract does not currently supply that field. This is not SHAP,
-feature attribution, MUD enforcement, or a validated behavior engine.
+Selected alerts have on-demand TreeSHAP detector and classifier explanations,
+additivity checks, signed cumulative waterfalls, exact-value tables, model
+versions, output units, and explicit non-causal wording. Score-based severity
+remains separate from model attribution.
 
 Next work:
 
-- add global permutation importance for model analysis;
-- add local TreeSHAP for selected alerts and label it as attribution, not proof;
+- optionally add global permutation importance for model analysis;
 - define device identity outside the model feature map;
 - implement and test device behavior/MUD policy evaluation; and
 - keep model evidence and policy evidence separate in the API and UI.
 
-## Phase 6 — PCAP and live feature compatibility: not started
+## Phase 6 — Durable canonical ingestion: complete for local/single-node use
 
-The Zeek/CICFlowMeter modules deliberately pass through mappings or raise a
-compatibility error. Live capture only contains an authorization guard.
+- JSON and NDJSON intake for batches of 1–1,000 observations;
+- durable PostgreSQL inbox with SQLite single-worker development mode;
+- event-ID idempotency, queue capacity, leases, retry/dead-letter handling;
+- transactional observation/prediction/alert/outbox persistence;
+- post-commit event publication and restart recovery; and
+- queue, worker, and outbox evidence in health and Monitor.
+
+**Boundary:** no distributed broker or horizontally coordinated WebSocket
+publisher; production security and retention remain separate work.
+
+## Phase 7 — PCAP and live feature compatibility: extractor implemented, compatibility blocked
+
+NFStream now computes the complete canonical shape under a fingerprinted
+manifest. Validation/export, deterministic IDs, invariants, and controlled
+golden fixtures exist. Zeek/CICFlowMeter fail explicitly and live capture is
+disabled. Inference remains blocked because field-shape agreement does not
+prove value compatibility with the training extractor.
 
 Next work:
 
-- generate controlled PCAP scenarios;
-- select an extractor based on value comparisons, not name similarity;
-- implement the canonical adapter and golden-value tests;
-- document units, directionality, timeouts, and unsupported fields; and
-- permit only authorized capture in an isolated environment.
+- obtain paired source PCAP/RT-IoT2022 rows or build newly labelled NFStream data;
+- compare values, units, categorical vocabularies, and distributions;
+- approve a fingerprinted compatibility-evidence record only if tests pass; and
+- consider authorized live-interface capture in an isolated environment.
 
-## Phase 7 — Model health and drift: partially complete
+## Phase 8 — Model health and drift: partially complete
 
 Completed foundations:
 
@@ -116,7 +127,7 @@ Missing:
 
 The current drift function returns `not_enough_data`; it is not a detector.
 
-## Phase 8 — Edge experiment: optional, not started
+## Phase 9 — Edge experiment: optional, not started
 
 - Select a reduced feature set only after compatibility work.
 - Export or quantize a candidate.
@@ -126,8 +137,7 @@ The current drift function returns `not_enough_data`; it is not a detector.
 
 ## Recommended next milestone
 
-Prioritize Phase 6 compatibility and Phase 4 end-to-end measurement before
-adding more model families. The largest validity risk is domain/feature mismatch,
-not lack of classifier complexity. After compatible live observations exist,
-Phase 7 drift monitoring and Phase 5 behavior/explanation evidence become
-meaningful.
+Prioritize PCAP value-compatibility evidence before live capture or additional
+model families. The largest validity risk is still domain/feature mismatch, not
+lack of classifier complexity. After compatible live observations exist, drift
+monitoring and behavior-policy evidence become meaningful.
