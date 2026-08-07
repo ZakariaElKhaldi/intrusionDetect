@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, model_validator
 
+from app.api.auth import get_current_admin
 from app.features.canonical_schema import FlowObservation
 
 router = APIRouter(prefix="/replay", tags=["replay"])
@@ -46,11 +47,18 @@ class ReplayStatus(BaseModel):
     limit: int | None
 
 
+
+
 def _status(request: Request) -> ReplayStatus:
     return ReplayStatus.model_validate(request.app.state.replay.state, from_attributes=True)
 
 
-@router.post("/start", response_model=ReplayStatus, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/start",
+    response_model=ReplayStatus,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(get_current_admin)],
+)
 async def start_replay(payload: ReplayRequest, request: Request) -> ReplayStatus:
     try:
         if payload.mode == "dataset":
@@ -81,7 +89,9 @@ async def replay_status(request: Request) -> ReplayStatus:
     return _status(request)
 
 
-@router.post("/pause", response_model=ReplayStatus)
+@router.post(
+    "/pause", response_model=ReplayStatus, dependencies=[Depends(get_current_admin)]
+)
 async def pause_replay(request: Request) -> ReplayStatus:
     try:
         request.app.state.replay.pause()
@@ -90,7 +100,9 @@ async def pause_replay(request: Request) -> ReplayStatus:
     return _status(request)
 
 
-@router.post("/resume", response_model=ReplayStatus)
+@router.post(
+    "/resume", response_model=ReplayStatus, dependencies=[Depends(get_current_admin)]
+)
 async def resume_replay(payload: ReplayControl, request: Request) -> ReplayStatus:
     try:
         request.app.state.replay.resume(payload.speed)
@@ -99,7 +111,9 @@ async def resume_replay(payload: ReplayControl, request: Request) -> ReplayStatu
     return _status(request)
 
 
-@router.post("/stop", response_model=ReplayStatus)
+@router.post(
+    "/stop", response_model=ReplayStatus, dependencies=[Depends(get_current_admin)]
+)
 async def stop_replay(request: Request) -> ReplayStatus:
     request.app.state.replay.stop()
     return _status(request)

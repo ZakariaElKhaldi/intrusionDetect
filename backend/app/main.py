@@ -8,7 +8,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import alerts, dashboard, ingestion, live, model_health, models, predictions, replay
+from app.api import alerts, auth, dashboard, ingestion, live, model_health, models, predictions, replay
 from app.config import Settings
 from app.database.models import Base, ModelVersion
 from app.database.session import create_engine_and_session
@@ -284,6 +284,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     router = APIRouter()
+    router.include_router(auth.router)
     router.include_router(predictions.router)
     router.include_router(alerts.router)
     router.include_router(dashboard.router)

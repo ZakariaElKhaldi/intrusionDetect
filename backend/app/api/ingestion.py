@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import TypeAdapter, ValidationError
+
+from app.api.auth import get_current_admin
 
 from app.database.models import ValidationFailure
 from app.features.canonical_schema import FlowObservation
@@ -110,8 +112,12 @@ async def _ingest(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+
 @router.post(
-    "/events", response_model=IngestionBatchResponse, status_code=status.HTTP_202_ACCEPTED
+    "/events",
+    response_model=IngestionBatchResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(get_current_admin)],
 )
 async def ingest_events(request: Request, response: Response) -> IngestionBatchResponse:
     return await _ingest(request, response, ingestion_channel="http_ingestion")
@@ -121,6 +127,7 @@ async def ingest_events(request: Request, response: Response) -> IngestionBatchR
     "/offline-pcap/events",
     response_model=IngestionBatchResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(get_current_admin)],
 )
 async def ingest_offline_pcap_events(
     request: Request, response: Response

@@ -65,6 +65,7 @@ async def client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
             model_dir=str(MODEL_DIR),
             allow_fallback=True,
             instance_id="backend-test-production",
+            auth_enabled=False,
         )
     )
     async with app.router.lifespan_context(app):
@@ -85,6 +86,7 @@ async def fallback_client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
             allow_fallback=True,
             replay_dataset_path=str(REPOSITORY / "data/raw/RT_IOT2022.csv"),
             instance_id="backend-test-fallback",
+            auth_enabled=False,
         )
     )
     async with app.router.lifespan_context(app):

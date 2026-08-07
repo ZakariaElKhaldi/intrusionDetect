@@ -104,12 +104,14 @@ class ModelHealthService:
         self, route: ModelRoute
     ) -> tuple[dict[str, Any] | None, str | None]:
         try:
+            detector = getattr(route, "detector", None)
+            classifier = getattr(route, "classifier", None)
             return (
                 load_drift_reference(
-                    route.bundle_dir,
-                    route.manifest,
-                    detector_model_version=route.detector.version,
-                    classifier_model_version=route.classifier.version,
+                    getattr(route, "bundle_dir", None),
+                    getattr(route, "manifest", None),
+                    detector_model_version=getattr(detector, "version", None),
+                    classifier_model_version=getattr(classifier, "version", None),
                 ),
                 None,
             )
@@ -175,14 +177,20 @@ class ModelHealthService:
             )
         else:
             reference, reference_error = self._reference(route)
+        detector_obj = getattr(route, "detector", None) if route else None
+        classifier_obj = getattr(route, "classifier", None) if route else None
         reference_identity = {
             "schema_version": "drift-reference-v1",
             "checksum": reference.get("artifact_sha256") if reference else None,
             "detector_model_version": (
-                route.detector.version if route else cohort.get("detector_model_version")
+                getattr(detector_obj, "version", None)
+                if detector_obj
+                else cohort.get("detector_model_version")
             ),
             "classifier_model_version": (
-                route.classifier.version if route else cohort.get("classifier_model_version")
+                getattr(classifier_obj, "version", None)
+                if classifier_obj
+                else cohort.get("classifier_model_version")
             ),
         }
         with self.session_factory() as session:

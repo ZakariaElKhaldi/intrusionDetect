@@ -42,7 +42,9 @@ class VersionedPredictor:
             }
             if probabilities is not None:
                 result["confidence_score"] = float(probabilities[index].max())
-                result["confidence_is_calibrated_probability"] = False
+                result["confidence_is_calibrated_probability"] = bool(
+                    self.metadata.get("probability_calibrated", False)
+                )
                 result["class_scores"] = {
                     label: float(probabilities[index, position])
                     for position, label in enumerate(classes)

@@ -25,6 +25,10 @@ class Settings:
     model_health_fast_minimum: int = 1_000
     model_health_slow_minimum: int = 5_000
     model_health_retention_days: int = 90
+    auth_enabled: bool = True
+    admin_username: str = "admin"
+    admin_password: str = "admin"
+    secret_key: str = "intrusion-detect-secret-key-change-in-production"
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -74,5 +78,12 @@ class Settings:
             ),
             model_health_retention_days=int(
                 os.getenv("IOT_IDS_MODEL_HEALTH_RETENTION_DAYS", "90")
+            ),
+            auth_enabled=os.getenv("IOT_IDS_AUTH_ENABLED", "true").lower()
+            in {"1", "true", "yes"},
+            admin_username=os.getenv("IOT_IDS_ADMIN_USERNAME", "admin"),
+            admin_password=os.getenv("IOT_IDS_ADMIN_PASSWORD", "admin"),
+            secret_key=os.getenv(
+                "IOT_IDS_SECRET_KEY", "intrusion-detect-secret-key-change-in-production"
             ),
         )

@@ -21,7 +21,14 @@ class ApprovedRegistry:
     def resolve_route(self, schema_version, fingerprint):
         assert schema_version == "nfstream-iot-v1"
         assert fingerprint == "a" * 64
-        return SimpleNamespace(compatibility_evidence={"status": "approved"})
+        return SimpleNamespace(
+            compatibility_evidence={"status": "approved"},
+            detector=self.detector,
+            classifier=self.classifier,
+            bundle_dir=self.bundle_dir,
+            manifest=self.manifest,
+        )
+
 
 
 def reference() -> dict:

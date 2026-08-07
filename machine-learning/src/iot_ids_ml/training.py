@@ -20,6 +20,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import sklearn
+from sklearn.calibration import CalibratedClassifierCV, FrozenEstimator
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
@@ -328,7 +329,7 @@ def _fit_one(
     x: pd.DataFrame,
     y: pd.Series,
     split: dict[str, np.ndarray],
-) -> tuple[Pipeline, dict[str, Any]]:
+) -> tuple[Any, dict[str, Any]]:
     train = split["train"]
     validation = split["validation"]
     test = split["test"]
@@ -336,6 +337,20 @@ def _fit_one(
     cpu_started = time.process_time()
     tracemalloc.start()
     estimator.fit(x.iloc[train], y.iloc[train])
+
+    fitted_model: Any = estimator
+    calibrated = False
+    if len(np.unique(y.iloc[validation])) > 1:
+        try:
+            calibrated_estimator = CalibratedClassifierCV(
+                estimator=FrozenEstimator(estimator), method="sigmoid"
+            )
+            calibrated_estimator.fit(x.iloc[validation], y.iloc[validation])
+            fitted_model = calibrated_estimator
+            calibrated = True
+        except Exception:
+            fitted_model = estimator
+
     _, peak_memory = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     wall_seconds = max(time.perf_counter() - wall_started, np.finfo(float).eps)
@@ -353,11 +368,12 @@ def _fit_one(
                 "Unix ru_maxrss is process-wide and cumulative, not model-isolated."
             ),
         },
-        "validation": classification_metrics(estimator, x.iloc[validation], y.iloc[validation]),
-        "test": classification_metrics(estimator, x.iloc[test], y.iloc[test]),
-        "operational": operational_metrics(estimator, x.iloc[test]),
+        "validation": classification_metrics(fitted_model, x.iloc[validation], y.iloc[validation]),
+        "test": classification_metrics(fitted_model, x.iloc[test], y.iloc[test]),
+        "operational": operational_metrics(fitted_model, x.iloc[test]),
+        "probability_calibrated": calibrated,
     }
-    return estimator, result
+    return fitted_model, result
 
 
 def _git_commit(repository: Path) -> str | None:
@@ -719,7 +735,9 @@ def train_baselines(
             ),
             "artifact": artifact_path.name,
             "artifact_sha256": artifact_sha,
-            "probability_calibrated": False,
+            "probability_calibrated": bool(
+                isinstance(best_estimator, CalibratedClassifierCV)
+            ),
         }
         metadata_path = output / f"{version}.metadata.json"
         metadata_path.write_text(

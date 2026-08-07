@@ -4,8 +4,10 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
+
+from app.api.auth import get_current_admin
 
 from app.api.schemas import (
     AlertDetail,
@@ -238,6 +240,7 @@ async def get_alert_explanation(alert_id: UUID, request: Request) -> dict:
     "/alerts/{alert_id}/feedback",
     response_model=FeedbackResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_admin)],
 )
 async def add_feedback(
     alert_id: UUID, payload: FeedbackRequest, request: Request
