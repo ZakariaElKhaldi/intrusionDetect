@@ -9,7 +9,12 @@ from typing import Any, Protocol
 import joblib
 import pandas as pd
 
-from app.features.canonical_schema import FEATURE_ORDER, SCHEMA_VERSION
+from app.features.canonical_schema import (
+    FEATURE_ORDER,
+    NFSTREAM_SCHEMA_VERSION,
+    RT_SCHEMA_VERSION,
+    SCHEMA_VERSION,
+)
 
 
 class Predictor(Protocol):
@@ -77,9 +82,16 @@ class FallbackAttackClassifier:
 
 
 class ArtifactPredictor:
-    def __init__(self, artifact_path: Path, metadata_path: Path, expected_target: str):
+    def __init__(
+        self,
+        artifact_path: Path,
+        metadata_path: Path,
+        expected_target: str,
+        *,
+        expected_schema_version: str = SCHEMA_VERSION,
+    ):
         self.metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if self.metadata.get("schema_version") != SCHEMA_VERSION:
+        if self.metadata.get("schema_version") != expected_schema_version:
             raise ValueError("artifact schema_version does not match the canonical schema")
         if tuple(self.metadata.get("feature_order", ())) != FEATURE_ORDER:
             raise ValueError("artifact feature order does not match the canonical schema")
@@ -107,12 +119,14 @@ class ArtifactPredictor:
         return label, confidence
 
 
-def _discover_from_manifest(model_dir: Path) -> dict[str, tuple[Path, Path]] | None:
+def _discover_from_manifest(
+    model_dir: Path, *, expected_schema_version: str = SCHEMA_VERSION
+) -> dict[str, tuple[Path, Path]] | None:
     manifest_path = model_dir / "manifest.json"
     if not manifest_path.is_file():
         return None
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("schema_version") != SCHEMA_VERSION:
+    if manifest.get("schema_version") != expected_schema_version:
         raise ValueError("model manifest schema_version does not match the canonical schema")
     report_name = manifest.get("evaluation_report")
     report_checksum = manifest.get("evaluation_report_sha256")
@@ -149,6 +163,87 @@ def _discover_from_manifest(model_dir: Path) -> dict[str, tuple[Path, Path]] | N
     if len(datasets) != 1:
         raise ValueError("binary and multiclass artifacts were trained from different datasets")
     return discovered
+
+
+class ModelRouteError(ValueError):
+    """No checksum-verified model bundle can serve an observation identity."""
+
+
+def _require_sha256(value: Any, field: str) -> str:
+    if not isinstance(value, str) or len(value) != 64:
+        raise ValueError(f"compatibility evidence {field} must be a SHA-256 digest")
+    try:
+        bytes.fromhex(value)
+    except ValueError as exc:
+        raise ValueError(f"compatibility evidence {field} must be hexadecimal") from exc
+    return value
+
+
+def _verify_native_compatibility_evidence(
+    model_dir: Path,
+    manifest: dict[str, Any],
+    discovered: dict[str, tuple[Path, Path]],
+) -> dict[str, Any]:
+    """Verify evidence stored inside the server-controlled native model bundle."""
+
+    evidence_name = manifest.get("compatibility_evidence")
+    evidence_checksum = manifest.get("compatibility_evidence_sha256")
+    if not isinstance(evidence_name, str) or not evidence_name:
+        raise ValueError("native model manifest has no compatibility evidence")
+    evidence_path = model_dir / evidence_name
+    if not evidence_path.is_file() or _sha256(evidence_path) != evidence_checksum:
+        raise ValueError("compatibility evidence checksum does not match manifest")
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    if evidence.get("evidence_version") != "extractor-model-compatibility-v1":
+        raise ValueError("unsupported compatibility evidence version")
+    if evidence.get("status") != "approved":
+        raise ValueError("native compatibility evidence has not approved serving")
+    if evidence.get("schema_version") != NFSTREAM_SCHEMA_VERSION:
+        raise ValueError("native compatibility evidence schema does not match")
+    fingerprint = _require_sha256(
+        evidence.get("extractor_fingerprint"), "extractor_fingerprint"
+    )
+    for field in ("corpus_manifest_sha256", "label_manifest_sha256"):
+        _require_sha256(evidence.get(field), field)
+    if evidence.get("training_split_policy") != "capture-session-60-20-20-v1":
+        raise ValueError("native evidence uses an unsupported training split policy")
+    if not isinstance(evidence.get("evaluation_policy_version"), str):
+        raise ValueError("native evidence has no evaluation policy version")
+    bound_models = evidence.get("models")
+    if not isinstance(bound_models, dict):
+        raise ValueError("native evidence does not bind model artifacts")
+    for target, (artifact_path, metadata_path) in discovered.items():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        binding = bound_models.get(target)
+        if not isinstance(binding, dict) or binding != {
+            "model_version": metadata.get("model_version"),
+            "artifact_sha256": _sha256(artifact_path),
+        }:
+            raise ValueError(f"native evidence does not bind the active {target} model")
+    gates = evidence.get("promotion_gates")
+    required_gates = {
+        "detector_recall",
+        "normal_false_positive_rate",
+        "cascade_macro_f1",
+        "per_attack_family_recall",
+        "test_support",
+    }
+    if not isinstance(gates, dict) or not required_gates.issubset(gates):
+        raise ValueError("native evidence is missing required promotion gates")
+    if any(gates[name].get("passed") is not True for name in required_gates):
+        raise ValueError("native evidence contains a failed promotion gate")
+    evidence["extractor_fingerprint"] = fingerprint
+    evidence["evidence_sha256"] = evidence_checksum
+    return evidence
+
+
+@dataclass(frozen=True, slots=True)
+class ModelRoute:
+    schema_version: str
+    extractor_fingerprint: str | None
+    detector: Predictor
+    classifier: Predictor
+    compatibility_evidence: dict[str, Any] | None = None
 
 
 def _is_fixture_run(model_dir: Path) -> bool:
@@ -209,6 +304,7 @@ class ModelRegistry:
         model_dir: str | None = None,
         *,
         allow_fallback: bool = False,
+        nfstream_model_dir: str | None = None,
     ):
         self.model_dir = Path(model_dir).expanduser().resolve() if model_dir else None
         self.bundle_dir = self.model_dir
@@ -216,6 +312,8 @@ class ModelRegistry:
         self.production_bundle_valid = False
         self.evaluation_report: dict[str, Any] | None = None
         self.manifest: dict[str, Any] | None = None
+        self.routes: dict[tuple[str, str | None], ModelRoute] = {}
+        self.native_route_error: str | None = None
 
         discovered: dict[str, tuple[Path, Path]] | None = None
         if artifact_path:
@@ -267,6 +365,63 @@ class ModelRegistry:
         # Backward-compatible name for callers that inspect the binary predictor.
         self.predictor = self.detector
         self.artifact_path = self.artifact_paths["binary"]
+        self.routes[(RT_SCHEMA_VERSION, None)] = ModelRoute(
+            schema_version=RT_SCHEMA_VERSION,
+            extractor_fingerprint=None,
+            detector=self.detector,
+            classifier=self.classifier,
+        )
+        if nfstream_model_dir:
+            try:
+                self._load_native_route(Path(nfstream_model_dir).expanduser().resolve())
+            except Exception as exc:
+                # RT serving remains available; native observations fail with this explicit state.
+                self.native_route_error = f"{type(exc).__name__}: {exc}"
+
+    def _load_native_route(self, model_dir: Path) -> None:
+        discovered = _discover_from_manifest(
+            model_dir, expected_schema_version=NFSTREAM_SCHEMA_VERSION
+        )
+        if not discovered:
+            raise ValueError("native model directory has no manifest")
+        manifest = json.loads((model_dir / "manifest.json").read_text(encoding="utf-8"))
+        evidence = _verify_native_compatibility_evidence(model_dir, manifest, discovered)
+        detector = ArtifactPredictor(
+            *discovered["binary"],
+            "binary",
+            expected_schema_version=NFSTREAM_SCHEMA_VERSION,
+        )
+        classifier = ArtifactPredictor(
+            *discovered["multiclass"],
+            "multiclass",
+            expected_schema_version=NFSTREAM_SCHEMA_VERSION,
+        )
+        fingerprint = str(evidence["extractor_fingerprint"])
+        self.routes[(NFSTREAM_SCHEMA_VERSION, fingerprint)] = ModelRoute(
+            schema_version=NFSTREAM_SCHEMA_VERSION,
+            extractor_fingerprint=fingerprint,
+            detector=detector,
+            classifier=classifier,
+            compatibility_evidence=evidence,
+        )
+
+    def resolve_route(
+        self, schema_version: str, extractor_fingerprint: str | None
+    ) -> ModelRoute:
+        if schema_version == RT_SCHEMA_VERSION:
+            if extractor_fingerprint is not None:
+                raise ModelRouteError(
+                    "rt-iot2022-v1 serving does not accept extractor-authored observations"
+                )
+            return self.routes[(RT_SCHEMA_VERSION, None)]
+        route = self.routes.get((schema_version, extractor_fingerprint))
+        if route is not None:
+            return route
+        reason = f"; configured native bundle is invalid: {self.native_route_error}" if self.native_route_error else ""
+        raise ModelRouteError(
+            f"no approved model route for schema={schema_version!r}, "
+            f"extractor_fingerprint={extractor_fingerprint!r}{reason}"
+        )
 
     def _descriptor(self, predictor: Predictor) -> ModelDescriptor:
         metadata = dict(predictor.metadata)

@@ -16,6 +16,7 @@ import { PanelHeading } from "../../components/PanelHeading";
 import { SeverityLabel } from "../../components/SeverityLabel";
 import type { Alert, DashboardSummary, HealthInfo, IngestionPipelineState, IngestionStatus } from "../../types";
 import { formatTime } from "../../utils";
+import { IngestionOperations } from "./IngestionOperations";
 
 function median(values: number[]) {
   if (!values.length) return 0;
@@ -190,6 +191,7 @@ export function Overview({
       </section>
 
       <IngestionStatusPanel status={ingestion} loading={ingestionLoading} error={ingestionError} fixtureMode={fixtureMode} onRetry={onRetryIngestion}/>
+      <IngestionOperations fixtureMode={fixtureMode}/>
 
       <section className="panel timeline-panel">
         <PanelHeading

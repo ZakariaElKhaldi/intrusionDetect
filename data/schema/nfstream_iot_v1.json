@@ -1,0 +1,23 @@
+{
+  "schema_version": "nfstream-iot-v1",
+  "feature_count": 83,
+  "feature_order_from": "rt-iot2022-v1",
+  "types_from": "rt-iot2022-v1",
+  "extractor": "NFStream with the repository packet plugin",
+  "semantics": {
+    "direction": "The first packet fixes src2dst (forward); the reverse tuple is dst2src.",
+    "flow_duration": "Seconds, converted from NFStream bidirectional_duration_ms.",
+    "timing": "IAT, active and idle statistics are integer microseconds derived from packet timestamps. A gap strictly greater than five seconds starts a new active period.",
+    "packet_and_payload_size": "Bytes. Payload uses NFPacket.payload_size. Header size is max(ip_size - payload_size, 0). Zero-payload packets remain in packet and payload-size statistics.",
+    "dispersion": "Population standard deviation; empty and singleton populations produce zero.",
+    "subflows": "A gap strictly greater than one second starts a subflow; reported packet and byte values are arithmetic means across subflows.",
+    "bulk": "A bulk is at least four positive-payload packets in one direction with no adjacent gap greater than one second. Rates are bytes per elapsed bulk seconds.",
+    "service": "Lowercase nDPI application root; TLS and SSL normalize to ssl; otherwise a fixed known-destination-port fallback, then '-'.",
+    "tcp_windows": "TCP receive window parsed from the captured IP packet; absent, truncated or non-TCP values are zero.",
+    "zero_rules": "Missing directions, empty statistics, zero-duration rates and undefined ratios are represented as numeric zero."
+  },
+  "compatibility": {
+    "rt_iot2022": false,
+    "reason": "Shared field names do not imply equivalent extractor values. This schema may only route to a native checksum-linked model bundle."
+  }
+}

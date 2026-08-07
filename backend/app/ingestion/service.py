@@ -2,21 +2,35 @@ from __future__ import annotations
 
 import hashlib
 import json
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from typing import Any, Callable
 from uuid import uuid4
 
-from sqlalchemy import func, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.database.models import IngestionJob, OutboxEvent, WorkerState
+from app.database.models import (
+    IngestionJob,
+    IngestionJobTransition,
+    Observation,
+    OutboxEvent,
+    Prediction,
+    WorkerState,
+)
 from app.features.canonical_schema import FlowObservation
 from app.ingestion.schemas import (
     EnqueuedEvent,
     IngestionBatchResponse,
     IngestionEventResponse,
+    IngestionJobListResponse,
+    IngestionJobSummary,
     IngestionStatusResponse,
+    IngestionTransitionResponse,
+    OutboxEventListResponse,
+    OutboxEventResponse,
     OutboxStatus,
     WorkerStatus,
 )
@@ -29,6 +43,10 @@ class QueueFullError(RuntimeError):
 
 
 class IdempotencyConflictError(RuntimeError):
+    pass
+
+
+class RedriveRefusedError(RuntimeError):
     pass
 
 
@@ -53,6 +71,61 @@ def payload_hash(payload: dict) -> str:
         payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def record_transition(
+    session: Session,
+    job: IngestionJob,
+    *,
+    from_state: str | None,
+    to_state: str,
+    reason_code: str,
+    error_code: str | None = None,
+    retryable: bool | None = None,
+    worker_id: str | None = None,
+    operator: str | None = None,
+    reason: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Append an immutable audit record in the job's transaction."""
+    session.add(
+        IngestionJobTransition(
+            job_id=job.job_id,
+            event_id=job.event_id,
+            from_state=from_state,
+            to_state=to_state,
+            reason_code=reason_code,
+            error_code=error_code,
+            retryable=retryable,
+            worker_id=worker_id,
+            operator=operator,
+            reason=reason,
+            details=details or {},
+        )
+    )
+
+
+def _payload_identity(row: IngestionJob) -> tuple[str | None, str | None, str | None]:
+    context = row.payload.get("network_context") or {}
+    return (
+        row.payload.get("source"),
+        row.payload.get("schema_version"),
+        context.get("extractor_fingerprint"),
+    )
+
+
+def _encode_cursor(created_at: datetime, identity: str) -> str:
+    value = json.dumps([created_at.isoformat(), identity], separators=(",", ":"))
+    return urlsafe_b64encode(value.encode()).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, str]:
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        created_at, identity = json.loads(urlsafe_b64decode(padded).decode())
+        return datetime.fromisoformat(created_at), str(identity)
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid pagination cursor") from exc
 
 
 def enqueue_observations(
@@ -108,14 +181,21 @@ def enqueue_observations(
 
     accepted: set[str] = set()
     for event_id, (payload, digest) in new_by_id.items():
-        session.add(
-            IngestionJob(
-                batch_id=batch_id,
-                event_id=event_id,
-                payload_hash=digest,
-                payload=payload,
-                state="queued",
-            )
+        job = IngestionJob(
+            job_id=str(uuid4()),
+            batch_id=batch_id,
+            event_id=event_id,
+            payload_hash=digest,
+            payload=payload,
+            state="queued",
+        )
+        session.add(job)
+        record_transition(
+            session,
+            job,
+            from_state=None,
+            to_state="queued",
+            reason_code="enqueued",
         )
         accepted.add(event_id)
     try:
@@ -148,6 +228,17 @@ def get_event(session: Session, event_id: str) -> IngestionEventResponse | None:
     )
     if row is None:
         return None
+    source, schema_version, extractor_fingerprint = _payload_identity(row)
+    model_version = session.scalar(
+        select(Prediction.model_version).where(Prediction.event_id == event_id)
+    )
+    transitions = list(
+        session.scalars(
+            select(IngestionJobTransition)
+            .where(IngestionJobTransition.job_id == row.job_id)
+            .order_by(IngestionJobTransition.occurred_at, IngestionJobTransition.transition_id)
+        )
+    )
     return IngestionEventResponse(
         event_id=row.event_id,
         batch_id=row.batch_id,
@@ -156,6 +247,32 @@ def get_event(session: Session, event_id: str) -> IngestionEventResponse | None:
         available_at=row.available_at,
         lease_expires_at=row.lease_expires_at,
         last_error=row.last_error,
+        error_code=row.error_code,
+        retryable=row.retryable,
+        redrive_count=row.redrive_count,
+        last_redriven_at=row.last_redriven_at,
+        last_redriven_by=row.last_redriven_by,
+        last_redrive_reason=row.last_redrive_reason,
+        source=source,
+        schema_version=schema_version,
+        extractor_fingerprint=extractor_fingerprint,
+        model_version=model_version,
+        transitions=[
+            IngestionTransitionResponse(
+                transition_id=item.transition_id,
+                from_state=item.from_state,
+                to_state=item.to_state,
+                reason_code=item.reason_code,
+                error_code=item.error_code,
+                retryable=item.retryable,
+                worker_id=item.worker_id,
+                operator=item.operator,
+                reason=item.reason,
+                details=item.details,
+                occurred_at=item.occurred_at,
+            )
+            for item in transitions
+        ],
         created_at=row.created_at,
         updated_at=row.updated_at,
         completed_at=row.completed_at,

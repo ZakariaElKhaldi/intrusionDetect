@@ -22,6 +22,20 @@ class IngestionBatchResponse(BaseModel):
     events: list[EnqueuedEvent]
 
 
+class IngestionTransitionResponse(BaseModel):
+    transition_id: UUID
+    from_state: IngestionState | None
+    to_state: IngestionState
+    reason_code: str
+    error_code: str | None
+    retryable: bool | None
+    worker_id: str | None
+    operator: str | None
+    reason: str | None
+    details: dict
+    occurred_at: datetime
+
+
 class IngestionEventResponse(BaseModel):
     event_id: UUID
     batch_id: UUID
@@ -30,9 +44,60 @@ class IngestionEventResponse(BaseModel):
     available_at: datetime
     lease_expires_at: datetime | None
     last_error: str | None
+    error_code: str | None
+    retryable: bool | None
+    redrive_count: int
+    last_redriven_at: datetime | None
+    last_redriven_by: str | None
+    last_redrive_reason: str | None
+    source: str | None
+    schema_version: str | None
+    extractor_fingerprint: str | None
+    model_version: str | None
+    transitions: list[IngestionTransitionResponse]
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None
+
+
+class IngestionJobSummary(BaseModel):
+    event_id: UUID
+    batch_id: UUID
+    state: IngestionState
+    attempts: int
+    source: str | None
+    schema_version: str | None
+    extractor_fingerprint: str | None
+    error_code: str | None
+    retryable: bool | None
+    redrive_count: int
+    last_error: str | None
+    available_at: datetime
+    lease_expires_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+
+class IngestionJobListResponse(BaseModel):
+    items: list[IngestionJobSummary]
+    next_cursor: str | None
+
+
+class OutboxEventResponse(BaseModel):
+    outbox_id: UUID
+    event_id: UUID
+    event_type: str
+    status: Literal["pending", "published", "failing"]
+    publish_attempts: int
+    last_error: str | None
+    created_at: datetime
+    published_at: datetime | None
+
+
+class OutboxEventListResponse(BaseModel):
+    items: list[OutboxEventResponse]
+    next_cursor: str | None
 
 
 class ComponentStatus(BaseModel):

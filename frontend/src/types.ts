@@ -109,6 +109,92 @@ export interface IngestionStatus {
   generated_at: string;
 }
 
+export type IngestionJobState = "queued" | "processing" | "retrying" | "succeeded" | "dead_letter";
+
+export interface IngestionJob {
+  event_id: string;
+  batch_id: string;
+  state: IngestionJobState;
+  attempts: number;
+  error_code: string | null;
+  retryable: boolean;
+  redrive_count: number;
+  source: string;
+  schema_version: string;
+  extractor_fingerprint: string | null;
+  created_at: string;
+  updated_at: string;
+  available_at: string;
+  completed_at: string | null;
+  last_error: string | null;
+}
+
+export interface IngestionTransition {
+  transition_id: string;
+  from_state: IngestionJobState | null;
+  to_state: IngestionJobState;
+  action: string;
+  attempt: number;
+  error_code: string | null;
+  actor: string;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface IngestionJobDetail extends IngestionJob {
+  transitions: IngestionTransition[];
+}
+
+export interface CursorPage<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  next_cursor: string | null;
+}
+
+export interface OutboxEvent {
+  outbox_id: string;
+  event_id: string;
+  event_type: string;
+  status: "pending" | "published" | "failed";
+  publish_attempts: number;
+  last_error: string | null;
+  created_at: string;
+  published_at: string | null;
+}
+
+export type ModelHealthStatus = "blocked" | "incompatible_source" | "collecting" | "healthy" | "warning" | "critical";
+
+export interface ModelHealthSnapshot {
+  status: ModelHealthStatus;
+  reason: string;
+  window: "fast" | "slow";
+  cohort: Record<string, unknown>;
+  reference: Record<string, unknown> | null;
+  observation_count: number;
+  aggregate: Record<string, unknown>;
+  features: Record<string, unknown>[];
+  unseen_categories: unknown[];
+  outputs: Record<string, unknown>;
+  quality: Record<string, unknown>;
+  performance: Record<string, unknown>;
+  checked_at: string;
+  shadow_mode: boolean;
+}
+
+export interface ModelHealthHistoryItem {
+  checked_at: string;
+  status: ModelHealthStatus;
+  observation_count: number;
+  aggregate_score: number | null;
+  aggregate_threshold: number | null;
+}
+
+export interface ModelHealthHistory {
+  items: ModelHealthHistoryItem[];
+  [key: string]: unknown;
+}
+
 export interface DashboardSummary {
   range: "15m" | "1h" | "24h" | "7d" | "all";
   checked_at: string;

@@ -5,28 +5,31 @@ import math
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-SCHEMA_VERSION = "rt-iot2022-v1"
+RT_SCHEMA_VERSION = "rt-iot2022-v1"
+NFSTREAM_SCHEMA_VERSION = "nfstream-iot-v1"
+SCHEMA_VERSION = RT_SCHEMA_VERSION
+SUPPORTED_SCHEMA_VERSIONS = frozenset({RT_SCHEMA_VERSION, NFSTREAM_SCHEMA_VERSION})
 
 
-def _schema_path() -> Path:
+def _schema_path(schema_version: str = SCHEMA_VERSION) -> Path:
     configured = os.getenv("IOT_IDS_SCHEMA_PATH")
+    filename = schema_version.replace("-", "_") + ".json"
     candidates = [
-        Path(configured).expanduser() if configured else None,
-        Path(__file__).resolve().parents[3] / "data/schema/rt_iot2022_v1.json",
-        Path.cwd() / "data/schema/rt_iot2022_v1.json",
-        Path.cwd().parent / "data/schema/rt_iot2022_v1.json",
+        Path(configured).expanduser() if configured and schema_version == SCHEMA_VERSION else None,
+        Path(__file__).resolve().parents[3] / f"data/schema/{filename}",
+        Path.cwd() / f"data/schema/{filename}",
+        Path.cwd().parent / f"data/schema/{filename}",
     ]
     for candidate in candidates:
         if candidate and candidate.is_file():
             return candidate.resolve()
     raise RuntimeError(
-        "canonical schema data/schema/rt_iot2022_v1.json was not found; "
-        "set IOT_IDS_SCHEMA_PATH explicitly"
+        f"canonical schema data/schema/{filename} was not found"
     )
 
 
@@ -39,6 +42,22 @@ CATEGORICAL_FEATURES = frozenset(
     SCHEMA_DEFINITION["types"]["categorical_string"]
 )
 NUMERIC_FEATURES = frozenset(FEATURE_ORDER) - CATEGORICAL_FEATURES
+
+
+def schema_definition(schema_version: str) -> dict[str, Any]:
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+        raise ValueError(f"unsupported schema_version {schema_version!r}")
+    if schema_version == SCHEMA_VERSION:
+        return SCHEMA_DEFINITION
+    definition = json.loads(_schema_path(schema_version).read_text(encoding="utf-8"))
+    if definition.get("schema_version") != schema_version:
+        raise RuntimeError(f"schema definition does not match {schema_version}")
+    # nfstream-iot-v1 intentionally preserves the established 83 field names.
+    definition.setdefault("feature_order", list(FEATURE_ORDER))
+    definition.setdefault("types", SCHEMA_DEFINITION["types"])
+    if tuple(definition["feature_order"]) != FEATURE_ORDER:
+        raise RuntimeError(f"{schema_version} does not preserve the canonical feature order")
+    return definition
 
 
 class NetworkContext(BaseModel):
@@ -61,7 +80,7 @@ class FlowObservation(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["rt-iot2022-v1"] = SCHEMA_VERSION
+    schema_version: str = SCHEMA_VERSION
     event_id: UUID
     flow_started_at: datetime
     flow_ended_at: datetime
@@ -69,6 +88,15 @@ class FlowObservation(BaseModel):
     features: dict[str, Any]
     ground_truth: str | None = None
     network_context: NetworkContext | None = None
+
+    @field_validator("schema_version")
+    @classmethod
+    def validate_schema_version(cls, value: str) -> str:
+        if value not in SUPPORTED_SCHEMA_VERSIONS:
+            raise ValueError(
+                f"schema_version must be one of {sorted(SUPPORTED_SCHEMA_VERSIONS)}"
+            )
+        return value
 
     @field_validator("features")
     @classmethod
@@ -79,10 +107,10 @@ class FlowObservation(BaseModel):
             extra = [name for name in features if name not in FEATURE_ORDER]
             if missing or extra:
                 raise ValueError(
-                    f"features must exactly match {SCHEMA_VERSION}; "
+                    "features must exactly match the declared 83-field contract; "
                     f"missing={missing}, extra={extra}"
                 )
-            raise ValueError(f"features must use canonical order for {SCHEMA_VERSION}")
+            raise ValueError("features must use canonical order")
 
         validated: dict[str, Any] = {}
         for name, value in features.items():
@@ -106,6 +134,13 @@ class FlowObservation(BaseModel):
     def validate_times(self) -> FlowObservation:
         if self.flow_ended_at < self.flow_started_at:
             raise ValueError("flow_ended_at must be on or after flow_started_at")
+        fingerprint = (
+            self.network_context.extractor_fingerprint if self.network_context else None
+        )
+        if self.schema_version == NFSTREAM_SCHEMA_VERSION and not fingerprint:
+            raise ValueError(
+                "nfstream-iot-v1 observations require an extractor_fingerprint"
+            )
         return self
 
 

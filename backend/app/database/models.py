@@ -122,6 +122,14 @@ class IngestionJob(Base):
     )
     worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    retryable: Mapped[bool | None] = mapped_column(Boolean, nullable=True, index=True)
+    redrive_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_redriven_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_redriven_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    last_redrive_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -129,6 +137,36 @@ class IngestionJob(Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    transitions: Mapped[list[IngestionJobTransition]] = relationship(
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="IngestionJobTransition.occurred_at",
+    )
+
+
+class IngestionJobTransition(Base):
+    __tablename__ = "ingestion_job_transitions"
+
+    transition_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("ingestion_jobs.job_id", ondelete="CASCADE"), index=True
+    )
+    event_id: Mapped[str] = mapped_column(String(36), index=True)
+    from_state: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    to_state: Mapped[str] = mapped_column(String(24), index=True)
+    reason_code: Mapped[str] = mapped_column(String(64))
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    retryable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    operator: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    job: Mapped[IngestionJob] = relationship(back_populates="transitions")
 
 
 class OutboxEvent(Base):

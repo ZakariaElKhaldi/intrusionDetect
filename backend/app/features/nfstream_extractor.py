@@ -12,7 +12,11 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid5
 
-from app.features.canonical_schema import FEATURE_ORDER, SCHEMA_VERSION, FlowObservation
+from app.features.canonical_schema import (
+    FEATURE_ORDER,
+    NFSTREAM_SCHEMA_VERSION,
+    FlowObservation,
+)
 
 try:  # NFStream is an explicit optional dependency.
     from nfstream import NFPlugin, NFStreamer
@@ -20,8 +24,8 @@ except ImportError:  # pragma: no cover - exercised through the explicit depende
     NFPlugin = object  # type: ignore[assignment,misc]
     NFStreamer = None
 
-EXTRACTOR_NAME = "nfstream-rt-iot2022-v1"
-EXTRACTOR_VERSION = "1.0.0"
+EXTRACTOR_NAME = "nfstream-iot-v1"
+EXTRACTOR_VERSION = "2.0.0"
 EVENT_NAMESPACE = UUID("9594e62d-68ae-579b-ad86-47af4148f4e1")
 
 
@@ -29,7 +33,7 @@ EVENT_NAMESPACE = UUID("9594e62d-68ae-579b-ad86-47af4148f4e1")
 class ExtractorManifest:
     extractor: str = EXTRACTOR_NAME
     extractor_version: str = EXTRACTOR_VERSION
-    schema_version: str = SCHEMA_VERSION
+    schema_version: str = NFSTREAM_SCHEMA_VERSION
     direction: str = "first packet defines src2dst"
     idle_timeout_seconds: int = 120
     active_timeout_seconds: int = 1800
@@ -53,8 +57,8 @@ class ExtractorManifest:
     unknown_service: str = "-"
     inference_compatible: bool = False
     compatibility_reason: str = (
-        "RT-IoT2022 source PCAPs and authoritative extractor settings are unavailable; "
-        "schema compatibility does not prove value compatibility"
+        "No checksum-verified nfstream-iot-v1 corpus and promoted native model bundle "
+        "are installed"
     )
 
     @property
@@ -375,6 +379,7 @@ def extract_pcap(path: str | Path) -> Iterator[tuple[FlowObservation, dict[str, 
             "extractor_fingerprint": MANIFEST.fingerprint,
         }
         observation = FlowObservation(
+            schema_version=NFSTREAM_SCHEMA_VERSION,
             event_id=deterministic_event_id(checksum, flow),
             flow_started_at=started,
             flow_ended_at=ended,
@@ -430,7 +435,7 @@ def validation_report(path: str | Path) -> dict[str, Any]:
         "pcap_checksum": checksum,
         "extractor_manifest": asdict(MANIFEST),
         "extractor_fingerprint": MANIFEST.fingerprint,
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": NFSTREAM_SCHEMA_VERSION,
         "flow_count": len(flows),
         "inference_compatible": False,
         "invariant_failures": failures,

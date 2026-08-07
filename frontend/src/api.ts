@@ -17,6 +17,12 @@ import type {
   DashboardSummary,
   AlertPage,
   IngestionStatus,
+  IngestionJob,
+  IngestionJobDetail,
+  CursorPage,
+  OutboxEvent,
+  ModelHealthSnapshot,
+  ModelHealthHistory,
 } from "./types";
 
 const configuredApi = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
@@ -301,6 +307,34 @@ export async function getIngestionStatus(): Promise<IngestionStatus> {
     throw new ApiError("Ingestion status response is invalid.", 502, value);
   }
   return value as IngestionStatus;
+}
+
+function queryString(values: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams();
+  Object.entries(values).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  });
+  return query.toString();
+}
+
+export async function getIngestionJobs(filters: { state?: string; error_code?: string; source?: string; limit?: number; cursor?: string } = {}): Promise<CursorPage<IngestionJob>> {
+  return request<CursorPage<IngestionJob>>(`/ingestion/jobs?${queryString(filters)}`);
+}
+
+export async function getIngestionEvent(eventId: string): Promise<IngestionJobDetail> {
+  return request<IngestionJobDetail>(`/ingestion/events/${encodeURIComponent(eventId)}`);
+}
+
+export async function getOutboxEvents(filters: { status?: string; limit?: number; cursor?: string } = {}): Promise<CursorPage<OutboxEvent>> {
+  return request<CursorPage<OutboxEvent>>(`/ingestion/outbox/events?${queryString(filters)}`);
+}
+
+export async function getModelHealth(filters: { window: "fast" | "slow"; source?: string; extractor_fingerprint?: string }): Promise<ModelHealthSnapshot> {
+  return request<ModelHealthSnapshot>(`/model-health?${queryString(filters)}`);
+}
+
+export async function getModelHealthHistory(filters: { window: "fast" | "slow"; source?: string; extractor_fingerprint?: string; from?: string; to?: string; limit?: number }): Promise<ModelHealthHistory> {
+  return request<ModelHealthHistory>(`/model-health/history?${queryString(filters)}`);
 }
 
 export async function getAlerts(): Promise<Alert[]> {
