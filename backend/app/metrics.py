@@ -63,6 +63,11 @@ class ApplicationMetrics:
             "WebSocket monitoring connections rejected because capacity was reached.",
             registry=self.registry,
         )
+        self.live_origin_rejections = Counter(
+            "iot_ids_live_websocket_origin_rejections_total",
+            "Browser WebSocket connections rejected by the explicit Origin allowlist.",
+            registry=self.registry,
+        )
 
     def render(self) -> bytes:
         return generate_latest(self.registry)

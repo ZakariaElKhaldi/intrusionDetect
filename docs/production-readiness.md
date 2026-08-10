@@ -28,6 +28,9 @@ not treated as proof of detection effectiveness or operational capacity.
 - All HTTP request bodies are bounded even when `Content-Length` is absent, and
   each API process enforces a configurable live WebSocket connection ceiling.
   Capacity refusals use close code `1013` and increment a Prometheus counter.
+  Browser WebSocket origins use the explicit CORS-origin allowlist, incoming
+  application messages use an allowlist, and production Uvicorn caps messages
+  at 64 KiB with a bounded queue and compression disabled.
 - `/metrics` uses the official Prometheus Python client and exposes normalized
   route counts/latency plus database, queue, dead-letter, outbox, and live
   connection gauges without event-, user-, or device-level labels.

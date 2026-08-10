@@ -17,6 +17,20 @@ def test_backend_image_runs_unprivileged_and_has_a_liveness_probe() -> None:
     assert "http://127.0.0.1:8000/livez" in dockerfile
     assert '"--no-access-log"' in dockerfile
     assert '"--no-server-header"' in dockerfile
+    assert '"--ws-max-size", "65536"' in dockerfile
+    assert '"--ws-max-queue", "8"' in dockerfile
+    assert '"--ws-per-message-deflate", "false"' in dockerfile
+
+    for relative_path in (
+        "scripts/run_all.sh",
+        "scripts/run_replay_benchmark.sh",
+        "scripts/start_e2e_backend.sh",
+        "scripts/demo.sh",
+    ):
+        startup = (REPOSITORY / relative_path).read_text(encoding="utf-8")
+        assert "--ws-max-size 65536" in startup
+        assert "--ws-max-queue 8" in startup
+        assert "--ws-per-message-deflate false" in startup
 
     dockerignore = (REPOSITORY / ".dockerignore").read_text(encoding="utf-8")
     assert "**/.venv" in dockerignore

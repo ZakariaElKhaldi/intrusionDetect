@@ -147,7 +147,7 @@ pcap-ingest:
 
 dev:
 	@echo "Database: make migrate"
-	@echo "Backend: cd backend && uv run uvicorn app.main:app --reload --no-access-log --no-server-header"
+	@echo "Backend: cd backend && uv run uvicorn app.main:app --reload --ws-max-size 65536 --no-access-log --no-server-header"
 	@echo "Worker:  cd backend && uv run python -m app.ingestion.worker"
 	@echo "Frontend: cd frontend && npm run dev"
 	@echo "API docs: http://localhost:8000/docs"

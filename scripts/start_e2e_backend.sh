@@ -21,4 +21,6 @@ export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/iot-ids-uv-cache}"
 cd "${REPOSITORY_DIR}/backend"
 .venv/bin/alembic upgrade head
 exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001 \
+  --ws websockets --ws-max-size 65536 --ws-max-queue 8 \
+  --ws-per-message-deflate false \
   --no-access-log --no-server-header

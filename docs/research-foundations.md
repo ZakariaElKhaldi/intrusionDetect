@@ -249,3 +249,5 @@ behavior-policy-aware, automatically adapting, or edge-deployed IDS.
 - [scikit-learn probability calibration guide](https://scikit-learn.org/stable/modules/calibration.html)
 - [OWASP API4:2023 Unrestricted Resource Consumption](https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/)
 - [Nginx `client_max_body_size` directive](https://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size)
+- [OWASP WebSocket Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html)
+- [Uvicorn WebSocket and resource settings](https://www.uvicorn.org/settings/)

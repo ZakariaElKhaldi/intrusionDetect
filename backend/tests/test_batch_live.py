@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
 import pytest
 from conftest import observation
 
+from app.api.live import live as live_endpoint
 from app.config import Settings
 from app.database.models import Base
 from app.database.session import create_engine_and_session
@@ -69,6 +71,39 @@ class FakeConnectSocket(FakeSocket):
         self.closed = (code, reason)
 
 
+class FakeCounter:
+    def __init__(self) -> None:
+        self.value = 0
+
+    def inc(self) -> None:
+        self.value += 1
+
+
+class FakePolicySocket(FakeConnectSocket):
+    def __init__(self, *, origin: str | None, messages: list[str]) -> None:
+        super().__init__()
+        self.headers = {"origin": origin} if origin is not None else {}
+        self.incoming = iter(messages)
+        self.manager = LiveConnectionManager()
+        self.origin_rejections = FakeCounter()
+        self.connection_rejections = FakeCounter()
+        self.app = SimpleNamespace(
+            state=SimpleNamespace(
+                settings=SimpleNamespace(
+                    cors_origins=("https://console.example",)
+                ),
+                metrics=SimpleNamespace(
+                    live_origin_rejections=self.origin_rejections,
+                    live_connection_rejections=self.connection_rejections,
+                ),
+                live=self.manager,
+            )
+        )
+
+    async def receive_text(self) -> str:
+        return next(self.incoming)
+
+
 @pytest.mark.anyio
 async def test_live_manager_rejects_connections_above_capacity() -> None:
     manager = LiveConnectionManager(max_connections=1)
@@ -81,6 +116,28 @@ async def test_live_manager_rejects_connections_above_capacity() -> None:
     assert first.messages == [{"type": "connection", "status": "connected"}]
     assert excess not in manager.connections
     assert excess.closed == (1013, "live connection capacity reached")
+
+
+@pytest.mark.anyio
+async def test_live_endpoint_enforces_browser_origin_and_message_allowlists() -> None:
+    rejected = FakePolicySocket(
+        origin="https://attacker.example", messages=[]
+    )
+    await live_endpoint(rejected)  # type: ignore[arg-type]
+    assert rejected.accepted is True
+    assert rejected.closed == (1008, "origin is not allowed")
+    assert rejected.origin_rejections.value == 1
+
+    allowed = FakePolicySocket(
+        origin="https://console.example", messages=["ping", "unsupported"]
+    )
+    await live_endpoint(allowed)  # type: ignore[arg-type]
+    assert allowed.messages == [
+        {"type": "connection", "status": "connected"},
+        {"type": "pong"},
+    ]
+    assert allowed.closed == (1008, "unsupported live message")
+    assert allowed not in allowed.manager.connections
 
 
 @pytest.mark.anyio

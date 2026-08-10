@@ -56,6 +56,8 @@ export IOT_IDS_API_TOKEN="$(
 (
   cd backend
   exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010 \
+    --ws websockets --ws-max-size 65536 --ws-max-queue 8 \
+    --ws-per-message-deflate false \
     --no-access-log --no-server-header
 ) &
 BACKEND_PID=$!
