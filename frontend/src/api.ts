@@ -299,10 +299,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort("request-timeout"), 15_000);
+  const abortFromCaller = () => controller.abort(init?.signal?.reason);
+  init?.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (reason) {
+    if (controller.signal.aborted && !init?.signal?.aborted) {
+      throw new ApiError("Request timed out. Check the service connection and try again.", 0);
+    }
+    throw reason;
+  } finally {
+    window.clearTimeout(timeout);
+    init?.signal?.removeEventListener("abort", abortFromCaller);
+  }
   if (!response.ok) {
     const detail = await errorDetail(response);
     if (response.status === 401 && path !== "/auth/login") unauthorizedHandler?.();

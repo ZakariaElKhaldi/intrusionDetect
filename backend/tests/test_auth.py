@@ -68,6 +68,31 @@ async def test_authenticated_startup_rejects_insecure_configuration(tmp_path) ->
 
 
 @pytest.mark.anyio
+async def test_startup_rejects_unsafe_or_invalid_runtime_configuration(tmp_path) -> None:
+    wildcard = create_app(
+        Settings(
+            database_url=f"sqlite:///{tmp_path / 'wildcard.db'}",
+            cors_origins=("*",),
+            allow_fallback=True,
+        )
+    )
+    with pytest.raises(ValueError, match="explicit HTTP"):
+        async with wildcard.router.lifespan_context(wildcard):
+            pass
+
+    invalid_queue = create_app(
+        Settings(
+            database_url=f"sqlite:///{tmp_path / 'queue.db'}",
+            ingestion_queue_limit=0,
+            allow_fallback=True,
+        )
+    )
+    with pytest.raises(ValueError, match="INGESTION_QUEUE_LIMIT"):
+        async with invalid_queue.router.lifespan_context(invalid_queue):
+            pass
+
+
+@pytest.mark.anyio
 async def test_login_me_and_protected_mutations(tmp_path) -> None:
     app = create_app(authenticated_settings(tmp_path))
     async with app.router.lifespan_context(app):
@@ -87,11 +112,13 @@ async def test_login_me_and_protected_mutations(tmp_path) -> None:
                 json={"username": "admin", "password": "password123"},
             )
             assert login.status_code == 200
+            assert login.headers["cache-control"] == "no-store"
             body = login.json()
             assert body["expires_in"] == 1800
             headers = {"Authorization": f"Bearer {body['access_token']}"}
             me = await client.get("/api/v1/auth/me", headers=headers)
             assert me.json() == {"username": "admin", "role": "admin"}
+            assert me.headers["cache-control"] == "no-store"
             replay = await client.post("/api/v1/replay/stop", headers=headers)
             assert replay.status_code == 200
 
@@ -113,3 +140,25 @@ async def test_failed_login_rate_limit(tmp_path) -> None:
             )
             assert limited.status_code == 429
             assert int(limited.headers["Retry-After"]) > 0
+
+
+@pytest.mark.anyio
+async def test_login_throttle_also_blocks_username_spraying_from_one_client(
+    tmp_path,
+) -> None:
+    app = create_app(authenticated_settings(tmp_path, "spray.db"))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            for attempt in range(5):
+                response = await client.post(
+                    "/auth/login",
+                    json={"username": f"unknown-{attempt}", "password": "wrong"},
+                )
+                assert response.status_code == 401
+            limited = await client.post(
+                "/auth/login",
+                json={"username": "admin", "password": "password123"},
+            )
+            assert limited.status_code == 429

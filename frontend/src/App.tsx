@@ -204,13 +204,28 @@ function App() {
     let socket: WebSocket | null = null;
     let retryTimer: number | undefined;
     let disposed = false;
+    let retryAttempt = 0;
+
+    const scheduleReconnect = () => {
+      if (disposed || retryTimer) return;
+      const baseDelay = Math.min(30_000, 1_000 * (2 ** retryAttempt));
+      const jitter = Math.round(baseDelay * 0.2 * Math.random());
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        connect();
+      }, baseDelay + jitter);
+    };
 
     const connect = () => {
       if (disposed) return;
       setSocketState("connecting");
       try {
         socket = new WebSocket(socketUrl());
-        socket.onopen = () => setSocketState("live");
+        socket.onopen = () => {
+          retryAttempt = 0;
+          setSocketState("live");
+        };
         socket.onmessage = (event) => {
           const incoming = liveEventFromSocketMessage(event.data);
           if (!incoming) return;
@@ -239,10 +254,11 @@ function App() {
         socket.onerror = () => setSocketState("offline");
         socket.onclose = () => {
           setSocketState("offline");
-          if (!disposed) retryTimer = window.setTimeout(connect, 5_000);
+          scheduleReconnect();
         };
       } catch {
         setSocketState("offline");
+        scheduleReconnect();
       }
     };
 
@@ -295,6 +311,7 @@ function App() {
   useEffect(() => {
     const [nextTitle] = pageTitles[page];
     document.title = `${nextTitle} · Sentinel`;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     document.getElementById("main-content")?.focus({ preventScroll: true });
   }, [page]);
 

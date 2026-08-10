@@ -17,6 +17,8 @@ describe("dashboard", () => {
     expect(screen.getByRole("heading", { name: "Live overview" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Alerts/i }));
     expect(screen.getByRole("heading", { name: "Alert investigation" })).toBeInTheDocument();
+    expect(document.title).toBe("Alert investigation · Sentinel");
+    expect(screen.getByRole("main")).toHaveFocus();
     expect(await screen.findByRole("table", { name: "Security alerts" }, { timeout: 3_000 })).toBeInTheDocument();
   });
 

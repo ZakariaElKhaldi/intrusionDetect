@@ -109,6 +109,27 @@ test.describe.serial("production-preview end-to-end path", () => {
     expect(issues).toEqual([]);
   });
 
+  test("operator sign-in is modal, keyboard-contained, and restores focus", async ({ page }) => {
+    await waitForConnectedPage(page);
+    const trigger = page.getByRole("button", { name: "Operator sign in" });
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "Operator sign in" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel("Username")).toBeFocused();
+    await dialog.getByRole("button", { name: "Sign in", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(dialog.getByLabel("Username")).toBeFocused();
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze();
+    expect(results.violations.filter((item) =>
+      item.impact === "serious" || item.impact === "critical"
+    )).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
   test("normal replay is controlled in the browser and streams predictions without alerts", async ({ page, request }) => {
     const issues = runtimeIssues(page);
     await waitForConnectedPage(page);
@@ -242,10 +263,13 @@ test.describe.serial("production-preview end-to-end path", () => {
 
   test("navigation and alert investigation remain keyboard operable", async ({ page }) => {
     await waitForConnectedPage(page);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     const alertsButton = page.getByRole("button", { name: "Triage alerts", exact: true });
     await alertsButton.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { level: 1, name: "Alert investigation" })).toBeVisible();
+    await expect(page.getByRole("main")).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
     const row = page.getByRole("row", { name: /^Open .* alert / }).first();
     await row.focus();
     await page.keyboard.press("Enter");

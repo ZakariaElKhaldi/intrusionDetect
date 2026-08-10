@@ -114,9 +114,9 @@ class TokenResponse(BaseModel):
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _client_key(request: Request, username: str) -> str:
+def _throttle_keys(request: Request, username: str) -> tuple[str, str]:
     host = request.client.host if request.client else "unknown"
-    return f"{host}:{username.casefold()}"
+    return f"client:{host}", f"account:{username.casefold()}"
 
 
 @router.get("/status")
@@ -129,26 +129,32 @@ def login(body: LoginRequest, request: Request) -> TokenResponse:
     settings = request.app.state.settings
     limiter: LoginRateLimiter = request.app.state.login_rate_limiter
     now = datetime.now(UTC)
-    key = _client_key(request, body.username)
-    retry_after = limiter.retry_after(key, now.timestamp())
-    if retry_after is not None:
+    keys = _throttle_keys(request, body.username)
+    retry_after_values = [
+        value
+        for key in keys
+        if (value := limiter.retry_after(key, now.timestamp())) is not None
+    ]
+    if retry_after_values:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many failed login attempts",
-            headers={"Retry-After": str(retry_after)},
+            headers={"Retry-After": str(max(retry_after_values))},
         )
 
     username_matches = secrets.compare_digest(body.username, settings.admin_username)
     password_matches = verify_password(body.password, settings.admin_password_hash)
     if not username_matches or not password_matches:
-        limiter.failed(key, now.timestamp())
+        for key in keys:
+            limiter.failed(key, now.timestamp())
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    limiter.succeeded(key)
+    for key in keys:
+        limiter.succeeded(key)
     expires_in = settings.access_token_minutes * 60
     token, expires_at = create_access_token(
         body.username, settings.secret_key, expires_in=expires_in, now=now

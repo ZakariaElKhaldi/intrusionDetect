@@ -101,3 +101,37 @@ class Settings:
             raise ValueError("IOT_IDS_SECRET_KEY must contain at least 32 UTF-8 bytes")
         if not 1 <= self.access_token_minutes <= 1_440:
             raise ValueError("IOT_IDS_ACCESS_TOKEN_MINUTES must be between 1 and 1440")
+
+    def validate(self) -> None:
+        if not self.database_url.strip():
+            raise ValueError("IOT_IDS_DATABASE_URL must not be empty")
+        if not self.instance_id.strip():
+            raise ValueError("IOT_IDS_INSTANCE_ID must not be empty")
+        if not 1 <= self.ingestion_queue_limit <= 1_000_000:
+            raise ValueError("IOT_IDS_INGESTION_QUEUE_LIMIT must be between 1 and 1000000")
+        for name, value in (
+            ("IOT_IDS_WORKER_POLL_SECONDS", self.worker_poll_seconds),
+            ("IOT_IDS_OUTBOX_POLL_SECONDS", self.outbox_poll_seconds),
+            ("IOT_IDS_MODEL_HEALTH_INTERVAL_SECONDS", self.model_health_interval_seconds),
+        ):
+            if not 0 < value <= 86_400:
+                raise ValueError(f"{name} must be greater than 0 and at most 86400")
+        if not 1 <= self.worker_lease_seconds <= 86_400:
+            raise ValueError("IOT_IDS_WORKER_LEASE_SECONDS must be between 1 and 86400")
+        if not 1 <= self.model_health_fast_minimum <= self.model_health_slow_minimum:
+            raise ValueError(
+                "model-health minimums must be positive and the slow minimum must "
+                "not be smaller than the fast minimum"
+            )
+        if not 1 <= self.model_health_retention_days <= 3_650:
+            raise ValueError("IOT_IDS_MODEL_HEALTH_RETENTION_DAYS must be between 1 and 3650")
+        invalid_origins = [
+            origin
+            for origin in self.cors_origins
+            if origin == "*" or not origin.startswith(("http://", "https://"))
+        ]
+        if invalid_origins:
+            raise ValueError(
+                "IOT_IDS_CORS_ORIGINS must contain explicit HTTP(S) origins, never '*'"
+            )
+        self.validate_authentication()

@@ -1,4 +1,15 @@
-import { createContext, type FormEvent, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { getAuthenticationStatus, getCurrentUser, login, setApiAccessToken, setUnauthorizedHandler } from "./api";
 import type { AuthSession } from "./types";
 
@@ -25,9 +36,13 @@ function storedSession(): AuthSession | null {
     const raw = window.sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const value = JSON.parse(raw) as AuthSession;
-    if (!value.access_token || Date.parse(value.expires_at) <= Date.now()) return null;
+    if (!value.access_token || Date.parse(value.expires_at) <= Date.now()) {
+      window.sessionStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
     return value;
   } catch {
+    window.sessionStorage.removeItem(STORAGE_KEY);
     return null;
   }
 }
@@ -38,12 +53,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loginOpen, setLoginOpen] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const loginDialog = useRef<HTMLElement>(null);
+  const returnFocusTo = useRef<HTMLElement | null>(null);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setApiAccessToken(null);
     window.sessionStorage.removeItem(STORAGE_KEY);
     setSession(null);
-  };
+  }, []);
+
+  const openLogin = useCallback(() => {
+    returnFocusTo.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    setError("");
+    setLoginOpen(true);
+  }, []);
+
+  const closeLogin = useCallback(() => {
+    setLoginOpen(false);
+    window.requestAnimationFrame(() => returnFocusTo.current?.focus());
+  }, []);
 
   useEffect(() => {
     void getAuthenticationStatus().then((value) => setAuthRequired(value.enabled)).catch(() => undefined);
@@ -51,12 +81,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setApiAccessToken(session?.access_token ?? null);
-    setUnauthorizedHandler(() => { logout(); setLoginOpen(true); });
+    setUnauthorizedHandler(() => { logout(); openLogin(); });
     if (session) {
-      void getCurrentUser().catch(() => { logout(); setLoginOpen(true); });
+      void getCurrentUser().catch(() => { logout(); openLogin(); });
     }
     return () => setUnauthorizedHandler(null);
-  }, [session?.access_token]);
+  }, [logout, openLogin, session?.access_token]);
+
+  useEffect(() => {
+    if (!session) return;
+    const remaining = Date.parse(session.expires_at) - Date.now();
+    if (remaining <= 0) {
+      logout();
+      return;
+    }
+    const expiryTimer = window.setTimeout(logout, remaining);
+    return () => window.clearTimeout(expiryTimer);
+  }, [logout, session]);
+
+  const containDialogFocus = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeLogin();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = [...(loginDialog.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    ) ?? [])].filter((element) => !element.hidden);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -68,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setApiAccessToken(next.access_token);
       window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       setSession(next);
-      setLoginOpen(false);
+      closeLogin();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Sign in failed.");
     } finally {
@@ -80,11 +143,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session,
     authenticated: !authRequired || Boolean(session),
     authRequired,
-    openLogin: () => { setError(""); setLoginOpen(true); },
+    openLogin,
     logout,
-  }), [authRequired, session]);
+  }), [authRequired, logout, openLogin, session]);
 
-  return <AuthContext.Provider value={value}>{children}{loginOpen ? <div className="dialog-backdrop" role="presentation"><section className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title"><h2 id="auth-title">Operator sign in</h2><p>Authentication is required for actions that change system state.</p><form onSubmit={(event) => void submit(event)}><label>Username<input name="username" autoComplete="username" required autoFocus defaultValue="admin"/></label><label>Password<input name="password" type="password" autoComplete="current-password" required/></label>{error ? <div className="data-state data-state--error" role="alert">{error}</div> : null}<div className="dialog-actions"><button type="button" className="secondary-button" onClick={() => setLoginOpen(false)}>Cancel</button><button type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button></div></form></section></div> : null}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{children}{loginOpen ? <div className="dialog-backdrop" role="presentation"><section ref={loginDialog} className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description" onKeyDown={containDialogFocus}><h2 id="auth-title">Operator sign in</h2><p id="auth-description">Authentication is required for actions that change system state.</p><form onSubmit={(event) => void submit(event)}><label>Username<input name="username" autoComplete="username" required autoFocus defaultValue="admin"/></label><label>Password<input name="password" type="password" autoComplete="current-password" required/></label>{error ? <div className="data-state data-state--error" role="alert">{error}</div> : null}<div className="dialog-actions"><button type="button" className="secondary-button" onClick={closeLogin}>Cancel</button><button type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button></div></form></section></div> : null}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthValue {

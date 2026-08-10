@@ -25,7 +25,11 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("frontend API adapter", () => {
-  afterEach(() => { setApiAccessToken(null); vi.unstubAllGlobals(); });
+  afterEach(() => {
+    setApiAccessToken(null);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   it("returns structured health information and null while offline", async () => {
     const health = {
@@ -41,6 +45,23 @@ describe("frontend API adapter", () => {
 
     await expect(checkHealth()).resolves.toEqual(health);
     await expect(checkHealth()).resolves.toBeNull();
+  });
+
+  it("aborts stalled requests instead of leaving the interface waiting forever", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, init?: RequestInit) => (
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      })
+    )));
+
+    const pending = getAlerts();
+    const rejection = expect(pending).rejects.toMatchObject({
+      status: 0,
+      message: "Request timed out. Check the service connection and try again.",
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+    await rejection;
   });
 
   it("loads independently reported ingestion and worker status", async () => {

@@ -36,6 +36,22 @@ async def test_health_echoes_instance_and_invalidates_dataset_cache_on_stat_chan
             assert first["readiness"] == "degraded"
             assert first["components"]["database"]["status"] == "ready"
             assert first["components"]["dataset"]["status"] == "ready"
+            live = await client.get("/livez")
+            assert live.status_code == 200
+            assert live.json() == {"status": "alive"}
+            assert live.headers["x-content-type-options"] == "nosniff"
+            assert live.headers["referrer-policy"] == "no-referrer"
+            assert live.headers["x-request-id"]
+            supplied_request_id = await client.get(
+                "/livez", headers={"X-Request-ID": "operator-check:42"}
+            )
+            assert supplied_request_id.headers["x-request-id"] == "operator-check:42"
+            replaced_request_id = await client.get(
+                "/livez", headers={"X-Request-ID": "not allowed/request-id"}
+            )
+            assert replaced_request_id.headers["x-request-id"] != "not allowed/request-id"
+            ready = await client.get("/readyz")
+            assert ready.status_code == 200
 
             with dataset.open("a", encoding="utf-8") as handle:
                 handle.write("\n")
@@ -49,3 +65,6 @@ async def test_health_echoes_instance_and_invalidates_dataset_cache_on_stat_chan
             assert blocked["dataset_ready"] is False
             assert blocked["components"]["dataset"]["status"] == "blocked"
             assert "schema mismatch" in blocked["dataset_error"]
+            not_ready = await client.get("/readyz")
+            assert not_ready.status_code == 503
+            assert not_ready.json()["readiness"] == "blocked"

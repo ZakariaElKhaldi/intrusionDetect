@@ -224,7 +224,36 @@ as changed-traffic evidence, never as proof of accuracy loss.
 
 Open `http://localhost:5173`; OpenAPI documentation is at
 `http://localhost:8000/docs`. `make docker-up` starts the PostgreSQL-backed
-demonstration stack.
+demonstration stack after the required secrets in `.env` are configured. The
+containerized frontend serves API and WebSocket traffic through its same-origin
+Nginx proxy, so browser deployments do not need cross-origin API URLs.
+
+## Deployment and security boundary
+
+The container baseline fails closed when authentication secrets or the
+PostgreSQL password are absent. Generate a long URL-safe
+`IOT_IDS_POSTGRES_PASSWORD`, an Argon2id administrator hash, and an independent
+random `IOT_IDS_SECRET_KEY`; keep all three outside source control. The API image
+runs as an unprivileged UID. Its `/livez` endpoint checks only that the process
+can serve HTTP, while `/readyz` returns `503` when required runtime components
+are blocked. `/health` remains the detailed public monitoring view.
+
+The production frontend sends a restrictive Content Security Policy,
+clickjacking, MIME-sniffing, referrer, and browser-permission headers. TLS must
+terminate at a trusted ingress or load balancer; configure HSTS there only after
+HTTPS and certificate renewal have been validated. Do not expose the backend or
+PostgreSQL ports directly to untrusted networks.
+
+The built-in login throttle is intentionally process-local for this
+single-operator, single-API prototype. A multi-replica deployment requires a
+shared rate-limit store or enforcement at a trusted gateway, coordinated
+WebSocket delivery, centralized logs/metrics, backups with restore testing, and
+an external secrets manager. These are deployment requirements, not features
+silently provided by Docker Compose.
+
+Known readiness blockers and the evidence required to close them are tracked in
+[the production-readiness audit](docs/production-readiness.md). Passing the
+engineering preflight does not waive those external validation requirements.
 
 ## API and event surface
 

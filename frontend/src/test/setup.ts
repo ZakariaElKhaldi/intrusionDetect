@@ -19,3 +19,4 @@ class WebSocketStub {
 }
 
 Object.defineProperty(globalThis, "WebSocket", { value: WebSocketStub, writable: true });
+Object.defineProperty(window, "scrollTo", { value: () => undefined, writable: true });

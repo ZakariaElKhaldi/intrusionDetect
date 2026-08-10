@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from uuid import uuid4
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api import (
@@ -33,6 +37,9 @@ from app.live import LiveConnectionManager
 from app.monitoring.service import ModelHealthService
 from app.monitoring.worker import monitoring_loop
 
+LOGGER = logging.getLogger(__name__)
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
@@ -49,7 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        settings.validate_authentication()
+        settings.validate()
         Base.metadata.create_all(engine)
         with session_factory() as session:
             for descriptor in registry.descriptors:
@@ -117,6 +124,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def operational_headers(request: Request, call_next) -> Response:
+        request_id = request.headers.get("X-Request-ID", "").strip()
+        if not REQUEST_ID_PATTERN.fullmatch(request_id):
+            request_id = str(uuid4())
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        if request.url.path.endswith(("/auth/login", "/auth/me")):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.get("/livez", tags=["health"], include_in_schema=False)
+    @app.get("/api/v1/livez", tags=["health"], include_in_schema=False)
+    async def livez() -> dict[str, str]:
+        """Cheap process liveness probe; external dependencies are intentionally excluded."""
+        return {"status": "alive"}
+
     @app.get("/health", tags=["health"])
     @app.get("/api/v1/health", tags=["health"], include_in_schema=False)
     async def health() -> dict:
@@ -149,9 +175,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     session, lease_seconds=settings.worker_lease_seconds
                 )
             database_status = "ready"
-        except Exception as exc:  # pragma: no cover - depends on external database failure
+        except Exception:  # pragma: no cover - depends on external database failure
             database_status = "blocked"
-            database_error = str(exc)
+            database_error = "database connectivity check failed"
+            LOGGER.exception("Database health check failed")
             ingestion_health = None
         model_health_component = app.state.model_health.component()
         model_health_degrades_readiness = bool(
@@ -294,6 +321,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "model_health": model_health_component,
             },
         }
+
+    @app.get("/readyz", tags=["health"], include_in_schema=False)
+    @app.get("/api/v1/readyz", tags=["health"], include_in_schema=False)
+    async def readyz() -> Response:
+        evidence = await health()
+        status_code = (
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if evidence["readiness"] == "blocked"
+            else status.HTTP_200_OK
+        )
+        return JSONResponse(evidence, status_code=status_code)
 
     router = APIRouter()
     router.include_router(auth.router)
