@@ -25,4 +25,4 @@ EXPOSE 8000
 USER 10001:10001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/livez', timeout=2)"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--ws", "websockets", "--ws-max-size", "65536", "--ws-max-queue", "8", "--ws-per-message-deflate", "false", "--no-access-log", "--no-server-header"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--ws", "websockets-sansio", "--ws-max-size", "65536", "--ws-max-queue", "8", "--ws-per-message-deflate", "false", "--no-access-log", "--no-server-header"]

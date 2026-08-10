@@ -128,7 +128,7 @@ WORKER_PID=$!
 (
   cd backend
   exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "${BACKEND_PORT}" \
-    --ws websockets --ws-max-size 65536 --ws-max-queue 8 \
+    --ws websockets-sansio --ws-max-size 65536 --ws-max-queue 8 \
     --ws-per-message-deflate false \
     --no-access-log --no-server-header
 ) &

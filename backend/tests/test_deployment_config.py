@@ -18,6 +18,7 @@ def test_backend_image_runs_unprivileged_and_has_a_liveness_probe() -> None:
     assert '"--no-access-log"' in dockerfile
     assert '"--no-server-header"' in dockerfile
     assert '"--ws-max-size", "65536"' in dockerfile
+    assert '"--ws", "websockets-sansio"' in dockerfile
     assert '"--ws-max-queue", "8"' in dockerfile
     assert '"--ws-per-message-deflate", "false"' in dockerfile
 
@@ -29,6 +30,7 @@ def test_backend_image_runs_unprivileged_and_has_a_liveness_probe() -> None:
     ):
         startup = (REPOSITORY / relative_path).read_text(encoding="utf-8")
         assert "--ws-max-size 65536" in startup
+        assert "--ws websockets-sansio" in startup
         assert "--ws-max-queue 8" in startup
         assert "--ws-per-message-deflate false" in startup
 
