@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import re
+import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api import (
     alerts,
@@ -24,8 +26,10 @@ from app.api import (
     replay,
 )
 from app.api.auth import LoginRateLimiter
+from app.api.errors import safe_validation_details
 from app.config import Settings
 from app.database.models import Base, ModelVersion
+from app.database.schema import verify_schema_current
 from app.database.session import create_engine_and_session
 from app.health import DatasetHealthCache
 from app.inference.model_registry import ModelRegistry
@@ -34,15 +38,23 @@ from app.ingestion.dataset_replay import DatasetReplay
 from app.ingestion.outbox import dispatch_loop, stop_dispatcher
 from app.ingestion.service import ingestion_status
 from app.live import LiveConnectionManager
+from app.metrics import ApplicationMetrics
 from app.monitoring.service import ModelHealthService
 from app.monitoring.worker import monitoring_loop
+from app.operational_logging import configure_operational_logging
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = configure_operational_logging("WARNING", "json").getChild("api")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, initialize_schema_for_tests: bool = False
+) -> FastAPI:
     settings = settings or Settings.from_env()
+    global LOGGER
+    LOGGER = configure_operational_logging(
+        settings.log_level, settings.log_format
+    ).getChild("api")
     engine, session_factory = create_engine_and_session(settings.database_url)
     registry = ModelRegistry(
         settings.model_artifact_path,
@@ -57,7 +69,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         settings.validate()
-        Base.metadata.create_all(engine)
+        if initialize_schema_for_tests:
+            Base.metadata.create_all(engine)
+        else:
+            verify_schema_current(engine)
         with session_factory() as session:
             for descriptor in registry.descriptors:
                 row = session.get(ModelVersion, descriptor.model_version)
@@ -116,20 +131,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         slow_minimum=settings.model_health_slow_minimum,
         retention_days=settings.model_health_retention_days,
     )
+    app.state.metrics = ApplicationMetrics()
+
+    @app.exception_handler(RequestValidationError)
+    async def safe_request_validation_error(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            {"detail": safe_validation_details(exc.errors())},
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=list(settings.allowed_hosts),
+        www_redirect=False,
     )
 
     @app.middleware("http")
     async def operational_headers(request: Request, call_next) -> Response:
+        metrics: ApplicationMetrics = request.app.state.metrics
+        metrics.http_in_flight.inc()
+        started = time.perf_counter()
         request_id = request.headers.get("X-Request-ID", "").strip()
         if not REQUEST_ID_PATTERN.fullmatch(request_id):
             request_id = str(uuid4())
-        response = await call_next(request)
+        request.state.request_id = request_id
+        response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
+        error_type: str | None = None
+        try:
+            response = await call_next(request)
+            response_status = response.status_code
+        except Exception as exc:
+            error_type = type(exc).__name__
+            raise
+        finally:
+            route = request.scope.get("route")
+            route_path = getattr(route, "path", "unmatched")
+            metrics.http_requests.labels(
+                method=request.method,
+                route=route_path,
+                status_code=str(response_status),
+            ).inc()
+            metrics.http_latency.labels(
+                method=request.method,
+                route=route_path,
+            ).observe(time.perf_counter() - started)
+            metrics.http_in_flight.dec()
+            log_method = LOGGER.warning if response_status >= 500 else LOGGER.info
+            log_method(
+                "HTTP request completed",
+                extra={
+                    "event": "http.server.request.completed",
+                    "request_id": request_id,
+                    "instance_id": settings.instance_id,
+                    "http_request_method": request.method,
+                    "http_route": route_path,
+                    "http_response_status_code": response_status,
+                    "duration_ms": round((time.perf_counter() - started) * 1_000, 3),
+                    "error_type": error_type,
+                },
+            )
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -142,6 +211,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def livez() -> dict[str, str]:
         """Cheap process liveness probe; external dependencies are intentionally excluded."""
         return {"status": "alive"}
+
+    @app.get("/metrics", tags=["health"], include_in_schema=False)
+    async def metrics() -> Response:
+        application_metrics: ApplicationMetrics = app.state.metrics
+        application_metrics.live_connections.set(len(app.state.live.connections))
+        try:
+            with session_factory() as session:
+                session.execute(text("SELECT 1"))
+                current = ingestion_status(
+                    session, lease_seconds=settings.worker_lease_seconds
+                )
+            application_metrics.database_up.set(1)
+            application_metrics.ingestion_queue_depth.set(current.queue_depth)
+            application_metrics.ingestion_dead_letter.set(current.dead_letter)
+            application_metrics.outbox_pending.set(current.outbox.pending)
+        except Exception:  # pragma: no cover - depends on external database failure
+            application_metrics.database_up.set(0)
+            application_metrics.ingestion_queue_depth.set(float("nan"))
+            application_metrics.ingestion_dead_letter.set(float("nan"))
+            application_metrics.outbox_pending.set(float("nan"))
+            LOGGER.error(
+                "Database metrics collection failed",
+                extra={
+                    "event": "database.metrics.failed",
+                    "instance_id": settings.instance_id,
+                    "error_type": "database_unavailable",
+                },
+            )
+        return Response(
+            application_metrics.render(),
+            headers={"Content-Type": application_metrics.content_type},
+        )
 
     @app.get("/health", tags=["health"])
     @app.get("/api/v1/health", tags=["health"], include_in_schema=False)
@@ -178,7 +279,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except Exception:  # pragma: no cover - depends on external database failure
             database_status = "blocked"
             database_error = "database connectivity check failed"
-            LOGGER.exception("Database health check failed")
+            LOGGER.error(
+                "Database health check failed",
+                extra={
+                    "event": "database.health.failed",
+                    "instance_id": settings.instance_id,
+                    "error_type": "database_unavailable",
+                },
+            )
             ingestion_health = None
         model_health_component = app.state.model_health.component()
         model_health_degrades_readiness = bool(

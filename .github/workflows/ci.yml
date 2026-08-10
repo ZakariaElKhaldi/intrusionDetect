@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, test, build, and verify artifacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      IOT_IDS_AUTH_ENABLED: "false"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: 0.11.16
+          enable-cache: true
+      - name: Install Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --locked --extra dev --extra postgres --extra pcap
+      - name: Install ML dependencies
+        working-directory: machine-learning
+        run: uv sync --locked --extra dev
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Lint
+        run: make lint
+      - name: Test
+        run: make test
+      - name: Build
+        run: make build
+      - name: Verify promoted model bundle
+        run: make verify-model
+      - name: Verify SQLite migrations
+        working-directory: backend
+        env:
+          IOT_IDS_DATABASE_URL: sqlite:////tmp/iot-ids-ci.sqlite3
+        run: |
+          .venv/bin/alembic upgrade head
+          .venv/bin/alembic check
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+  postgres:
+    name: PostgreSQL migrations and queue locking
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: iot_ids_test
+          POSTGRES_USER: iot_ids_test
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U iot_ids_test -d iot_ids_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      IOT_IDS_AUTH_ENABLED: "false"
+      IOT_IDS_DATABASE_URL: postgresql+psycopg://iot_ids_test:ci-only-password@127.0.0.1:5432/iot_ids_test
+      IOT_IDS_TEST_POSTGRES_URL: postgresql+psycopg://iot_ids_test:ci-only-password@127.0.0.1:5432/iot_ids_test
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: 0.11.16
+          enable-cache: true
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --locked --extra dev --extra postgres
+      - name: Upgrade and verify PostgreSQL migrations
+        working-directory: backend
+        run: |
+          .venv/bin/alembic upgrade head
+          .venv/bin/alembic check
+      - name: Exercise PostgreSQL claim and redrive serialization
+        working-directory: backend
+        run: .venv/bin/pytest -m postgres tests/test_postgres_ingestion.py

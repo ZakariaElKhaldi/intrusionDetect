@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from pydantic import TypeAdapter, ValidationError
 
 from app.api.auth import get_current_admin
+from app.api.errors import safe_validation_details
 from app.database.models import ValidationFailure
 from app.features.canonical_schema import FlowObservation
 from app.ingestion.schemas import (
@@ -68,7 +69,7 @@ async def _parse_observations(request: Request) -> list[FlowObservation]:
         observations = OBSERVATIONS.validate_python(raw)
     except (json.JSONDecodeError, UnicodeDecodeError, ValidationError, TypeError) as exc:
         detail = (
-            exc.errors(include_context=False, include_url=False)
+            safe_validation_details(exc.errors())
             if isinstance(exc, ValidationError)
             else str(exc)
         )

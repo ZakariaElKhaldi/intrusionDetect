@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, or_, select
 
 from app.api.auth import get_current_admin
 from app.api.schemas import (
@@ -103,48 +103,32 @@ async def page_alerts(
         if to_time:
             statement = statement.where(Alert.created_at < to_time)
         if query and query.strip():
-            rows = list(session.execute(statement.order_by(Alert.created_at.desc())).all())
             needle = query.casefold().strip()
-
-            def matches(row) -> bool:
-                alert, prediction, observation = row
-                features = observation.raw_features
-                context = observation.network_context or {}
-                values = (
-                    alert.alert_id,
-                    prediction.attack_class or "",
-                    str(context.get("source_ip", features.get("source_ip", ""))),
-                    str(
-                        context.get(
-                            "destination_ip", features.get("destination_ip", "")
-                        )
-                    ),
-                    str(context.get("source_port", features.get("id.orig_p", ""))),
-                    str(
-                        context.get(
-                            "destination_port", features.get("id.resp_p", "")
-                        )
-                    ),
-                    str(features.get("proto", "")),
-                    str(features.get("service", "")),
-                )
-                return any(needle in value.casefold() for value in values)
-
-            rows = [row for row in rows if matches(row)]
-            total = len(rows)
-            page_rows = rows[offset : offset + limit]
-        else:
-            total = int(
-                session.scalar(
-                    select(func.count()).select_from(statement.order_by(None).subquery())
-                )
-                or 0
+            escaped = (
+                needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             )
-            page_rows = list(
-                session.execute(
-                    statement.order_by(Alert.created_at.desc()).offset(offset).limit(limit)
-                ).all()
+            pattern = f"%{escaped}%"
+            statement = statement.where(
+                or_(
+                    Alert.alert_id.ilike(pattern, escape="\\"),
+                    Prediction.attack_class.ilike(pattern, escape="\\"),
+                    cast(Observation.network_context, String).ilike(
+                        pattern, escape="\\"
+                    ),
+                    cast(Observation.raw_features, String).ilike(pattern, escape="\\"),
+                )
             )
+        total = int(
+            session.scalar(
+                select(func.count()).select_from(statement.order_by(None).subquery())
+            )
+            or 0
+        )
+        page_rows = list(
+            session.execute(
+                statement.order_by(Alert.created_at.desc()).offset(offset).limit(limit)
+            ).all()
+        )
         items = [
             _alert_response(alert, prediction, observation)
             for alert, prediction, observation in page_rows
@@ -239,10 +223,12 @@ async def get_alert_explanation(alert_id: UUID, request: Request) -> dict:
     "/alerts/{alert_id}/feedback",
     response_model=FeedbackResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(get_current_admin)],
 )
 async def add_feedback(
-    alert_id: UUID, payload: FeedbackRequest, request: Request
+    alert_id: UUID,
+    payload: FeedbackRequest,
+    request: Request,
+    operator: Annotated[str, Depends(get_current_admin)],
 ) -> AnalystFeedback:
     with request.app.state.SessionLocal() as session:
         alert = session.get(Alert, str(alert_id))
@@ -250,7 +236,7 @@ async def add_feedback(
             raise HTTPException(status_code=404, detail="alert not found")
         feedback = AnalystFeedback(
             alert_id=alert.alert_id,
-            analyst=payload.analyst,
+            analyst=operator,
             status=payload.status,
             notes=payload.notes,
         )

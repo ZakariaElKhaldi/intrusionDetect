@@ -54,7 +54,7 @@ help:
 	@echo "  make docker-up      Start the demonstration stack"
 
 setup:
-	cd backend && $(UV) sync --extra dev --extra pcap
+	cd backend && $(UV) sync --extra dev --extra postgres --extra pcap
 	cd machine-learning && $(UV) sync --extra dev
 	cd frontend && npm install
 
@@ -146,7 +146,8 @@ pcap-ingest:
 		--api-url $(API_URL)
 
 dev:
-	@echo "Backend: cd backend && uv run uvicorn app.main:app --reload"
+	@echo "Database: make migrate"
+	@echo "Backend: cd backend && uv run uvicorn app.main:app --reload --no-access-log --no-server-header"
 	@echo "Worker:  cd backend && uv run python -m app.ingestion.worker"
 	@echo "Frontend: cd frontend && npm run dev"
 	@echo "API docs: http://localhost:8000/docs"

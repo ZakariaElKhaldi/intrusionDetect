@@ -164,7 +164,7 @@ export function ObservationLab() {
         <PanelHeading
           eyebrow="Prediction output"
           title="Results"
-          description="Scores are classifier outputs and are not guaranteed calibrated probabilities."
+          description="Scores are model outputs. Treat them as calibrated probabilities only when the active bundle metadata confirms calibration."
           action={results.length ? <span className="panel-heading-meta">{results.length} evaluated</span> : undefined}
         />
         {!results.length ? (

@@ -23,6 +23,18 @@ describe("parseCsv", () => {
     expect(() => parseCsv("protocol,protocol\nTCP,UDP")).toThrow(/unique/i);
   });
 
+  it("supports quoted commas, escaped quotes, embedded newlines, and a BOM", () => {
+    const rows = parseCsv(
+      '\uFEFFname,notes,count\r\n"sensor, one","said ""hello""\nthen left",2',
+    );
+    expect(rows).toEqual([{ name: "sensor, one", notes: 'said "hello"\nthen left', count: 2 }]);
+  });
+
+  it("rejects malformed quoted fields", () => {
+    expect(() => parseCsv('name,count\n"unterminated,2')).toThrow(/unterminated/i);
+    expect(() => parseCsv('name,count\n"closed"suffix,2')).toThrow(/closing quote/i);
+  });
+
   it("loads the saved scenario at the canonical 83-feature boundary", () => {
     const [row] = parseCsv(savedObservationCsv);
     expect(Object.keys(row)).toHaveLength(84);

@@ -21,6 +21,7 @@ dependencies = [
   "shap>=0.50,<1",
   "pwdlib[argon2]>=0.3,<1",
   "PyJWT>=2.10,<3",
+  "prometheus-client>=0.25,<1",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +40,9 @@ packages = ["app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+  "postgres: integration tests that require IOT_IDS_TEST_POSTGRES_URL",
+]
 
 [tool.ruff]
 line-length = 100

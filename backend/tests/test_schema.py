@@ -31,6 +31,7 @@ async def test_feature_contract_rejects_invalid_values(
     response = await fallback_client.post("/predict", json=payload)
     assert response.status_code == 422
     assert message in response.text
+    assert "not-a-number" not in response.text
 
 
 @pytest.mark.anyio

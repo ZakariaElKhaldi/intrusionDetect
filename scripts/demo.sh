@@ -127,7 +127,8 @@ WORKER_PID=$!
 
 (
   cd backend
-  exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "${BACKEND_PORT}"
+  exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "${BACKEND_PORT}" \
+    --no-access-log --no-server-header
 ) &
 BACKEND_PID=$!
 wait_for_owned_health "http://127.0.0.1:${BACKEND_PORT}/health" \

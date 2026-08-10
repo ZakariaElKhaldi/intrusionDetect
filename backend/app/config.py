@@ -15,6 +15,7 @@ class Settings:
     allow_fallback: bool = False
     replay_dataset_path: str | None = None
     cors_origins: tuple[str, ...] = ("http://localhost:5173",)
+    allowed_hosts: tuple[str, ...] = ("localhost", "127.0.0.1", "test")
     instance_id: str = field(default_factory=lambda: f"iot-ids-{uuid4().hex[:12]}")
     ingestion_queue_limit: int = 10_000
     worker_poll_seconds: float = 0.5
@@ -30,12 +31,21 @@ class Settings:
     admin_password_hash: str = ""
     secret_key: str = ""
     access_token_minutes: int = 30
+    log_level: str = "WARNING"
+    log_format: str = "json"
 
     @classmethod
     def from_env(cls) -> Settings:
         origins = tuple(
             item.strip()
             for item in os.getenv("IOT_IDS_CORS_ORIGINS", "http://localhost:5173").split(",")
+            if item.strip()
+        )
+        allowed_hosts = tuple(
+            item.strip()
+            for item in os.getenv(
+                "IOT_IDS_ALLOWED_HOSTS", "localhost,127.0.0.1,backend"
+            ).split(",")
             if item.strip()
         )
         repository = Path(__file__).resolve().parents[2]
@@ -57,6 +67,7 @@ class Settings:
                 ),
             ),
             cors_origins=origins,
+            allowed_hosts=allowed_hosts,
             instance_id=os.getenv("IOT_IDS_INSTANCE_ID") or f"iot-ids-{uuid4().hex[:12]}",
             ingestion_queue_limit=int(
                 os.getenv("IOT_IDS_INGESTION_QUEUE_LIMIT", "10000")
@@ -86,6 +97,8 @@ class Settings:
             admin_password_hash=os.getenv("IOT_IDS_ADMIN_PASSWORD_HASH", ""),
             secret_key=os.getenv("IOT_IDS_SECRET_KEY", ""),
             access_token_minutes=int(os.getenv("IOT_IDS_ACCESS_TOKEN_MINUTES", "30")),
+            log_level=os.getenv("IOT_IDS_LOG_LEVEL", "INFO").strip().upper(),
+            log_format=os.getenv("IOT_IDS_LOG_FORMAT", "json").strip().lower(),
         )
 
     def validate_authentication(self) -> None:
@@ -134,4 +147,23 @@ class Settings:
             raise ValueError(
                 "IOT_IDS_CORS_ORIGINS must contain explicit HTTP(S) origins, never '*'"
             )
+        invalid_hosts = [
+            host
+            for host in self.allowed_hosts
+            if host == "*"
+            or "://" in host
+            or "/" in host
+            or any(character.isspace() for character in host)
+            or ("*" in host and not host.startswith("*."))
+        ]
+        if not self.allowed_hosts or invalid_hosts:
+            raise ValueError(
+                "IOT_IDS_ALLOWED_HOSTS must contain explicit hostnames or '*.example.com' patterns"
+            )
+        if self.log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+            raise ValueError(
+                "IOT_IDS_LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR, or CRITICAL"
+            )
+        if self.log_format not in {"json", "text"}:
+            raise ValueError("IOT_IDS_LOG_FORMAT must be json or text")
         self.validate_authentication()

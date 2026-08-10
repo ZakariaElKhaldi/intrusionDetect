@@ -70,6 +70,10 @@ async def test_dashboard_summary_and_alert_pagination(
         "to": future.replace("+00:00", "Z"),
     }
 
+    wildcard = await fallback_client.get("/alerts/page", params={"q": "%"})
+    assert wildcard.status_code == 200
+    assert wildcard.json()["total"] == 0
+
     empty = await fallback_client.get("/alerts/page", params={"from": future})
     assert empty.json()["total"] == 0
     assert empty.json()["filters"] == {

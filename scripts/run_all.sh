@@ -161,7 +161,8 @@ WORKER_PID=$!
 
 (
   cd backend
-  exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+  exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 \
+    --no-access-log --no-server-header
 ) &
 BACKEND_PID=$!
 

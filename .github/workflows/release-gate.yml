@@ -1,0 +1,79 @@
+name: Release gate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Full reproducible project preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      IOT_IDS_AUTH_ENABLED: "true"
+      IOT_IDS_POSTGRES_PASSWORD: release-gate-database-password
+      IOT_IDS_ADMIN_PASSWORD_HASH: '$argon2id$v=19$m=65536,t=3,p=4$pJmg2l4q6KWshn/k8ujpMg$O92SOOwc/0ac7TTUW6m92Z0KzJbpLCzI8Ya1aEwW6U8'
+      IOT_IDS_SECRET_KEY: release-gate-secret-key-at-least-32-bytes
+      IOT_IDS_ALLOWED_HOSTS: localhost,127.0.0.1
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: 0.11.16
+          enable-cache: true
+      - name: Install Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --locked --extra dev --extra postgres --extra pcap
+      - name: Install ML dependencies
+        working-directory: machine-learning
+        run: uv sync --locked --extra dev
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install browser runtime
+        working-directory: frontend
+        run: npx playwright install --with-deps chrome
+      - name: Download and verify the canonical dataset
+        run: make download-data
+      - name: Run the complete engineering gate
+        run: make project-preflight
+      - name: Validate and build the deployment stack
+        run: |
+          docker compose config --quiet
+          docker compose build
+      - name: Smoke-test hardened containers
+        run: |
+          docker compose up --detach
+          for attempt in {1..120}; do
+            if curl --silent --fail http://127.0.0.1:5173/api/v1/livez >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail http://127.0.0.1:5173/api/v1/health |
+            python -c 'import json,sys; value=json.load(sys.stdin); assert value["production_bundle_valid"] is True; assert value["fallback"] is False'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --request POST http://127.0.0.1:5173/api/v1/replay/stop)" = "401"
+          test "$(docker compose exec --no-TTY backend id -u)" != "0"
+          test "$(docker compose exec --no-TTY frontend id -u)" != "0"
+          docker compose exec --no-TTY backend sh -c '! touch /root-filesystem-must-be-read-only'
+          docker compose exec --no-TTY frontend sh -c '! touch /root-filesystem-must-be-read-only'
+      - name: Remove the disposable deployment stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans

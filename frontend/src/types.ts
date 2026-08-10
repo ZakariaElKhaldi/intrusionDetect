@@ -344,7 +344,6 @@ export interface EvaluationReport {
 }
 
 export interface AnalystFeedbackRequest {
-  analyst: string;
   status: AlertStatus;
   notes?: string | null;
 }

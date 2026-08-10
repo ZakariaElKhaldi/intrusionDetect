@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import logging
 import secrets
 import threading
-from collections import defaultdict, deque
+from collections import OrderedDict, deque
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
@@ -20,6 +21,7 @@ from pydantic import BaseModel, Field
 TOKEN_ISSUER = "iot-intrusion-detection"
 TOKEN_AUDIENCE = "iot-ids-api"
 PASSWORD_HASH = PasswordHash.recommended()
+SECURITY_LOGGER = logging.getLogger("iot_ids.security")
 security = HTTPBearer(auto_error=False)
 BearerCredentials = Annotated[HTTPAuthorizationCredentials | None, Security(security)]
 
@@ -74,29 +76,47 @@ def verify_access_token(token: str, secret_key: str) -> str | None:
 
 
 class LoginRateLimiter:
-    def __init__(self, *, maximum: int = 5, window_seconds: int = 300) -> None:
+    def __init__(
+        self, *, maximum: int = 5, window_seconds: int = 300, max_keys: int = 10_000
+    ) -> None:
         self.maximum = maximum
         self.window_seconds = window_seconds
-        self._failures: dict[str, deque[float]] = defaultdict(deque)
+        self.max_keys = max_keys
+        self._failures: OrderedDict[str, deque[float]] = OrderedDict()
         self._lock = threading.Lock()
 
     def retry_after(self, key: str, now: float) -> int | None:
         with self._lock:
-            failures = self._failures[key]
+            failures = self._failures.get(key)
+            if failures is None:
+                return None
             cutoff = now - self.window_seconds
             while failures and failures[0] <= cutoff:
                 failures.popleft()
+            if not failures:
+                self._failures.pop(key, None)
+                return None
+            self._failures.move_to_end(key)
             if len(failures) < self.maximum:
                 return None
             return max(1, int(failures[0] + self.window_seconds - now) + 1)
 
     def failed(self, key: str, now: float) -> None:
         with self._lock:
-            self._failures[key].append(now)
+            failures = self._failures.setdefault(key, deque())
+            failures.append(now)
+            self._failures.move_to_end(key)
+            while len(self._failures) > self.max_keys:
+                self._failures.popitem(last=False)
 
     def succeeded(self, key: str) -> None:
         with self._lock:
             self._failures.pop(key, None)
+
+    @property
+    def tracked_keys(self) -> int:
+        with self._lock:
+            return len(self._failures)
 
 
 class LoginRequest(BaseModel):
@@ -136,6 +156,14 @@ def login(body: LoginRequest, request: Request) -> TokenResponse:
         if (value := limiter.retry_after(key, now.timestamp())) is not None
     ]
     if retry_after_values:
+        SECURITY_LOGGER.warning(
+            "Authentication rate limit applied",
+            extra={
+                "event": "authentication.rate_limited",
+                "request_id": getattr(request.state, "request_id", None),
+                "instance_id": settings.instance_id,
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many failed login attempts",
@@ -147,6 +175,14 @@ def login(body: LoginRequest, request: Request) -> TokenResponse:
     if not username_matches or not password_matches:
         for key in keys:
             limiter.failed(key, now.timestamp())
+        SECURITY_LOGGER.warning(
+            "Authentication failed",
+            extra={
+                "event": "authentication.failed",
+                "request_id": getattr(request.state, "request_id", None),
+                "instance_id": settings.instance_id,
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -155,6 +191,14 @@ def login(body: LoginRequest, request: Request) -> TokenResponse:
 
     for key in keys:
         limiter.succeeded(key)
+    SECURITY_LOGGER.info(
+        "Authentication succeeded",
+        extra={
+            "event": "authentication.succeeded",
+            "request_id": getattr(request.state, "request_id", None),
+            "instance_id": settings.instance_id,
+        },
+    )
     expires_in = settings.access_token_minutes * 60
     token, expires_at = create_access_token(
         body.username, settings.secret_key, expires_in=expires_in, now=now

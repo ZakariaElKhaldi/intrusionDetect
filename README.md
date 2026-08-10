@@ -148,6 +148,25 @@ make project-preflight
 make demo
 ```
 
+Pull requests and pushes to `main` run the pinned, read-only-permission CI
+workflow for lint, unit tests, builds, artifact verification, migrations, and a
+production dependency audit. A separate PostgreSQL 17 job runs migrations and
+exercises `SKIP LOCKED` claims plus concurrent redrive/claim serialization. Tag
+builds and manual release-gate runs additionally download the checksummed UCI
+dataset and execute `make project-preflight`, including browser E2E.
+
+To run only the PostgreSQL integration evidence against an existing disposable
+database:
+
+```bash
+cd backend
+IOT_IDS_TEST_POSTGRES_URL='postgresql+psycopg://user:password@localhost/test_db' \
+  .venv/bin/pytest -m postgres tests/test_postgres_ingestion.py
+```
+
+The integration suite creates only uniquely identified test jobs and removes
+them afterward. Do not point it at a production database.
+
 `make benchmark` records the fixed normal/attack replay evidence in
 `docs/evidence/`.
 
@@ -169,6 +188,8 @@ cd backend && uv run uvicorn app.main:app --reload
 cd frontend && npm run dev
 ```
 
+Run `make migrate` after checkout and whenever migrations change; API and worker
+startup fail closed when the database is not at every declared Alembic head.
 Run the worker and backend in separate terminals. `./scripts/run_all.sh` and
 `make demo` perform the migration and manage all three processes automatically.
 To stream canonical NDJSON from stdin or a file, run `make ingest-events` or
@@ -236,7 +257,12 @@ PostgreSQL password are absent. Generate a long URL-safe
 random `IOT_IDS_SECRET_KEY`; keep all three outside source control. The API image
 runs as an unprivileged UID. Its `/livez` endpoint checks only that the process
 can serve HTTP, while `/readyz` returns `503` when required runtime components
-are blocked. `/health` remains the detailed public monitoring view.
+are blocked. `/health` remains the detailed public monitoring view. `/metrics`
+exports low-cardinality Prometheus request count/latency, in-flight request,
+database, ingestion queue, dead-letter, outbox, and live-connection metrics.
+Application logs default to structured JSON with request IDs and normalized
+route templates; raw Uvicorn access logs are disabled in the production image
+to avoid duplicating or accidentally widening the logged request surface.
 
 The production frontend sends a restrictive Content Security Policy,
 clickjacking, MIME-sniffing, referrer, and browser-permission headers. TLS must
@@ -265,7 +291,7 @@ The API is available both at the root paths and under `/api/v1`:
   `GET /ingestion/jobs`, `POST /ingestion/jobs/redrive`,
   `GET /ingestion/outbox/events`, and `GET /ingestion/status`
 - `GET /alerts`, `GET /alerts/{id}`, and `POST /alerts/{id}/feedback`
-- `GET /models` and `GET /health`
+- `GET /models`, `GET /health`, `/livez`, `/readyz`, and `/metrics`
 - `GET /model-health`, `GET /model-health/history`, and `GET /model-health/cohorts`
 - `POST /replay/start`, `/pause`, `/resume`, and `/stop`; `GET /replay/status`
 - `WS /live`

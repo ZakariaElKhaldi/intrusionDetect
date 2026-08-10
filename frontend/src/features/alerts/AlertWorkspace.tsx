@@ -39,8 +39,10 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
   const [pageHasMore, setPageHasMore] = useState(false);
   const [pageLoading, setPageLoading] = useState(false);
   const [pageError, setPageError] = useState("");
+  const [pageRefresh, setPageRefresh] = useState(0);
   const pageLimit = 50;
   const sourceAlerts = fixtureMode ? alerts : pageItems ?? alerts;
+  const initialLoading = (loading || pageLoading) && sourceAlerts.length === 0;
   const families = useMemo(() => [...new Set(alerts.map((alert) => alert.attack_type))].sort(), [alerts]);
   const filtered = useMemo(() => {
     const needle = query.toLowerCase().trim();
@@ -69,7 +71,7 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
         .finally(()=>{if(!cancelled)setPageLoading(false);});
     },200);
     return ()=>{cancelled=true;window.clearTimeout(timer);};
-  },[alerts[0]?.id,family,fixtureMode,from,pageOffset,query,range,severity,status,to]);
+  },[alerts[0]?.id,family,fixtureMode,from,pageOffset,pageRefresh,query,range,severity,status,to]);
 
   useEffect(() => {
     const next = new URLSearchParams(location.search);
@@ -81,8 +83,10 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
 
   const reset = () => { setQuery(""); setSeverity("all"); setStatus("all"); setFamily("all"); setRange("all"); setFrom(""); setTo(""); };
   const hasFilters = query || severity !== "all" || status !== "all" || family !== "all" || range !== "all" || from || to;
+  const visibleError = pageError || error;
+  const retry = () => pageError ? setPageRefresh((value) => value + 1) : onRetry?.();
 
-  return <section className="panel alerts-panel" aria-labelledby="alerts-heading">
+  return <section className="panel alerts-panel" aria-labelledby="alerts-heading" aria-busy={pageLoading || loading}>
     <h2 className="sr-only" id="alerts-heading">Security alerts</h2>
     <div className="filters">
       <label className="search-field"><Search aria-hidden="true"/><span className="sr-only">Search alerts</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Endpoint, detection, ID, protocol…" /></label>
@@ -95,7 +99,8 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
     </div>
     {(from || to) ? <div className="active-filter">Timeline interval: {from ? new Date(from).toLocaleString() : "start"} – {to ? new Date(to).toLocaleString() : "now"}<button type="button" onClick={() => { setFrom(""); setTo(""); }}>Clear interval</button></div> : null}
     {pending > 0 ? <button className="pending-banner" onClick={applyPending}>{pending} new alert{pending === 1 ? "" : "s"} received — show updates</button> : null}
-    {(loading || pageLoading) ? <div className="data-state" role="status" data-state="loading">Loading alerts…</div> : (pageError || error) ? <div className="data-state data-state--error" role="status" data-state="error"><span>{pageError || error}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry alerts</button> : null}</div> : !filtered.length ? <div className="alert-empty" data-state="empty"><b>{alerts.length ? "No alerts match these filters" : "No alerts recorded"}</b><span>{alerts.length ? "Reset filters to widen the investigation window." : "Run an attack replay to create real alert records."}</span>{hasFilters ? <button className="secondary-button" onClick={reset}>Clear all filters</button> : null}</div> : <>
+    {visibleError && sourceAlerts.length > 0 ? <div className="data-state data-state--error" role="alert" data-state="stale"><span>The latest alert refresh failed; showing the last successful results. {visibleError}</span><button className="secondary-button" onClick={retry}>Retry alerts</button></div> : null}
+    {initialLoading ? <div className="data-state" role="status" data-state="loading">Loading alerts…</div> : visibleError && sourceAlerts.length === 0 ? <div className="data-state data-state--error" role="alert" data-state="error"><span>{visibleError}</span>{(pageError || onRetry) ? <button className="secondary-button" onClick={retry}>Retry alerts</button> : null}</div> : !filtered.length ? <div className="alert-empty" data-state="empty"><b>{alerts.length ? "No alerts match these filters" : "No alerts recorded"}</b><span>{alerts.length ? "Reset filters to widen the investigation window." : "Run an attack replay to create real alert records."}</span>{hasFilters ? <button className="secondary-button" onClick={reset}>Clear all filters</button> : null}</div> : <>
       <div className="alert-table-wrap"><table className="alert-table" aria-label="Security alerts"><thead><tr role="presentation"><th>Severity</th><th>Detection</th><th>Route</th><th>Protocol</th><th>Detector score</th><th>Status</th><th>Time</th></tr></thead><tbody>{filtered.map((alert) => <tr key={alert.id} data-alert-id={alert.id} onClick={() => onSelect(alert)} tabIndex={0} aria-label={`Open ${alert.attack_type} alert ${alert.id}`} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(alert); } }}><td><SeverityLabel severity={alert.severity}/></td><td><span className="alert-open"><b>{alert.attack_type}</b><small>{alert.id}</small></span></td><td><b>{alert.source_ip}</b><small>to {alert.destination_ip}</small></td><td>{alert.protocol}</td><td>{(alert.confidence*100).toFixed(1)}%</td><td className={`status-text status-text--${alert.status}`}>{alert.status.replace("_"," ")}</td><td><time dateTime={alert.timestamp}>{formatTime(alert.timestamp)}</time></td></tr>)}</tbody></table></div>
       <div className="alert-cards" aria-label="Security alerts">{filtered.map((alert)=><article className="alert-card" key={alert.id}><div><SeverityLabel severity={alert.severity}/><span className={`status-text status-text--${alert.status}`}>{alert.status.replace("_"," ")}</span></div><h3>{alert.attack_type}</h3><p>{alert.source_ip} → {alert.destination_ip}</p><dl><div><dt>Protocol</dt><dd>{alert.protocol}</dd></div><div><dt>Detector score</dt><dd>{(alert.confidence*100).toFixed(1)}%</dd></div><div><dt>Observed</dt><dd>{formatTime(alert.timestamp)}</dd></div></dl><button className="secondary-button" onClick={() => onSelect(alert)} aria-label={`Open ${alert.attack_type} alert ${alert.id}`}>Inspect alert</button></article>)}</div>
     </>}
@@ -158,7 +163,7 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
   const updateStatus = async (status: AlertStatus) => {
     if (!auth.authenticated) { auth.openLogin(); return; }
     if (readOnly) return; setSubmitting(true); setFeedbackState("");
-    try { await submitAlertFeedback(alert.id,{analyst:"dashboard-analyst",status,notes:`Status changed to ${status.replace("_"," ")} from the dashboard.`}); onStatusChange(alert.id,status); setFeedbackState(`Saved as ${status.replace("_"," ")}.`); }
+    try { await submitAlertFeedback(alert.id,{status,notes:`Status changed to ${status.replace("_"," ")} from the dashboard.`}); onStatusChange(alert.id,status); setFeedbackState(`Saved as ${status.replace("_"," ")}.`); }
     catch(error){setFeedbackState(error instanceof Error?error.message:"Could not save analyst feedback.");} finally{setSubmitting(false);}
   };
   const current = explanations[activeStage];

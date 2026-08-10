@@ -80,7 +80,8 @@ async def test_queue_limit_rejects_entire_batch(tmp_path) -> None:
             model_dir=str(MODEL_DIR),
             allow_fallback=True,
             ingestion_queue_limit=1,
-        )
+        ),
+        initialize_schema_for_tests=True,
     )
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(

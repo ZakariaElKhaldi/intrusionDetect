@@ -9,6 +9,9 @@ not treated as proof of detection effectiveness or operational capacity.
 - Authentication fails closed when enabled without an Argon2id password hash or
   a 32-byte signing secret. Mutation APIs use short-lived bearer tokens, login
   attempts are throttled, and authentication responses are marked `no-store`.
+- Redrive and analyst-feedback audit identities are derived from the validated
+  token; caller-authored identity fields are never persisted as operator
+  evidence.
 - The browser expires sessions at the declared token deadline, handles `401`
   responses, bounds HTTP waits, and reconnects WebSockets with capped
   exponential backoff and jitter.
@@ -19,9 +22,40 @@ not treated as proof of detection effectiveness or operational capacity.
   frame, MIME-sniffing, referrer, and browser-permission headers. The backend
   container runs as UID/GID 10001 and exposes distinct liveness and readiness
   probes.
+- The API rejects unapproved HTTP host headers using an explicit deployment
+  allowlist. Local defaults accept only loopback/internal names; deployments
+  must set `IOT_IDS_ALLOWED_HOSTS` to their ingress hostname.
+- `/metrics` uses the official Prometheus Python client and exposes normalized
+  route counts/latency plus database, queue, dead-letter, outbox, and live
+  connection gauges without event-, user-, or device-level labels.
+- Application request and authentication logs are structured JSON with
+  generated request IDs and normalized route templates. The formatter uses an
+  explicit field allowlist and excludes query strings, bodies, credentials,
+  tokens, database URLs, and caller-provided identity values.
 - The promoted RT-IoT2022 artifacts, schema, dataset checksum, calibration
   metadata, and drift reference are cryptographically bound and checked during
   preflight.
+- GitHub Actions are configured with full-commit action pins and read-only
+  repository permissions. The normal gate is hermetic over the tracked sample
+  and model bundle; a separate PostgreSQL 17 job is configured to verify
+  migrations, locked claims, and concurrent redrive/claim transition ordering.
+  Manual/tag release gates fetch and checksum the full corpus before running
+  browser E2E and all preflight checks. They are also configured to build the
+  Compose images, exercise the same-origin container route, verify non-root
+  users/read-only roots, and remove the disposable database volume afterward.
+- API, ingestion-worker, and model-health-worker startup validate runtime
+  settings and refuse uninitialized or stale database schemas. Table creation
+  is limited to an explicit programmatic test path; deployed services require
+  `alembic upgrade head` to complete first.
+- The backend container installs the exact committed `uv.lock` graph with
+  `uv sync --locked`; local virtual environments, Node modules, test artifacts,
+  and repository metadata are excluded from the Docker build context.
+- The frontend runtime uses NGINX's maintained unprivileged image on port 8080;
+  neither application container requires root at runtime.
+- Stateless application containers use read-only root filesystems, drop all
+  Linux capabilities, prohibit privilege escalation, and receive only a
+  temporary `/tmp` mount. The stateful PostgreSQL service retains its required
+  data-volume permissions.
 
 ## Required before an Internet-exposed or defensive production deployment
 
@@ -29,17 +63,18 @@ not treated as proof of detection effectiveness or operational capacity.
 |---|---|---|
 | Detection validity | RT-IoT2022 random-split scores do not establish performance on the target network. | Collect authorized, session-separated traffic representative of the deployment; run an untouched temporal/external evaluation and approve measured false-positive and per-family recall bounds. |
 | NFStream route | No genuine labelled NFStream corpus or promoted native bundle exists. | Complete the isolated capture and label protocol, support gates, provenance checks, and offline-PCAP evaluation. Live-interface capture remains separately disabled. |
-| PostgreSQL recovery | The repository contains queue and benchmark tooling, but a sustained multi-worker fault/recovery run is environment-dependent. | Record concurrent claim, termination-before/after-commit, redrive race, outbox recovery, backup, and restore evidence against the deployed PostgreSQL version. |
+| PostgreSQL recovery | CI is configured to test migration compatibility, locked-row claim behavior, and redrive/claim serialization on disposable PostgreSQL 17, but a successful run and sustained recovery evidence remain environment-dependent. | Record the CI result plus termination-before/after-commit, outbox recovery, backup, and restore evidence against the deployed PostgreSQL topology and version. |
 | Capacity | Local replay latency is not a capacity test. | Establish expected and peak flow rates; measure p50/p95 intake, queue wait, processing, end-to-end latency, backpressure, and recovery time on production-equivalent hardware. |
 | Availability | Compose is a single-site demonstration. | Define SLOs, alert thresholds, rollout/rollback, database high availability, tested backups, disaster recovery, and an on-call runbook. |
 | Identity | Authentication is a hardened single-admin design with process-local throttling and no revocation store. | For multiple replicas or operators, use shared throttling, managed identity/RBAC, token revocation or short-session policy, auditable account lifecycle, and centralized secrets. |
 | Network security | TLS and perimeter controls are deployment concerns. | Terminate validated TLS at a trusted ingress, restrict hosts/origins and exposed ports, enable HSTS after validation, and run an authorized application/infrastructure security assessment. |
-| Observability | Health, queue, outbox, drift, and immutable job evidence exist, but no production telemetry backend is configured. | Export centralized structured logs, metrics and alerts; verify retention, clock synchronization, sensitive-data redaction, dashboards, and alert delivery. |
+| Observability | Health, queue, outbox, drift, immutable job evidence, and a Prometheus scrape endpoint exist, but no production telemetry backend is configured. | Connect centralized logs and Prometheus-compatible storage/alerts; verify retention, clock synchronization, sensitive-data redaction, dashboards, and alert delivery. |
 | Governance | Model drift never proves accuracy loss and automation is intentionally disabled. | Assign owners for feedback review, drift triage, model approval, incident response, evidence retention, and periodic effectiveness review. |
 
 ## Release gates
 
-`make project-preflight` is the local engineering gate. A deployment release
+`make project-preflight` is the local engineering gate and the manual/tag
+`Release gate` workflow is configured to reproduce it from clean environments. A deployment release
 must additionally fail if any applicable row above lacks signed or otherwise
 immutable evidence from the target environment. In particular, no UI label,
 manifest flag, local compatibility file, or successful demo may be used to

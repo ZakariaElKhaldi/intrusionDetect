@@ -178,7 +178,8 @@ async def test_alert_detail_and_feedback(fallback_client: httpx.AsyncClient) -> 
 
     feedback = await fallback_client.post(
         f"/alerts/{alert_id}/feedback",
-        json={"analyst": "test-analyst", "status": "investigating", "notes": "Reviewing"},
+        json={"analyst": "spoofed-identity", "status": "investigating", "notes": "Reviewing"},
     )
     assert feedback.status_code == 201
     assert feedback.json()["status"] == "investigating"
+    assert feedback.json()["analyst"] == "admin"

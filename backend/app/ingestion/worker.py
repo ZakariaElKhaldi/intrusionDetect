@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.database.models import IngestionJob, OutboxEvent
+from app.database.schema import verify_schema_current
 from app.database.session import create_engine_and_session
 from app.features.canonical_schema import FlowObservation
 from app.inference.model_registry import ModelRegistry, ModelRouteError
@@ -184,7 +185,9 @@ class IngestionWorker:
 
 def run_worker() -> None:
     settings = Settings.from_env()
+    settings.validate()
     engine, session_factory = create_engine_and_session(settings.database_url)
+    verify_schema_current(engine)
     registry = ModelRegistry(
         settings.model_artifact_path,
         settings.model_dir,

@@ -56,7 +56,9 @@ describe("dashboard", () => {
     await user.click(screen.getByRole("button", { name: /Alerts/i }));
     expect(await screen.findByText("No alerts recorded")).toBeInTheDocument();
     expect(screen.queryByText(/ALT-03048/)).not.toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("No fixture records");
+    expect(
+      screen.getByText("Backend unavailable. No fixture records are mixed into this connected workspace."),
+    ).toBeInTheDocument();
   });
 
   it("labels explicitly requested fixture data permanently", () => {

@@ -303,6 +303,19 @@ describe("frontend API adapter", () => {
     expect(headers.get("Authorization")).toBe("Bearer signed-token");
   });
 
+  it("does not attach tokens or entity headers to public read requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    setApiAccessToken("signed-token");
+
+    await getAlerts();
+
+    const headers = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(headers.get("Authorization")).toBeNull();
+    expect(headers.get("Content-Type")).toBeNull();
+    expect(headers.get("Accept")).toBe("application/json");
+  });
+
   it("normalizes task-specific evaluation evidence without mixing stages", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
       stage: "binary",
@@ -374,7 +387,6 @@ describe("frontend API adapter", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(submitAlertFeedback("alert/one", {
-      analyst: "soc-analyst",
       status: "investigating",
       notes: "Reviewing route.",
     })).resolves.toEqual(response);
@@ -383,7 +395,6 @@ describe("frontend API adapter", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          analyst: "soc-analyst",
           status: "investigating",
           notes: "Reviewing route.",
         }),
@@ -394,19 +405,17 @@ describe("frontend API adapter", () => {
   it("surfaces FastAPI validation details in a typed API error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
       detail: [
-        { loc: ["body", "analyst"], msg: "Field required", type: "missing" },
         { loc: ["body", "status"], msg: "Input should be valid", type: "literal_error" },
       ],
     }, { status: 422 })));
 
     const failure = submitAlertFeedback("alert-1", {
-      analyst: "",
       status: "new",
     });
     await expect(failure).rejects.toMatchObject({
       name: "ApiError",
       status: 422,
-      message: "Field required; Input should be valid",
+      message: "Input should be valid",
     } satisfies Partial<ApiError>);
   });
 });

@@ -29,10 +29,34 @@ export IOT_IDS_MODEL_DIR="${REPOSITORY_DIR}/models/production"
 export IOT_IDS_DATASET_PATH="${DATASET:-${REPOSITORY_DIR}/data/raw/RT_IOT2022.csv}"
 export IOT_IDS_ALLOW_FALLBACK=false
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/iot-ids-uv-cache}"
+export IOT_IDS_AUTH_ENABLED=true
+export IOT_IDS_ADMIN_USERNAME=admin
+BENCHMARK_ADMIN_PASSWORD="benchmark-${RANDOM}-${RANDOM}-$(date +%s)"
+export IOT_IDS_ADMIN_PASSWORD_HASH="$(
+  printf '%s\n' "${BENCHMARK_ADMIN_PASSWORD}" |
+    env PYTHONPATH="${REPOSITORY_DIR}/backend" \
+      "${REPOSITORY_DIR}/backend/.venv/bin/python" -m app.api.auth --password-stdin
+)"
+unset BENCHMARK_ADMIN_PASSWORD
+export IOT_IDS_SECRET_KEY="$(
+  "${REPOSITORY_DIR}/backend/.venv/bin/python" -c \
+    'import secrets; print(secrets.token_urlsafe(48))'
+)"
+export IOT_IDS_API_TOKEN="$(
+  env PYTHONPATH="${REPOSITORY_DIR}/backend" \
+    "${REPOSITORY_DIR}/backend/.venv/bin/python" -c \
+    'import os; from app.api.auth import create_access_token; print(create_access_token("admin", os.environ["IOT_IDS_SECRET_KEY"], expires_in=1800)[0])'
+)"
 
 (
   cd backend
-  exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010
+  .venv/bin/alembic upgrade head
+)
+
+(
+  cd backend
+  exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010 \
+    --no-access-log --no-server-header
 ) &
 BACKEND_PID=$!
 

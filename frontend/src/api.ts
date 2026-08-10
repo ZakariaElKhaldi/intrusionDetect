@@ -297,8 +297,15 @@ async function errorDetail(response: Response): Promise<unknown> {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
-  headers.set("Content-Type", "application/json");
-  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  headers.set("Accept", "application/json");
+  if (init?.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  const method = (init?.method ?? "GET").toUpperCase();
+  const requiresToken = !["GET", "HEAD", "OPTIONS"].includes(method) || path === "/auth/me";
+  if (accessToken && requiresToken && path !== "/auth/login") {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort("request-timeout"), 15_000);
   const abortFromCaller = () => controller.abort(init?.signal?.reason);

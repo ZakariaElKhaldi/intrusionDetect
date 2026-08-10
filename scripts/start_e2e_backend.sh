@@ -19,4 +19,6 @@ export IOT_IDS_SECRET_KEY="project-e2e-secret-key-at-least-32-bytes"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/iot-ids-uv-cache}"
 
 cd "${REPOSITORY_DIR}/backend"
-exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
+.venv/bin/alembic upgrade head
+exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001 \
+  --no-access-log --no-server-header

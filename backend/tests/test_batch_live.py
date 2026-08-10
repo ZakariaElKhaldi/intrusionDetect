@@ -128,7 +128,8 @@ async def test_batch_failure_rolls_back_every_row_and_broadcasts_nothing(tmp_pat
             database_url=f"sqlite:///{tmp_path / 'atomic.db'}",
             allow_fallback=True,
             instance_id="atomic-test",
-        )
+        ),
+        initialize_schema_for_tests=True,
     )
     socket = FakeSocket()
     app.state.live.connections.add(socket)  # type: ignore[arg-type]

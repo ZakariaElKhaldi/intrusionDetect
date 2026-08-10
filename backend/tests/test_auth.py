@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from app.api.auth import (
+    LoginRateLimiter,
     create_access_token,
     hash_password,
     verify_access_token,
@@ -34,6 +35,18 @@ def test_password_hashing_and_verification() -> None:
     assert hashed.startswith("$argon2id$")
     assert verify_password(password, hashed) is True
     assert verify_password("wrong_password", hashed) is False
+
+
+def test_login_limiter_does_not_allocate_on_reads_and_bounds_tracked_keys() -> None:
+    limiter = LoginRateLimiter(maximum=2, window_seconds=60, max_keys=3)
+    for index in range(20):
+        assert limiter.retry_after(f"unknown:{index}", now=0) is None
+    assert limiter.tracked_keys == 0
+
+    for index in range(10):
+        limiter.failed(f"failed:{index}", now=float(index))
+    assert limiter.tracked_keys == 3
+    assert limiter.retry_after("failed:9", now=10) is None
 
 
 def test_token_creation_validation_tampering_and_expiry() -> None:
@@ -91,10 +104,34 @@ async def test_startup_rejects_unsafe_or_invalid_runtime_configuration(tmp_path)
         async with invalid_queue.router.lifespan_context(invalid_queue):
             pass
 
+    invalid_logging = create_app(
+        Settings(
+            database_url=f"sqlite:///{tmp_path / 'logging.db'}",
+            log_format="free-form",
+            allow_fallback=True,
+        )
+    )
+    with pytest.raises(ValueError, match="IOT_IDS_LOG_FORMAT"):
+        async with invalid_logging.router.lifespan_context(invalid_logging):
+            pass
+
+    invalid_hosts = create_app(
+        Settings(
+            database_url=f"sqlite:///{tmp_path / 'hosts.db'}",
+            allowed_hosts=("*",),
+            allow_fallback=True,
+        )
+    )
+    with pytest.raises(ValueError, match="IOT_IDS_ALLOWED_HOSTS"):
+        async with invalid_hosts.router.lifespan_context(invalid_hosts):
+            pass
+
 
 @pytest.mark.anyio
 async def test_login_me_and_protected_mutations(tmp_path) -> None:
-    app = create_app(authenticated_settings(tmp_path))
+    app = create_app(
+        authenticated_settings(tmp_path), initialize_schema_for_tests=True
+    )
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -124,8 +161,34 @@ async def test_login_me_and_protected_mutations(tmp_path) -> None:
 
 
 @pytest.mark.anyio
+async def test_login_validation_never_reflects_passwords(tmp_path) -> None:
+    app = create_app(
+        authenticated_settings(tmp_path, "validation.db"),
+        initialize_schema_for_tests=True,
+    )
+    secret_value = "sensitive-password-fragment" * 50
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/auth/login",
+                json={"username": "admin", "password": secret_value},
+            )
+    assert response.status_code == 422
+    assert secret_value not in response.text
+    assert response.json()["detail"][0] == {
+        "type": "string_too_long",
+        "loc": ["body", "password"],
+        "msg": "String should have at most 1024 characters",
+    }
+
+
+@pytest.mark.anyio
 async def test_failed_login_rate_limit(tmp_path) -> None:
-    app = create_app(authenticated_settings(tmp_path, "limit.db"))
+    app = create_app(
+        authenticated_settings(tmp_path, "limit.db"), initialize_schema_for_tests=True
+    )
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -146,7 +209,9 @@ async def test_failed_login_rate_limit(tmp_path) -> None:
 async def test_login_throttle_also_blocks_username_spraying_from_one_client(
     tmp_path,
 ) -> None:
-    app = create_app(authenticated_settings(tmp_path, "spray.db"))
+    app = create_app(
+        authenticated_settings(tmp_path, "spray.db"), initialize_schema_for_tests=True
+    )
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"

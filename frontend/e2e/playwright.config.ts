@@ -23,7 +23,7 @@ export default defineConfig({
       command: "./scripts/start_e2e_backend.sh",
       cwd: repository,
       env: { IOT_IDS_INSTANCE_ID: "project-e2e-production-preview" },
-      url: "http://127.0.0.1:8001/health",
+      url: "http://127.0.0.1:8001/livez",
       reuseExistingServer: false,
       timeout: 60_000,
     },

@@ -25,7 +25,9 @@ async def test_health_echoes_instance_and_invalidates_dataset_cache_on_stat_chan
             allow_fallback=True,
             replay_dataset_path=str(dataset),
             instance_id="project-demo-42",
-        )
+            allowed_hosts=("test",),
+        ),
+        initialize_schema_for_tests=True,
     )
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
@@ -50,8 +52,32 @@ async def test_health_echoes_instance_and_invalidates_dataset_cache_on_stat_chan
                 "/livez", headers={"X-Request-ID": "not allowed/request-id"}
             )
             assert replaced_request_id.headers["x-request-id"] != "not allowed/request-id"
+            rejected_host = await client.get(
+                "/livez", headers={"Host": "untrusted.example"}
+            )
+            assert rejected_host.status_code == 400
+            preflight = await client.options(
+                "/predict",
+                headers={
+                    "Origin": "http://localhost:5173",
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "authorization,content-type",
+                },
+            )
+            assert preflight.status_code == 200
+            assert preflight.headers["access-control-allow-origin"] == (
+                "http://localhost:5173"
+            )
+            assert "access-control-allow-credentials" not in preflight.headers
             ready = await client.get("/readyz")
             assert ready.status_code == 200
+            metrics = await client.get("/metrics")
+            assert metrics.status_code == 200
+            assert metrics.headers["content-type"].startswith("text/plain")
+            assert "iot_ids_database_up 1.0" in metrics.text
+            assert "iot_ids_ingestion_queue_depth 0.0" in metrics.text
+            assert 'route="/livez"' in metrics.text
+            assert "iot_ids_http_request_duration_seconds_bucket" in metrics.text
 
             with dataset.open("a", encoding="utf-8") as handle:
                 handle.write("\n")

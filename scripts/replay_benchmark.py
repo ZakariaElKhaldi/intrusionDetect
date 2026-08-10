@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sqlite3
 import statistics
 import time
@@ -17,12 +18,20 @@ from urllib.request import Request, urlopen
 from websockets.asyncio.client import connect
 
 
-def api_json(base_url: str, path: str, payload: dict | None = None) -> dict | list:
+def api_json(
+    base_url: str,
+    path: str,
+    payload: dict | None = None,
+    token: str | None = None,
+) -> dict | list:
     data = json.dumps(payload).encode() if payload is not None else None
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     request = Request(
         f"{base_url}{path}",
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST" if payload is not None else "GET",
     )
     try:
@@ -61,7 +70,13 @@ def percentile(values: list[float], quantile: float) -> float:
 
 
 async def measure_scenario(
-    *, base_url: str, ws_url: str, database: Path, scenario: str, limit: int
+    *,
+    base_url: str,
+    ws_url: str,
+    database: Path,
+    scenario: str,
+    limit: int,
+    token: str | None,
 ) -> dict:
     before = database_snapshot(database)
     event_counts = {"prediction.created": 0, "alert.created": 0}
@@ -92,11 +107,14 @@ async def measure_scenario(
                 "interval_ms": 0,
                 "speed": 100,
             },
+            token,
         )
         if response["status"] != "running":
             raise RuntimeError(f"replay did not start: {response}")
         while True:
-            state = await asyncio.to_thread(api_json, base_url, "/api/v1/replay/status")
+            state = await asyncio.to_thread(
+                api_json, base_url, "/api/v1/replay/status", None, token
+            )
             if state["status"] in {"completed", "failed", "stopped"}:
                 break
             await asyncio.sleep(0.02)
@@ -170,11 +188,12 @@ async def main() -> None:
     parser.add_argument("--ws-url", default="ws://127.0.0.1:8010/api/v1/live")
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--limit", type=int, default=200)
+    parser.add_argument("--token", default=os.getenv("IOT_IDS_API_TOKEN"))
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--output-markdown", type=Path, required=True)
     args = parser.parse_args()
 
-    health = await asyncio.to_thread(api_json, args.base_url, "/health")
+    health = await asyncio.to_thread(api_json, args.base_url, "/health", None, args.token)
     scenarios = []
     for scenario in ("normal", "attack"):
         scenarios.append(
@@ -184,6 +203,7 @@ async def main() -> None:
                 database=args.database,
                 scenario=scenario,
                 limit=args.limit,
+                token=args.token,
             )
         )
     report = {
@@ -196,7 +216,7 @@ async def main() -> None:
         "fallback_active": health.get("fallback_active", health.get("fallback")),
         "measurement_notes": [
             "WebSocket counts are observed from one client connected before replay starts.",
-            "Scores are uncalibrated and this benchmark does not establish production capacity.",
+            "Probability calibration is verified by the model bundle; this benchmark does not measure accuracy or establish production capacity.",
         ],
         "scenarios": scenarios,
     }

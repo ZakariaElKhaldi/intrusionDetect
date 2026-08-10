@@ -26,15 +26,66 @@ export function formatTime(value: string) {
 }
 
 export function parseCsv(text: string): Record<string, string | number>[] {
-  const lines = text.trim().split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) throw new Error("CSV needs a header and at least one observation.");
-  const split = (line: string) => line.split(",").map((part) => part.trim().replace(/^"|"$/g, ""));
-  const headers = split(lines[0]);
+  const records: string[][] = [];
+  let record: string[] = [];
+  let field = "";
+  let quoted = false;
+  let quoteClosed = false;
+  const finishField = () => {
+    record.push(field.trim());
+    field = "";
+    quoteClosed = false;
+  };
+  const finishRecord = () => {
+    finishField();
+    if (record.some((value) => value !== "")) records.push(record);
+    record = [];
+  };
+
+  const source = text.replace(/^\uFEFF/, "");
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quoted) {
+      if (character === '"') {
+        if (source[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else {
+          quoted = false;
+          quoteClosed = true;
+        }
+      } else field += character;
+      continue;
+    }
+    if (quoteClosed) {
+      if (character === ",") finishField();
+      else if (character === "\n" || character === "\r") {
+        finishRecord();
+        if (character === "\r" && source[index + 1] === "\n") index += 1;
+      } else if (!/\s/.test(character)) {
+        throw new Error("CSV contains characters after a closing quote.");
+      }
+      continue;
+    }
+    if (character === '"') {
+      if (field.trim()) throw new Error("CSV contains a quote inside an unquoted field.");
+      field = "";
+      quoted = true;
+    } else if (character === ",") finishField();
+    else if (character === "\n" || character === "\r") {
+      finishRecord();
+      if (character === "\r" && source[index + 1] === "\n") index += 1;
+    } else field += character;
+  }
+  if (quoted) throw new Error("CSV contains an unterminated quoted field.");
+  if (field || record.length || quoteClosed) finishRecord();
+
+  if (records.length < 2) throw new Error("CSV needs a header and at least one observation.");
+  const headers = records[0];
   if (new Set(headers).size !== headers.length || headers.some((header) => !header)) {
     throw new Error("CSV headers must be unique and non-empty.");
   }
-  return lines.slice(1).map((line) => {
-    const values = split(line);
+  return records.slice(1).map((values) => {
     if (values.length !== headers.length) throw new Error("Every row must match the header column count.");
     return Object.fromEntries(headers.map((header, i) => {
       const numeric = Number(values[i]);
