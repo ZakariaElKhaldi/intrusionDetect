@@ -248,3 +248,4 @@ behavior-policy-aware, automatically adapting, or edge-deployed IDS.
 - [Lundberg and Lee, SHAP (2017)](https://proceedings.neurips.cc/paper_files/paper/2017/hash/8a20a8621978632d76c43dfd28b67767-Abstract.html)
 - [scikit-learn probability calibration guide](https://scikit-learn.org/stable/modules/calibration.html)
 - [OWASP API4:2023 Unrestricted Resource Consumption](https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/)
+- [Nginx `client_max_body_size` directive](https://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size)

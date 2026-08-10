@@ -564,6 +564,7 @@ export async function getEvaluation(stage: "binary" | "multiclass"): Promise<Eva
     ? cascadeValue as Record<string, unknown> : undefined;
   return {
     stage,
+    probability_calibrated: body.probability_calibrated === true,
     candidates: rawCandidates
       .map((candidate) => evaluationCandidate(candidate, champion))
       .filter((candidate): candidate is EvaluationCandidate => candidate !== null),

@@ -56,6 +56,7 @@ def test_frontend_gateway_enforces_same_origin_and_browser_security_policy() -> 
     assert "proxy_pass http://backend:8000" in nginx
     assert "proxy_set_header Upgrade $http_upgrade" in nginx
     assert "proxy_set_header X-Request-ID $request_id" in nginx
+    assert "client_max_body_size 50m;" in nginx
     assert "Content-Security-Policy" in nginx
     assert "frame-ancestors 'none'" in nginx
     assert "X-Content-Type-Options \"nosniff\"" in nginx

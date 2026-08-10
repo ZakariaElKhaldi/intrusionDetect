@@ -322,6 +322,7 @@ describe("frontend API adapter", () => {
   it("normalizes task-specific evaluation evidence without mixing stages", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
       stage: "binary",
+      probability_calibrated: true,
       selected_champion: { model_name: "hist_gradient_boosting" },
       candidates: [{
         model_name: "hist_gradient_boosting",
@@ -336,6 +337,7 @@ describe("frontend API adapter", () => {
 
     const report = await getEvaluation("binary");
     expect(report.selected_champion).toBe("hist_gradient_boosting");
+    expect(report.probability_calibrated).toBe(true);
     expect(report.candidates[0]).toMatchObject({
       name: "hist_gradient_boosting",
       selected: true,

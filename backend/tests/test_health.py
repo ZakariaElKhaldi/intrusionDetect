@@ -78,6 +78,7 @@ async def test_health_echoes_instance_and_invalidates_dataset_cache_on_stat_chan
             assert "iot_ids_ingestion_queue_depth 0.0" in metrics.text
             assert 'route="/livez"' in metrics.text
             assert "iot_ids_http_request_duration_seconds_bucket" in metrics.text
+            assert "iot_ids_live_websocket_rejections_total 0.0" in metrics.text
 
             with dataset.open("a", encoding="utf-8") as handle:
                 handle.write("\n")

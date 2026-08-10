@@ -1,14 +1,14 @@
 {
   "schema_version": "replay-benchmark-v1",
-  "recorded_at": "2026-08-04T22:44:00.921355+00:00",
+  "recorded_at": "2026-08-10T21:30:45.136157+00:00",
   "environment": "local single-process FastAPI, promoted models, disposable SQLite",
   "dataset_checksum": "956956c09c1764584fa08acd0f6876475626bcedcd6a6b1f8c492c2e9a2089ea",
-  "detector_model_version": "binary-hist_gradient_boosting-fbc864a2f90c",
-  "classifier_model_version": "multiclass-hist_gradient_boosting-43e33432abfc",
+  "detector_model_version": "binary-hist_gradient_boosting-2102398e1781",
+  "classifier_model_version": "multiclass-random_forest-bfe3010d65de",
   "fallback_active": false,
   "measurement_notes": [
     "WebSocket counts are observed from one client connected before replay starts.",
-    "Scores are uncalibrated and this benchmark does not establish production capacity."
+    "Probability calibration is verified by the model bundle; this benchmark does not measure accuracy or establish production capacity."
   ],
   "scenarios": [
     {
@@ -24,13 +24,13 @@
       "prediction_event_count": 200,
       "alert_event_count": 0,
       "failures": 0,
-      "wall_time_seconds": 2.641988,
-      "throughput_observations_per_second": 75.701,
+      "wall_time_seconds": 3.49404,
+      "throughput_observations_per_second": 57.24,
       "end_to_end_latency_ms": {
         "count": 200,
-        "mean": 12.518061,
-        "p50": 11.763722,
-        "p95": 15.982981
+        "mean": 16.644286,
+        "p50": 15.896306,
+        "p95": 20.108351
       }
     },
     {
@@ -42,17 +42,17 @@
       "processed": 200,
       "persisted_observations": 200,
       "persisted_predictions": 200,
-      "persisted_alerts": 192,
+      "persisted_alerts": 196,
       "prediction_event_count": 200,
-      "alert_event_count": 192,
+      "alert_event_count": 196,
       "failures": 0,
-      "wall_time_seconds": 6.400978,
-      "throughput_observations_per_second": 31.245,
+      "wall_time_seconds": 8.495121,
+      "throughput_observations_per_second": 23.543,
       "end_to_end_latency_ms": {
         "count": 200,
-        "mean": 29.701044,
-        "p50": 30.126766,
-        "p95": 32.088397
+        "mean": 40.157785,
+        "p50": 40.142333,
+        "p95": 43.645562
       }
     }
   ]
