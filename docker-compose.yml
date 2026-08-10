@@ -50,6 +50,9 @@ services:
       IOT_IDS_ADMIN_PASSWORD_HASH: "${IOT_IDS_ADMIN_PASSWORD_HASH:?generate an Argon2id hash first}"
       IOT_IDS_SECRET_KEY: "${IOT_IDS_SECRET_KEY:?set a random secret of at least 32 bytes}"
       IOT_IDS_ACCESS_TOKEN_MINUTES: "${IOT_IDS_ACCESS_TOKEN_MINUTES:-30}"
+      # The backend is reachable only from this private network and host
+      # loopback; the edge NGINX gateway overwrites X-Forwarded-For.
+      FORWARDED_ALLOW_IPS: "*"
     depends_on:
       database:
         condition: service_healthy

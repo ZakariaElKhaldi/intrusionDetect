@@ -503,6 +503,8 @@ body { font-size: 16px; line-height: 1.5; }
 .explanation-meta span, .support-row small, .result-summary span,
 .validation-item, .dropzone small, .raw-details pre { font-size: 12px; }
 .nav-button, .text-button, .primary-button, .secondary-button { font-size: 14px; }
+.pending-banner, .empty-state p, .dropzone b, .model-score span { font-size: 14px; }
+.preview-scroll th, .step-label b, .avatar { font-size: 12px; }
 .page-title h1 { font-size: 24px; }
 .page-title p, .drawer-section p, .model-note, .research-warning { font-size: 14px; }
 .panel-heading h2 { font-size: 18px; }
@@ -535,7 +537,7 @@ body { font-size: 16px; line-height: 1.5; }
 .alert-table th { position: sticky; z-index: 1; top: 0; padding: 12px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); color: var(--ink-soft); text-align: left; font-size: 12px; text-transform: uppercase; }
 .alert-table td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .alert-table td > b, .alert-table td > small { display: block; }
-.alert-open { display: grid; gap: 3px; min-height: 44px; padding: 3px 0; border: 0; background: transparent; color: var(--ink); text-align: left; }
+.alert-open { display: grid; width: 100%; gap: 3px; min-height: 44px; padding: 3px 0; border: 0; background: transparent; color: var(--ink); text-align: left; }
 .alert-open b { font-size: 14px; }
 .alert-open small { color: var(--ink-soft); font-family: "SFMono-Regular", Consolas, monospace; }
 .alert-cards { display: none; }
@@ -700,8 +702,10 @@ body { font-size: 16px; line-height: 1.5; }
   .mobile-more summary { display: flex; min-height: 56px; align-items: center; justify-content: center; flex-direction: column; gap: 2px; border-radius: 4px; color: var(--ink-soft); font-size: 12px; list-style: none; cursor: pointer; }
   .mobile-more summary::-webkit-details-marker { display: none; }
   .mobile-more summary svg { width: 18px; }
+  .mobile-more--current summary { color: var(--ink); box-shadow: inset 0 -3px 0 var(--accent); }
   .mobile-more-menu { position: absolute; right: 0; bottom: 64px; display: grid; width: min(250px,80vw); padding: 6px; border: 1px solid var(--line-strong); background: #fff; box-shadow: var(--shadow); }
   .mobile-more-menu button { min-height: 44px; border: 0; background: #fff; color: var(--ink); text-align: left; font-size: 14px; }
+  .mobile-more-menu button[aria-current="page"] { background: var(--surface-subtle); font-weight: 700; }
   .fixture-badge { padding-inline: 12px; }
   .replay-fields { grid-template-columns: 1fr; }
   .replay-fields select, .replay-fields input, .primary-button, .secondary-button, .filters select, .search-field, .icon-button { min-height: 44px; }

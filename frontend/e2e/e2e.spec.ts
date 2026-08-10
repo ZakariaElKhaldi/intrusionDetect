@@ -156,7 +156,7 @@ test.describe.serial("production-preview end-to-end path", () => {
     const newAlerts = page.getByLabel(/new alerts/);
     await expect(newAlerts).toBeVisible();
     await page.getByRole("button", { name: "Triage alerts", exact: true }).click();
-    const firstAlert = page.getByRole("row", { name: /^Open .* alert / }).first();
+    const firstAlert = page.getByRole("button", { name: /^Open .* alert / }).first();
     await expect(firstAlert).toBeVisible();
     const alerts = await apiJson<Record<string, unknown>[]>(request, "/alerts");
     expect(alerts.length).toBeGreaterThan(0);
@@ -169,11 +169,11 @@ test.describe.serial("production-preview end-to-end path", () => {
   test("reload hydrates alerts, SHAP works, feedback persists, and focus is restored", async ({ page }) => {
     await waitForConnectedPage(page, "alerts");
     await signIn(page);
-    const row = page.getByRole("row", { name: /^Open .* alert / }).first();
-    await expect(row).toBeVisible();
-    const alertId = await row.getAttribute("data-alert-id");
+    const alertButton = page.getByRole("button", { name: /^Open .* alert / }).first();
+    await expect(alertButton).toBeVisible();
+    const alertId = await alertButton.getAttribute("data-alert-id");
     expect(alertId).toBeTruthy();
-    await row.focus();
+    await alertButton.focus();
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -182,19 +182,24 @@ test.describe.serial("production-preview end-to-end path", () => {
     const classifierTab = dialog.getByRole("tab", { name: "Classifier" });
     await expect(detectorTab).toHaveAttribute("aria-selected", "true", { timeout: 15_000 });
     await expect(dialog.locator(".explanation-stage")).toBeVisible();
-    await classifierTab.click();
+    await detectorTab.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(classifierTab).toBeFocused();
+    await expect(detectorTab).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Enter");
     await expect(classifierTab).toHaveAttribute("aria-selected", "true");
+    await expect(classifierTab).toHaveAttribute("aria-controls", new RegExp("-explanation-panel$"));
     await expect(dialog.locator(".explanation-stage")).toBeVisible();
     await page.getByRole("button", { name: "Resolve" }).click();
     await expect(page.getByText("Saved as resolved.", { exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
-    await expect(page.locator(`[data-alert-id="${alertId}"]`)).toBeFocused();
+    await expect(alertButton).toBeFocused();
 
     await page.reload();
-    const hydratedRow = page.locator(`[data-alert-id="${alertId}"]`);
-    await expect(hydratedRow).toBeVisible();
-    await hydratedRow.click();
+    const hydratedButton = page.getByRole("button", { name: new RegExp(`alert ${alertId}$`) });
+    await expect(hydratedButton).toBeVisible();
+    await hydratedButton.click();
     await expect(
       page.getByRole("dialog").locator(".summary-grid").getByText("resolved", { exact: true }),
     ).toBeVisible();
@@ -244,7 +249,13 @@ test.describe.serial("production-preview end-to-end path", () => {
       await expect(page.getByRole("main")).toBeVisible();
       await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
       if (view === "models") {
-        await page.getByRole("tab", { name: "Classifier", exact: true }).click();
+        const detectorTab = page.getByRole("tab", { name: "Detector", exact: true });
+        const classifierTab = page.getByRole("tab", { name: "Classifier", exact: true });
+        await detectorTab.focus();
+        await page.keyboard.press("ArrowRight");
+        await expect(classifierTab).toBeFocused();
+        await expect(detectorTab).toHaveAttribute("aria-selected", "true");
+        await page.keyboard.press("Enter");
         await expect(
           page.getByRole("heading", { name: "Attack-family classifier comparison" }),
         ).toBeVisible();
@@ -256,6 +267,20 @@ test.describe.serial("production-preview end-to-end path", () => {
         violation.impact === "serious" || violation.impact === "critical"
       );
       expect(blocking, `${view}: ${blocking.map((item) => item.id).join(", ")}`).toEqual([]);
+      const undersizedText = await page.evaluate(() => [...document.body.querySelectorAll<HTMLElement>("*")]
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          const hasDirectText = [...element.childNodes].some(
+            (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
+          );
+          return hasDirectText
+            && style.display !== "none"
+            && style.visibility !== "hidden"
+            && element.getClientRects().length > 0
+            && Number.parseFloat(style.fontSize) < 12;
+        })
+        .map((element) => `${element.tagName.toLowerCase()}.${element.className}:${getComputedStyle(element).fontSize}`));
+      expect(undersizedText, `${view}: readable text floor`).toEqual([]);
       if (["overview", "models", "testing"].includes(view)) {
         await attachViewport(page, `page-${view}.png`);
       }
@@ -271,13 +296,13 @@ test.describe.serial("production-preview end-to-end path", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Alert investigation" })).toBeVisible();
     await expect(page.getByRole("main")).toBeFocused();
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
-    const row = page.getByRole("row", { name: /^Open .* alert / }).first();
-    await row.focus();
+    const alertButton = page.getByRole("button", { name: /^Open .* alert / }).first();
+    await alertButton.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(row).toBeFocused();
+    await expect(alertButton).toBeFocused();
   });
 
   test("desktop, projector, tablet, mobile, and 400%-equivalent reflow do not overflow", async ({ page }) => {

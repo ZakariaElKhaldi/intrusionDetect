@@ -72,6 +72,8 @@ def test_frontend_gateway_enforces_same_origin_and_browser_security_policy() -> 
     assert "proxy_pass http://backend:8000" in nginx
     assert "proxy_set_header Upgrade $http_upgrade" in nginx
     assert "proxy_set_header X-Request-ID $request_id" in nginx
+    assert "proxy_set_header X-Forwarded-For $remote_addr" in nginx
+    assert "$proxy_add_x_forwarded_for" not in nginx
     assert "client_max_body_size 50m;" in nginx
     assert "Content-Security-Policy" in nginx
     assert "frame-ancestors 'none'" in nginx
@@ -87,6 +89,7 @@ def test_compose_has_no_default_database_password_or_cross_origin_browser_url() 
     assert "condition: service_healthy" in compose
     assert '"5173:8080"' in compose
     assert '"127.0.0.1:8000:8000"' in compose
+    assert 'FORWARDED_ALLOW_IPS: "*"' in compose
     assert '\n      - "8000:8000"' not in compose
     assert "read_only: true" in compose
     assert "no-new-privileges:true" in compose

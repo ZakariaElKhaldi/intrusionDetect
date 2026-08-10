@@ -95,6 +95,7 @@ function App() {
   const [replayLimit, setReplayLimit] = useState(40);
   const [replayScenario, setReplayScenario] = useState<ReplayScenario>("attack");
   const pageRef = useRef(page);
+  const mobileMore = useRef<HTMLDetailsElement>(null);
   const seenPredictions = useRef(new Set<string>());
   const lastReplayStatus = useRef<string | null>(null);
 
@@ -303,6 +304,7 @@ function App() {
   }, [mergeAlerts, replay?.status, summaryRange]);
 
   const navigate = useCallback((nextPage: Page, params?: Record<string, string>) => {
+    if (mobileMore.current) mobileMore.current.open = false;
     const search = new URLSearchParams({ view: nextPage, ...params });
     if (fixtureMode) search.set("fixture", "true");
     window.history.pushState({}, "", `${window.location.pathname}?${search.toString()}`);
@@ -437,11 +439,11 @@ function App() {
               })}
             </Fragment>
           ))}
-          <details className="mobile-more">
-            <summary><Menu aria-hidden="true" /><span>More</span></summary>
+          <details ref={mobileMore} className={`mobile-more ${["models", "testing"].includes(page) ? "mobile-more--current" : ""}`}>
+            <summary aria-label={["models", "testing"].includes(page) ? `More navigation, current page ${pageTitles[page][0]}` : "More navigation"}><Menu aria-hidden="true" /><span>More</span></summary>
             <div className="mobile-more-menu">
-              <button type="button" onClick={() => navigate("models")} data-nav-page="models">Validate models</button>
-              <button type="button" onClick={() => navigate("testing")} data-nav-page="testing">Test observations</button>
+              <button type="button" aria-current={page === "models" ? "page" : undefined} onClick={() => navigate("models")} data-nav-page="models">Validate models</button>
+              <button type="button" aria-current={page === "testing" ? "page" : undefined} onClick={() => navigate("testing")} data-nav-page="testing">Test observations</button>
             </div>
           </details>
         </nav>

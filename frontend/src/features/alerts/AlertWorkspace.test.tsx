@@ -36,7 +36,7 @@ describe("AlertWorkspace", () => {
     vi.clearAllMocks();
   });
 
-  it("keeps populated results keyboard-operable while a page refresh is pending", () => {
+  it("keeps populated results available through a native button while a page refresh is pending", () => {
     const onSelect = vi.fn();
     render(
       <AlertWorkspace
@@ -50,12 +50,13 @@ describe("AlertWorkspace", () => {
     act(() => vi.advanceTimersByTime(250));
 
     const region = screen.getByRole("region", { name: "Security alerts" });
-    const row = screen.getByRole("row", { name: /Open NMAP_UDP_SCAN alert alert-1/ });
+    const openButton = screen.getAllByRole("button", { name: /Open NMAP_UDP_SCAN alert alert-1/ })[0];
     expect(region).toHaveAttribute("aria-busy", "true");
     expect(screen.getByRole("table", { name: "Security alerts" })).toBeInTheDocument();
+    expect(openButton).toHaveAttribute("type", "button");
+    expect(openButton.closest("tr")).not.toHaveAttribute("tabindex");
 
-    row.focus();
-    fireEvent.keyDown(row, { key: "Enter" });
+    fireEvent.click(openButton);
     expect(onSelect).toHaveBeenCalledWith(alert);
   });
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
@@ -27,8 +27,8 @@ describe("dashboard", () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: /Alerts/i }));
-    const rows = await screen.findAllByRole("row");
-    await user.click(rows[0]);
+    const alertButtons = await screen.findAllByRole("button", { name: /^Open .* alert / });
+    await user.click(alertButtons[0]);
     expect(await screen.findByRole("dialog", {}, { timeout: 2_000 })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Close alert details" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -74,10 +74,29 @@ describe("dashboard", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Test observations" }));
+    await user.click(screen.getAllByRole("button", { name: "Test observations" })[0]);
     await user.click(await screen.findByRole("button", { name: "Load verified normal example" }));
 
     expect(screen.getByText(/Fixture preview validates files locally/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Predict 1 row" })).toBeDisabled();
+  });
+
+  it("closes the mobile navigation disclosure after choosing a destination", async () => {
+    history.replaceState(null, "", "/?fixture=true");
+    const user = userEvent.setup();
+    render(<App />);
+    const summary = screen.getByText("More").closest("summary");
+    const disclosure = summary?.closest("details");
+    expect(summary).not.toBeNull();
+    expect(disclosure).not.toBeNull();
+
+    await user.click(summary!);
+    expect(disclosure).toHaveAttribute("open");
+    await user.click(within(disclosure!).getByRole("button", { name: "Validate models" }));
+
+    expect(disclosure).not.toHaveAttribute("open");
+    expect(within(disclosure!).getByRole("button", { name: "Validate models" })).toHaveAttribute("aria-current", "page");
+    expect(summary).toHaveAccessibleName("More navigation, current page Model analysis");
+    expect(screen.getByRole("heading", { name: "Model evidence" })).toBeInTheDocument();
   });
 });

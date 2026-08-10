@@ -286,6 +286,14 @@ WebSocket delivery, centralized logs/metrics, backups with restore testing, and
 an external secrets manager. These are deployment requirements, not features
 silently provided by Docker Compose.
 
+In the Compose topology, NGINX is the only remote edge: it replaces rather than
+extends `X-Forwarded-For`, and Uvicorn trusts forwarding metadata because the
+backend is otherwise limited to the private container network and host
+loopback. If the backend is deployed behind a different ingress, replace the
+Compose `FORWARDED_ALLOW_IPS=*` setting with that ingress's exact IP addresses
+or networks. Never combine a publicly reachable backend with wildcard proxy
+trust.
+
 Known readiness blockers and the evidence required to close them are tracked in
 [the production-readiness audit](docs/production-readiness.md). Passing the
 engineering preflight does not waive those external validation requirements.

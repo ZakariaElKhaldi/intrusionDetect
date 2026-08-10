@@ -32,6 +32,11 @@ not treated as proof of detection effectiveness or operational capacity.
 - The API rejects unapproved HTTP host headers using an explicit deployment
   allowlist. Local defaults accept only loopback/internal names; deployments
   must set `IOT_IDS_ALLOWED_HOSTS` to their ingress hostname.
+- The Compose edge replaces caller-provided forwarding chains with its observed
+  client address, and Uvicorn trusts those headers only inside the topology
+  where the backend is private/loopback-bound. This preserves client-scoped
+  login spray throttling without accepting caller-authored addresses at the
+  edge; other ingress topologies must use an exact trusted-proxy allowlist.
 - All HTTP request bodies are bounded even when `Content-Length` is absent, and
   each API process enforces a configurable live WebSocket connection ceiling.
   Capacity refusals use close code `1013` and increment a Prometheus counter.
