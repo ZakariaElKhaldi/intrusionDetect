@@ -97,6 +97,6 @@ describe("dashboard", () => {
     expect(disclosure).not.toHaveAttribute("open");
     expect(within(disclosure!).getByRole("button", { name: "Validate models" })).toHaveAttribute("aria-current", "page");
     expect(summary).toHaveAccessibleName("More navigation, current page Model analysis");
-    expect(screen.getByRole("heading", { name: "Model evidence" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Model analysis" })).toBeInTheDocument();
   });
 });

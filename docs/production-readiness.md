@@ -20,6 +20,10 @@ not treated as proof of detection effectiveness or operational capacity.
 - Operator dialogs contain keyboard focus, close with Escape, and return focus
   to their invoking control. Automated tests cover WCAG 2.1 A/AA Axe findings,
   keyboard operation, mobile reflow, and the authentication dialog behavior.
+- Alert investigation uses native 44-pixel buttons instead of pretending table
+  rows are controls, operational companion text has a tested 12-pixel floor,
+  and the mobile overflow navigation closes after selection while retaining a
+  visible and programmatic current-page indicator.
 - React render failures are contained at the application and workspace levels.
   Recovery UI uses an accessible alert, moves focus to the retry action, keeps
   thrown details out of operator-visible copy, and resets when navigation
@@ -139,6 +143,9 @@ The operations UI exposes “delivering,” lease expiry, and scheduled retry
 timing directly, applying Nielsen Norman Group's [visibility-of-status and
 recognition-over-recall heuristics][nng-heuristics] rather than asking an
 operator to infer those states from an attempt counter.
+Native alert controls follow W3C's [ARIA implementation principle][w3c-aria]
+that a role is a behavioral promise, while the typography floor follows the
+[U.S. Web Design System's legibility guidance][uswds-type].
 
 [owasp-headers]: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
 [owasp-csp]: https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html
@@ -153,3 +160,5 @@ operator to infer those states from an attempt counter.
 [aws-outbox]: https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html
 [python-asyncio]: https://docs.python.org/3.11/library/asyncio-task.html#scheduling-from-other-threads
 [nng-heuristics]: https://media.nngroup.com/media/articles/attachments/Heuristic_Summary1_A4_compressed.pdf
+[w3c-aria]: https://www.w3.org/WAI/ARIA/apg/practices/read-me-first/
+[uswds-type]: https://designsystem.digital.gov/components/typography/

@@ -502,8 +502,8 @@ body { font-size: 16px; line-height: 1.5; }
 .route-card small, .route-card b, .feature-grid dt, .feature-grid dd,
 .explanation-meta span, .support-row small, .result-summary span,
 .validation-item, .dropzone small, .raw-details pre { font-size: 12px; }
-.nav-button, .text-button, .primary-button, .secondary-button { font-size: 14px; }
-.pending-banner, .empty-state p, .dropzone b, .model-score span { font-size: 14px; }
+.nav-button, .text-button, .primary-button, .secondary-button, .stage-tabs button { font-size: 14px; }
+.pending-banner, .empty-state p, .dropzone b, .model-score span, .chart-empty { font-size: 14px; }
 .preview-scroll th, .step-label b, .avatar { font-size: 12px; }
 .page-title h1 { font-size: 24px; }
 .page-title p, .drawer-section p, .model-note, .research-warning { font-size: 14px; }
@@ -585,7 +585,7 @@ body { font-size: 16px; line-height: 1.5; }
 .summary-scope select { min-height: 40px; border: 1px solid var(--line-strong); background: #fff; padding: 0 10px; }
 .summary-scope small { color: var(--ink-soft); font-size: 12px; }
 .timeline-bars { display: flex; height: 190px; align-items: flex-end; gap: 2px; padding: 10px 14px 0; border-bottom: 1px solid var(--line-strong); }
-.timeline-bars button { width: 0; min-width: 0; flex: 1 1 0; padding: 0; border: 0; background: var(--accent-dark); }
+.timeline-bars button { width: 0; min-width: 0; flex: 1 1 0; padding: 0; border: 0; background: var(--accent-dark); font-size: 12px; }
 .timeline-bars button:hover, .timeline-bars button:focus-visible { background: var(--ink); }
 .ingestion-panel { grid-column: 1 / -1; }
 .ingestion-state { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 14px; font-weight: 700; }
