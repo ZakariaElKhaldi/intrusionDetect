@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { getIngestionEvent, getIngestionJobs, getOutboxEvents } from "../../api";
+import { getIngestionEvent, getIngestionJobs, getOutboxEvents, redriveIngestionJobs } from "../../api";
+import { useAuth } from "../../auth";
 import { PanelHeading } from "../../components/PanelHeading";
 import type { CursorPage, IngestionJob, IngestionJobDetail, OutboxEvent } from "../../types";
 
@@ -14,6 +15,7 @@ function State({ value }: { value: string }) {
 }
 
 export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: boolean; refreshKey?: string }) {
+  const auth = useAuth();
   const [tab, setTab] = useState<OperationsTab>("jobs");
   const [jobPage, setJobPage] = useState<CursorPage<IngestionJob> | null>(null);
   const [outboxPage, setOutboxPage] = useState<CursorPage<OutboxEvent> | null>(null);
@@ -29,6 +31,7 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
   const [selected, setSelected] = useState<IngestionJobDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [localRefresh, setLocalRefresh] = useState(0);
 
   useEffect(() => {
     if (fixtureMode) return;
@@ -48,7 +51,7 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [appliedJobs, cursor, fixtureMode, outboxFilter, refreshKey, tab]);
+  }, [appliedJobs, cursor, fixtureMode, localRefresh, outboxFilter, refreshKey, tab]);
 
   const changeTab = (next: OperationsTab) => {
     setTab(next);
@@ -123,7 +126,7 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
 
           {detailLoading ? <div className="operations-detail data-state" role="status">Loading job history…</div> : null}
           {detailError ? <div className="operations-detail data-state data-state--error" role="alert">{detailError}</div> : null}
-          {selected && !detailLoading ? <JobDetail job={selected} onClose={() => setSelected(null)}/> : null}
+          {selected && !detailLoading ? <JobDetail job={selected} authenticated={auth.authenticated} onAuthenticate={auth.openLogin} onClose={() => setSelected(null)} onChanged={async () => { await inspectJob(selected.event_id); setLocalRefresh((value) => value + 1); }}/> : null}
         </>
       )}
     </section>
@@ -134,6 +137,25 @@ function Pagination({ previous, next, onPrevious, onNext }: { previous: boolean;
   return <nav className="pagination" aria-label="Operations pagination"><button className="secondary-button" type="button" disabled={!previous} onClick={onPrevious}>Previous</button><button className="secondary-button" type="button" disabled={!next} onClick={() => next && onNext(next)}>Next</button></nav>;
 }
 
-function JobDetail({ job, onClose }: { job: IngestionJobDetail; onClose: () => void }) {
-  return <section className="operations-detail" aria-label={`Job history for ${job.event_id}`}><div className="operations-detail-heading"><div><span className="eyebrow">Job transition history</span><h3 className="mono">{job.event_id}</h3></div><button className="secondary-button" type="button" onClick={onClose}>Close history</button></div><dl className="operations-detail-facts"><div><dt>Batch</dt><dd className="mono">{job.batch_id}</dd></div><div><dt>Schema</dt><dd>{job.schema_version}</dd></div><div><dt>Extractor</dt><dd className="mono">{job.extractor_fingerprint ?? "Not reported"}</dd></div><div><dt>Redrives</dt><dd>{job.redrive_count}</dd></div></dl><div className="preview-scroll"><table><caption>Immutable state transitions</caption><thead><tr><th>Time</th><th>From</th><th>To</th><th>Action</th><th>Attempt</th><th>Actor</th><th>Error</th><th>Reason</th></tr></thead><tbody>{job.transitions.map((transition) => <tr key={transition.transition_id}><td>{displayTime(transition.created_at)}</td><td>{transition.from_state ?? "Created"}</td><td><State value={transition.to_state}/></td><td>{transition.action}</td><td>{transition.attempt}</td><td>{transition.actor}</td><td>{transition.error_code ?? "—"}</td><td>{transition.reason ?? "—"}</td></tr>)}</tbody></table></div>{!job.transitions.length ? <div className="chart-empty">No transition records were returned.</div> : null}</section>;
+function JobDetail({ job, authenticated, onAuthenticate, onClose, onChanged }: { job: IngestionJobDetail; authenticated: boolean; onAuthenticate: () => void; onClose: () => void; onChanged: () => Promise<void> }) {
+  const [reason, setReason] = useState("");
+  const [eligibility, setEligibility] = useState<{ eligible: boolean; reason: string } | null>(null);
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
+  const preview = async () => {
+    if (!authenticated) { onAuthenticate(); return; }
+    setWorking(true); setError("");
+    try { const result = await redriveIngestionJobs([job.event_id], reason || "eligibility preview", true); setEligibility(result.results[0] ?? null); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Eligibility could not be checked."); }
+    finally { setWorking(false); }
+  };
+  const execute = async () => {
+    if (!authenticated) { onAuthenticate(); return; }
+    if (!reason.trim()) { setError("An operator reason is required."); return; }
+    setWorking(true); setError("");
+    try { await redriveIngestionJobs([job.event_id], reason.trim(), false); setEligibility(null); setReason(""); await onChanged(); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Redrive was refused."); }
+    finally { setWorking(false); }
+  };
+  return <section className="operations-detail" aria-label={`Job history for ${job.event_id}`}><div className="operations-detail-heading"><div><span className="eyebrow">Job transition history</span><h3 className="mono">{job.event_id}</h3></div><button className="secondary-button" type="button" onClick={onClose}>Close history</button></div><dl className="operations-detail-facts"><div><dt>Batch</dt><dd className="mono">{job.batch_id}</dd></div><div><dt>Schema</dt><dd>{job.schema_version}</dd></div><div><dt>Extractor</dt><dd className="mono">{job.extractor_fingerprint ?? "Not reported"}</dd></div><div><dt>Redrives</dt><dd>{job.redrive_count}</dd></div></dl>{job.state === "dead_letter" ? <div className="redrive-controls"><h4>Manual redrive</h4><p>Eligibility is checked against the immutable payload, persisted results, lease state, and active model route.</p><label>Operator reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={1000}/></label><div className="dialog-actions"><button type="button" className="secondary-button" disabled={working} onClick={() => void preview()}>{authenticated ? "Check eligibility" : "Sign in to check eligibility"}</button><button type="button" disabled={working || eligibility?.eligible !== true || !reason.trim()} onClick={() => void execute()}>Redrive job</button></div>{eligibility ? <div className={`data-state ${eligibility.eligible ? "" : "data-state--error"}`} role="status">{eligibility.eligible ? "Eligible for transactional redrive." : `Redrive refused: ${eligibility.reason}`}</div> : null}{error ? <div className="data-state data-state--error" role="alert">{error}</div> : null}</div> : null}<div className="preview-scroll"><table><caption>Immutable state transitions</caption><thead><tr><th>Time</th><th>From</th><th>To</th><th>Action</th><th>Attempt</th><th>Actor</th><th>Error</th><th>Reason</th></tr></thead><tbody>{job.transitions.map((transition) => <tr key={transition.transition_id}><td>{displayTime(transition.created_at)}</td><td>{transition.from_state ?? "Created"}</td><td><State value={transition.to_state}/></td><td>{transition.action}</td><td>{transition.attempt}</td><td>{transition.actor}</td><td>{transition.error_code ?? "—"}</td><td>{transition.reason ?? "—"}</td></tr>)}</tbody></table></div>{!job.transitions.length ? <div className="chart-empty">No transition records were returned.</div> : null}</section>;
 }

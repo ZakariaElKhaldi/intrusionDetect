@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, FileSearch, RotateCcw, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { predict } from "../../api";
+import { useAuth } from "../../auth";
 import { PanelHeading } from "../../components/PanelHeading";
 import { datasetExampleProvenance, verifiedAttackObservationCsv, verifiedNormalObservationCsv } from "../../sampleObservation";
 import { parseCsv } from "../../utils";
@@ -30,6 +31,7 @@ function normalizeResults(value: unknown): PredictionResult[] {
 }
 
 export function ObservationLab() {
+  const auth = useAuth();
   const [rows, setRows] = useState<Record<string, string | number>[]>([]);
   const [filename, setFilename] = useState("");
   const [error, setError] = useState("");
@@ -83,6 +85,7 @@ export function ObservationLab() {
 
   const run = async () => {
     if (!schema.valid || !rows.length) return;
+    if (!auth.authenticated) { auth.openLogin(); return; }
     setLoading(true);
     setError("");
     try {

@@ -83,6 +83,97 @@ def _attack_score(estimator: Any, frame: pd.DataFrame) -> np.ndarray:
     return np.asarray(estimator.predict_proba(frame)[:, classes.index("attack")], dtype=float)
 
 
+def _confidence_scores(estimator: Any, frame: pd.DataFrame) -> np.ndarray:
+    if not len(frame) or not hasattr(estimator, "predict_proba"):
+        return np.asarray([], dtype=float)
+    return np.asarray(estimator.predict_proba(frame).max(axis=1), dtype=float)
+
+
+def _output_numeric_reference(
+    baseline: np.ndarray,
+    calibration: np.ndarray,
+    *,
+    rng: np.random.Generator,
+    rounds: int,
+    window_size: int,
+) -> dict[str, Any] | None:
+    if not len(baseline) or len(calibration) < 4:
+        return None
+    edges = _numeric_edges(baseline)
+    counts, _ = np.histogram(baseline, bins=edges)
+    sample_size = min(2_000, len(baseline))
+    sample = baseline[rng.choice(len(baseline), size=sample_size, replace=False)]
+    return {
+        "count": int(len(baseline)),
+        "min": float(np.min(baseline)),
+        "max": float(np.max(baseline)),
+        "quantiles": {
+            "0.05": float(np.quantile(baseline, 0.05)),
+            "0.5": float(np.quantile(baseline, 0.5)),
+            "0.95": float(np.quantile(baseline, 0.95)),
+        },
+        "histogram_edges": edges.tolist(),
+        "histogram_counts": counts.astype(int).tolist(),
+        "comparison_sample": sample.tolist(),
+        "js_threshold": _calibrated_js_threshold(
+            calibration,
+            rng=rng,
+            edges=edges,
+            rounds=rounds,
+            window_size=window_size,
+        ),
+    }
+
+
+def _output_categorical_reference(
+    baseline: np.ndarray,
+    calibration: np.ndarray,
+    *,
+    rng: np.random.Generator,
+    rounds: int,
+    window_size: int,
+) -> dict[str, Any] | None:
+    if not len(baseline) or len(calibration) < 4:
+        return None
+    strings = baseline.astype(str)
+    calibration_strings = calibration.astype(str)
+    vocabulary = tuple(sorted(np.unique(strings).tolist()))
+    counts = {value: int(np.sum(strings == value)) for value in vocabulary}
+    counts["__OTHER__"] = 0
+    return {
+        "count": int(len(strings)),
+        "vocabulary": list(vocabulary),
+        "counts": counts,
+        "js_threshold": _calibrated_js_threshold(
+            calibration_strings,
+            rng=rng,
+            vocabulary=vocabulary,
+            rounds=rounds,
+            window_size=window_size,
+        ),
+    }
+
+
+def _calibrated_rate_threshold(
+    labels: np.ndarray,
+    *,
+    rng: np.random.Generator,
+    rounds: int,
+    window_size: int,
+) -> float:
+    size = min(window_size, len(labels) // 2)
+    if size < 2:
+        return 1.0
+    binary = (labels.astype(str) == "attack").astype(float)
+    movements = []
+    for _ in range(rounds):
+        selected = rng.choice(len(binary), size=size * 2, replace=False)
+        movements.append(
+            abs(float(np.mean(binary[selected[:size]])) - float(np.mean(binary[selected[size:]])))
+        )
+    return max(float(np.quantile(movements, 0.99)), 1 / size)
+
+
 def build_drift_reference(
     frame: pd.DataFrame,
     *,
@@ -158,8 +249,18 @@ def build_drift_reference(
         }
 
     test_features = test[list(FEATURE_COLUMNS)]
+    training_features = training[list(FEATURE_COLUMNS)]
+    detector_training_labels = np.asarray(detector.predict(training_features)).astype(str)
     detector_labels = np.asarray(detector.predict(test_features)).astype(str)
+    training_routed = np.flatnonzero(
+        np.char.lower(detector_training_labels) == "attack"
+    )
     routed = np.flatnonzero(np.char.lower(detector_labels) == "attack")
+    classifier_training_labels = (
+        np.asarray(classifier.predict(training_features.iloc[training_routed])).astype(str)
+        if len(training_routed)
+        else np.asarray([], dtype=str)
+    )
     classifier_labels = (
         np.asarray(classifier.predict(test_features.iloc[routed])).astype(str)
         if len(routed)
@@ -169,17 +270,52 @@ def build_drift_reference(
     binary_truth = truth.map(
         lambda value: "normal" if value in NORMAL_LABELS else "attack"
     )
+    detector_training_scores = _attack_score(detector, training_features)
+    detector_scores = _attack_score(detector, test_features)
+    classifier_training_scores = _confidence_scores(
+        classifier, training_features.iloc[training_routed]
+    )
+    classifier_scores = _confidence_scores(classifier, test_features.iloc[routed])
     output_reference = {
         "test_count": int(len(test)),
-        "detector_labels": {
-            value: int(np.sum(detector_labels == value))
-            for value in sorted(np.unique(detector_labels))
-        },
-        "detector_scores": _attack_score(detector, test_features).tolist(),
+        "detector_labels": _output_categorical_reference(
+            detector_labels,
+            detector_training_labels,
+            rng=rng,
+            rounds=calibration_rounds,
+            window_size=calibration_window_size,
+        ),
+        "detector_scores": _output_numeric_reference(
+            detector_scores,
+            detector_training_scores,
+            rng=rng,
+            rounds=calibration_rounds,
+            window_size=calibration_window_size,
+        ),
         "classifier_condition": "detector_prediction=attack",
-        "classifier_labels": {
-            value: int(np.sum(classifier_labels == value))
-            for value in sorted(np.unique(classifier_labels))
+        "classifier_labels": _output_categorical_reference(
+            classifier_labels,
+            classifier_training_labels,
+            rng=rng,
+            rounds=calibration_rounds,
+            window_size=calibration_window_size,
+        ),
+        "classifier_scores": _output_numeric_reference(
+            classifier_scores,
+            classifier_training_scores,
+            rng=rng,
+            rounds=calibration_rounds,
+            window_size=calibration_window_size,
+        ),
+        "minimum_classifier_support": 200,
+        "attack_routing_rate": {
+            "value": float(np.mean(detector_labels == "attack")),
+            "absolute_change_threshold": _calibrated_rate_threshold(
+                detector_training_labels,
+                rng=rng,
+                rounds=calibration_rounds,
+                window_size=calibration_window_size,
+            ),
         },
         "ground_truth_binary": binary_truth.value_counts().sort_index().to_dict(),
     }

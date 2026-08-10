@@ -79,12 +79,16 @@ DATASET_PATH="$(
   printf '%s/%s\n' "$(pwd)" "$(basename -- "${DATASET_PATH}")"
 )"
 
-for command in uv node npm make; do
+for command in node npm make; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "error: required command is unavailable: ${command}" >&2
     exit 127
   fi
 done
+if [[ "${SKIP_SETUP}" == false ]] && ! command -v uv >/dev/null 2>&1; then
+  echo "error: required command is unavailable: uv" >&2
+  exit 127
+fi
 
 export UV_CACHE_DIR
 
@@ -151,13 +155,13 @@ echo
 echo "==> Starting application and ingestion worker"
 (
   cd backend
-  exec uv run python -m app.ingestion.worker
+  exec .venv/bin/python -m app.ingestion.worker
 ) &
 WORKER_PID=$!
 
 (
   cd backend
-  exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+  exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 ) &
 BACKEND_PID=$!
 

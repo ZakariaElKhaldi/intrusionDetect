@@ -1,14 +1,16 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getIngestionEvent, getIngestionJobs, getOutboxEvents } from "../../api";
+import { getIngestionEvent, getIngestionJobs, getOutboxEvents, redriveIngestionJobs } from "../../api";
 import { IngestionOperations } from "./IngestionOperations";
 
 vi.mock("../../api", () => ({
   getIngestionJobs: vi.fn(),
   getIngestionEvent: vi.fn(),
   getOutboxEvents: vi.fn(),
+  redriveIngestionJobs: vi.fn(),
 }));
+vi.mock("../../auth", () => ({ useAuth: () => ({ authenticated: true, openLogin: vi.fn() }) }));
 
 const job = {
   event_id: "event-1", batch_id: "batch-1", state: "retrying" as const, attempts: 2,
@@ -24,6 +26,7 @@ describe("IngestionOperations", () => {
     vi.mocked(getIngestionJobs).mockResolvedValue({ items: [job], total: 1, limit: 20, next_cursor: null });
     vi.mocked(getOutboxEvents).mockResolvedValue({ items: [{ outbox_id: "out-1", event_id: "event-1", event_type: "prediction.created", status: "published", publish_attempts: 1, last_error: null, created_at: job.created_at, published_at: job.updated_at }], total: 1, limit: 20, next_cursor: null });
     vi.mocked(getIngestionEvent).mockResolvedValue({ ...job, transitions: [{ transition_id: "transition-1", from_state: "processing", to_state: "retrying", action: "retry_scheduled", attempt: 2, error_code: "publish_timeout", actor: "worker-a", reason: "Transient failure", created_at: job.updated_at }] });
+    vi.mocked(redriveIngestionJobs).mockResolvedValue({ dry_run: true, results: [{ event_id: "event-1", eligible: true, reason: "eligible" }] });
   });
 
   it("loads exact job evidence and transition history without mutation controls", async () => {
@@ -47,5 +50,17 @@ describe("IngestionOperations", () => {
     render(<IngestionOperations fixtureMode/>);
     expect(screen.getByRole("note")).toHaveTextContent("no operational queue evidence");
     await waitFor(() => expect(getIngestionJobs).not.toHaveBeenCalled());
+  });
+
+  it("previews an eligible dead-letter before enabling redrive", async () => {
+    const dead = { ...job, state: "dead_letter" as const, retryable: true };
+    vi.mocked(getIngestionJobs).mockResolvedValue({ items: [dead], total: 1, limit: 20, next_cursor: null });
+    vi.mocked(getIngestionEvent).mockResolvedValue({ ...dead, transitions: [] });
+    render(<IngestionOperations fixtureMode={false}/>);
+    await userEvent.click(await screen.findByRole("button", { name: /View history/ }));
+    await userEvent.type(await screen.findByLabelText("Operator reason"), "service recovered");
+    await userEvent.click(screen.getByRole("button", { name: "Check eligibility" }));
+    expect(await screen.findByText("Eligible for transactional redrive.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Redrive job" })).toBeEnabled();
   });
 });

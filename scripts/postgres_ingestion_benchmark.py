@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -27,11 +28,16 @@ def percentile(values: list[float], fraction: float) -> float | None:
     return ordered[min(len(ordered) - 1, int((len(ordered) - 1) * fraction))]
 
 
-def post_batch(api_url: str, payload: list[dict[str, Any]]) -> tuple[int, dict[str, Any]]:
+def post_batch(
+    api_url: str, payload: list[dict[str, Any]], token: str | None
+) -> tuple[int, dict[str, Any]]:
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
         f"{api_url.rstrip('/')}/api/v1/ingestion/events",
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:
@@ -58,6 +64,7 @@ def main() -> int:
     parser.add_argument("--producers", type=int, default=4)
     parser.add_argument("--timeout-seconds", type=float, default=300)
     parser.add_argument("--output")
+    parser.add_argument("--token", default=os.getenv("IOT_IDS_API_TOKEN"))
     args = parser.parse_args()
     if not args.database_url.startswith(("postgresql://", "postgresql+psycopg://")):
         parser.error("--database-url must select PostgreSQL")
@@ -79,7 +86,7 @@ def main() -> int:
 
     def submit(batch):
         batch_started = time.perf_counter()
-        result = post_batch(args.api_url, batch)
+        result = post_batch(args.api_url, batch, args.token)
         return result, (time.perf_counter() - batch_started) * 1000
 
     with ThreadPoolExecutor(max_workers=args.producers) as pool:

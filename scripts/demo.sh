@@ -102,6 +102,17 @@ export IOT_IDS_CORS_ORIGINS="http://127.0.0.1:${FRONTEND_PORT},http://localhost:
 export IOT_IDS_INSTANCE_ID="${DEMO_INSTANCE_ID}"
 export IOT_IDS_API_PROXY_TARGET="http://127.0.0.1:${BACKEND_PORT}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/iot-ids-uv-cache}"
+DEMO_ADMIN_PASSWORD="demo-${RANDOM}-${RANDOM}-$(date +%s)"
+export IOT_IDS_AUTH_ENABLED=true
+export IOT_IDS_ADMIN_USERNAME=admin
+export IOT_IDS_ADMIN_PASSWORD_HASH="$(
+  printf '%s\n' "${DEMO_ADMIN_PASSWORD}" |
+    env PYTHONPATH="${REPOSITORY_DIR}/backend" \
+      "${REPOSITORY_DIR}/backend/.venv/bin/python" -m app.api.auth --password-stdin
+)"
+export IOT_IDS_SECRET_KEY="$(
+  "${REPOSITORY_DIR}/backend/.venv/bin/python" -c 'import secrets; print(secrets.token_urlsafe(48))'
+)"
 
 (
   cd backend
@@ -135,6 +146,7 @@ echo "Clean project demo is ready (database: disposable)."
 echo "Instance:  ${DEMO_INSTANCE_ID}"
 echo "Dashboard: http://127.0.0.1:${FRONTEND_PORT}"
 echo "API docs:  http://127.0.0.1:${BACKEND_PORT}/docs"
+echo "Operator:  admin / ${DEMO_ADMIN_PASSWORD} (valid only for this demo)"
 echo "Worker:    durable ingestion/outbox processing active"
 echo "Press Ctrl-C to stop and remove the demo database."
 

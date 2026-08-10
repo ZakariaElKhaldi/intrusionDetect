@@ -73,7 +73,9 @@ def test_training_creates_reproducible_reports_and_loadable_models(fixture_csv, 
     prediction = predictor.predict(observation)[0]
     assert prediction["target"] == "binary"
     assert prediction["prediction"] in {"normal", "attack"}
-    assert prediction["confidence_is_calibrated_probability"] == predictor.metadata.get("probability_calibrated", False)
+    assert prediction["confidence_is_calibrated_probability"] == predictor.metadata.get(
+        "probability_calibrated", False
+    )
 
 
 def test_default_training_aggregates_three_validation_seeds(fixture_csv, tmp_path):
@@ -123,4 +125,3 @@ def test_probability_calibration_on_sufficient_dataset(fixture_csv, tmp_path):
     observation = frame.iloc[:1][list(FEATURE_COLUMNS)]
     prediction = predictor.predict(observation)[0]
     assert prediction["confidence_is_calibrated_probability"] is True
-

@@ -1,14 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getModelHealth, getModelHealthHistory } from "../../api";
+import { getModelHealth, getModelHealthCohorts, getModelHealthHistory } from "../../api";
 import { ModelHealth } from "./ModelHealth";
 
-vi.mock("../../api", () => ({ getModelHealth: vi.fn(), getModelHealthHistory: vi.fn() }));
+vi.mock("../../api", () => ({ getModelHealth: vi.fn(), getModelHealthCohorts: vi.fn(), getModelHealthHistory: vi.fn() }));
 
 describe("ModelHealth", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getModelHealthCohorts).mockResolvedValue([]);
     vi.mocked(getModelHealth).mockResolvedValue({
       status: "warning", reason: "Feature shift exceeds the warning threshold.", window: "fast",
       cohort: { source: "sensor-a" }, reference: { dataset: "RT-IoT2022" }, observation_count: 250,
@@ -17,7 +18,7 @@ describe("ModelHealth", () => {
       unseen_categories: [{ feature: "service", value: "custom" }], outputs: { attack_rate: 0.12 },
       quality: { invalid_rows: 0 }, performance: { p95_latency_ms: 4.2 }, checked_at: "2026-08-07T10:00:00Z", shadow_mode: true,
     });
-    vi.mocked(getModelHealthHistory).mockResolvedValue({ items: [{ checked_at: "2026-08-07T10:00:00Z", status: "warning", observation_count: 250, aggregate_score: 0.18, aggregate_threshold: 0.15 }] });
+    vi.mocked(getModelHealthHistory).mockResolvedValue({ items: [{ checked_at: "2026-08-07T10:00:00Z", status: "warning", observation_count: 250, aggregate_score: 0.18, aggregate_threshold: 0.15, feature_alarm_count: 1, output_alarm_count: 0, output_aggregate_score: 0.2 }] });
   });
 
   it("shows state, reason, exact evidence tables, and history", async () => {

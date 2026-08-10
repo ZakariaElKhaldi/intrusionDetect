@@ -72,7 +72,7 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
 
       <div className="research-warning" role="note">
         Random shared-split evidence estimates performance on this dataset; it is not deployment validation.
-        Scores are uncalibrated and must not be read as probabilities.
+        {active?.probability_calibrated ? " Serving scores use sigmoid calibration fitted on the validation partition." : " Uncalibrated scores must not be read as probabilities."}
       </div>
 
       {loading ? <div className="panel data-state" role="status">Loading {taskName.toLowerCase()} evidence…</div> : null}
@@ -96,7 +96,7 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
               <div><span>Median latency</span><b>{active?.inference_ms ? `${active.inference_ms.toFixed(2)} ms` : "Not reported"}</b></div>
               <div><span>Selection metric</span><b>{active?.selection_metric ?? "Macro F1"}</b></div>
               <div><span>Evaluation scope</span><b>{report.split_notes ?? active?.evaluation_scope ?? "Shared random test split"}</b></div>
-              <div><span>Probability calibration</span><b>Not calibrated</b></div>
+              <div><span>Probability calibration</span><b>{active?.probability_calibrated ? "Sigmoid · validation partition" : "Not calibrated"}</b></div>
             </div>
           </section>
 

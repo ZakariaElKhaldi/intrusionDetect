@@ -18,6 +18,9 @@ NATIVE_CORPUS_MANIFEST ?= data/nfstream/corpus-manifest.json
 NATIVE_DATASET ?=
 NATIVE_MODEL_RUN_DIR ?= models/runs/nfstream-latest
 export UV_CACHE_DIR ?= /tmp/iot-ids-uv-cache
+UV ?= uv
+BACKEND_PYTHON := backend/.venv/bin/python
+ML_BIN := machine-learning/.venv/bin
 
 help:
 	@echo "IoT IDS development commands"
@@ -51,8 +54,8 @@ help:
 	@echo "  make docker-up      Start the demonstration stack"
 
 setup:
-	cd backend && uv sync --extra dev --extra pcap
-	cd machine-learning && uv sync --extra dev
+	cd backend && $(UV) sync --extra dev --extra pcap
+	cd machine-learning && $(UV) sync --extra dev
 	cd frontend && npm install
 
 download-data:
@@ -61,26 +64,26 @@ download-data:
 	$(MAKE) prepare-data
 
 prepare-data:
-	cd machine-learning && uv run iot-ids-prepare $(abspath $(DATA_ARCHIVE)) \
+	$(ML_BIN)/iot-ids-prepare $(abspath $(DATA_ARCHIVE)) \
 		--output-dir $(abspath data/raw) \
 		--manifest-path $(abspath data/dataset-manifest.json) \
 		--expected-archive-sha256 $(ARCHIVE_SHA256) \
 		--expected-dataset-sha256 $(DATASET_SHA256)
 
 validate-data:
-	cd machine-learning && uv run iot-ids-profile $(abspath $(DATASET))
+	$(ML_BIN)/iot-ids-profile $(abspath $(DATASET))
 
 train:
-	cd machine-learning && uv run iot-ids-train $(abspath $(DATASET)) \
+	$(ML_BIN)/iot-ids-train $(abspath $(DATASET)) \
 		--output-dir $(abspath $(MODEL_RUN_DIR))
-	cd machine-learning && uv run iot-ids-promote \
+	$(ML_BIN)/iot-ids-promote \
 		--run-dir $(abspath $(MODEL_RUN_DIR)) \
 		--production-dir $(abspath $(PRODUCTION_MODEL_DIR)) \
 		--expected-dataset-sha256 $(DATASET_SHA256) \
 		--expected-row-count $(DATASET_ROWS)
 
 verify-model:
-	cd machine-learning && uv run iot-ids-verify \
+	$(ML_BIN)/iot-ids-verify \
 		--production-dir $(abspath $(PRODUCTION_MODEL_DIR)) \
 		--expected-dataset-sha256 $(DATASET_SHA256) \
 		--expected-row-count $(DATASET_ROWS)
@@ -89,7 +92,7 @@ native-corpus:
 	@test -n "$(NATIVE_CAPTURE_MANIFEST)" || (echo "error: set NATIVE_CAPTURE_MANIFEST" >&2; exit 2)
 	@test -n "$(NATIVE_LABEL_MANIFEST)" || (echo "error: set NATIVE_LABEL_MANIFEST" >&2; exit 2)
 	@test -n "$(NATIVE_EXTRACTOR_FINGERPRINT)" || (echo "error: set NATIVE_EXTRACTOR_FINGERPRINT" >&2; exit 2)
-	cd machine-learning && uv run iot-ids-native-corpus \
+	$(ML_BIN)/iot-ids-native-corpus \
 		--capture-manifest $(abspath $(NATIVE_CAPTURE_MANIFEST)) \
 		--label-manifest $(abspath $(NATIVE_LABEL_MANIFEST)) \
 		--extractor-manifest $(abspath $(NATIVE_EXTRACTOR_MANIFEST)) \
@@ -98,48 +101,48 @@ native-corpus:
 
 native-train:
 	@test -n "$(NATIVE_DATASET)" || (echo "error: set NATIVE_DATASET" >&2; exit 2)
-	cd machine-learning && uv run iot-ids-native-train $(abspath $(NATIVE_DATASET)) \
+	$(ML_BIN)/iot-ids-native-train $(abspath $(NATIVE_DATASET)) \
 		--corpus-manifest $(abspath $(NATIVE_CORPUS_MANIFEST)) \
 		--output-dir $(abspath $(NATIVE_MODEL_RUN_DIR))
 
 test:
-	cd backend && uv run pytest
-	cd machine-learning && uv run pytest
+	cd backend && .venv/bin/pytest
+	cd machine-learning && .venv/bin/pytest
 	cd frontend && npm test -- --run
 
 lint:
-	cd backend && uv run ruff check .
-	cd machine-learning && uv run ruff check .
+	backend/.venv/bin/ruff check backend
+	machine-learning/.venv/bin/ruff check machine-learning
 	cd frontend && npm run lint
 
 build:
-	cd backend && uv run python -m compileall -q app
-	cd machine-learning && uv run python -m compileall -q src
+	$(BACKEND_PYTHON) -m compileall -q backend/app
+	machine-learning/.venv/bin/python -m compileall -q machine-learning/src
 	cd frontend && npm run build
 
 migrate:
-	cd backend && uv run alembic upgrade head
+	cd backend && .venv/bin/alembic upgrade head
 
 worker:
-	cd backend && uv run python -m app.ingestion.worker
+	cd backend && .venv/bin/python -m app.ingestion.worker
 
 model-health-worker:
-	cd backend && uv run python -m app.monitoring.worker
+	cd backend && .venv/bin/python -m app.monitoring.worker
 
 ingest-events:
-	cd backend && uv run python -m app.ingestion.producer $(INGESTION_INPUT) \
+	cd backend && .venv/bin/python -m app.ingestion.producer $(INGESTION_INPUT) \
 		--url $(API_URL)/api/v1/ingestion/events
 
 ingestion-ops:
-	cd backend && uv run python -m app.ingestion.operator_cli $(ARGS)
+	cd backend && .venv/bin/python -m app.ingestion.operator_cli $(ARGS)
 
 pcap-validate:
 	@test -n "$(PCAP)" || (echo "error: set PCAP=/path/to/capture.pcap" >&2; exit 2)
-	cd backend && uv run python -m app.ingestion.pcap_cli validate $(abspath $(PCAP))
+	cd backend && .venv/bin/python -m app.ingestion.pcap_cli validate $(abspath $(PCAP))
 
 pcap-ingest:
 	@test -n "$(PCAP)" || (echo "error: set PCAP=/path/to/capture.pcap" >&2; exit 2)
-	cd backend && uv run python -m app.ingestion.pcap_cli ingest $(abspath $(PCAP)) \
+	cd backend && .venv/bin/python -m app.ingestion.pcap_cli ingest $(abspath $(PCAP)) \
 		--api-url $(API_URL)
 
 dev:
@@ -172,7 +175,7 @@ benchmark:
 benchmark-postgres:
 	@test -n "$(INGESTION_INPUT)" || (echo "error: set INGESTION_INPUT=/path/to/events.ndjson" >&2; exit 2)
 	@test -n "$(IOT_IDS_DATABASE_URL)" || (echo "error: set IOT_IDS_DATABASE_URL to PostgreSQL" >&2; exit 2)
-	cd backend && uv run python ../scripts/postgres_ingestion_benchmark.py \
+	cd backend && .venv/bin/python ../scripts/postgres_ingestion_benchmark.py \
 		$(abspath $(INGESTION_INPUT)) --database-url "$(IOT_IDS_DATABASE_URL)" --api-url $(API_URL)
 
 docker-up:

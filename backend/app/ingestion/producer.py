@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from collections.abc import Iterable, Iterator
@@ -46,14 +47,18 @@ def submit_batch(
     batch: list[dict[str, Any]],
     *,
     max_retries: int,
+    token: str | None = None,
 ) -> dict[str, Any]:
     body = json.dumps({"observations": batch}, separators=(",", ":")).encode()
     for attempt in range(max_retries + 1):
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         request = Request(
             url,
             data=body,
             method="POST",
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            headers=headers,
         )
         try:
             with urlopen(request, timeout=30) as response:  # noqa: S310
@@ -83,6 +88,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--follow", action="store_true", help="follow a growing file")
     parser.add_argument("--poll-seconds", type=float, default=0.5)
     parser.add_argument("--max-retries", type=int, default=5)
+    parser.add_argument(
+        "--token", default=os.getenv("IOT_IDS_API_TOKEN"), help="API bearer token"
+    )
     args = parser.parse_args(argv)
     if args.follow and args.path == "-":
         parser.error("--follow requires a file path")
@@ -95,7 +103,9 @@ def main(argv: list[str] | None = None) -> int:
         ))
         for batch in batches(records, args.batch_size):
             try:
-                result = submit_batch(args.url, batch, max_retries=args.max_retries)
+                result = submit_batch(
+                    args.url, batch, max_retries=args.max_retries, token=args.token
+                )
             except (RuntimeError, json.JSONDecodeError) as exc:
                 rejected += len(batch)
                 print(str(exc), file=sys.stderr)

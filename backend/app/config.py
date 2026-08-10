@@ -25,10 +25,11 @@ class Settings:
     model_health_fast_minimum: int = 1_000
     model_health_slow_minimum: int = 5_000
     model_health_retention_days: int = 90
-    auth_enabled: bool = True
+    auth_enabled: bool = False
     admin_username: str = "admin"
-    admin_password: str = "admin"
-    secret_key: str = "intrusion-detect-secret-key-change-in-production"
+    admin_password_hash: str = ""
+    secret_key: str = ""
+    access_token_minutes: int = 30
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -82,8 +83,21 @@ class Settings:
             auth_enabled=os.getenv("IOT_IDS_AUTH_ENABLED", "true").lower()
             in {"1", "true", "yes"},
             admin_username=os.getenv("IOT_IDS_ADMIN_USERNAME", "admin"),
-            admin_password=os.getenv("IOT_IDS_ADMIN_PASSWORD", "admin"),
-            secret_key=os.getenv(
-                "IOT_IDS_SECRET_KEY", "intrusion-detect-secret-key-change-in-production"
-            ),
+            admin_password_hash=os.getenv("IOT_IDS_ADMIN_PASSWORD_HASH", ""),
+            secret_key=os.getenv("IOT_IDS_SECRET_KEY", ""),
+            access_token_minutes=int(os.getenv("IOT_IDS_ACCESS_TOKEN_MINUTES", "30")),
         )
+
+    def validate_authentication(self) -> None:
+        if not self.auth_enabled:
+            return
+        if not self.admin_username.strip():
+            raise ValueError("IOT_IDS_ADMIN_USERNAME must not be empty")
+        if not self.admin_password_hash.startswith("$argon2id$"):
+            raise ValueError(
+                "IOT_IDS_ADMIN_PASSWORD_HASH must contain an Argon2id password hash"
+            )
+        if len(self.secret_key.encode("utf-8")) < 32:
+            raise ValueError("IOT_IDS_SECRET_KEY must contain at least 32 UTF-8 bytes")
+        if not 1 <= self.access_token_minutes <= 1_440:
+            raise ValueError("IOT_IDS_ACCESS_TOKEN_MINUTES must be between 1 and 1440")

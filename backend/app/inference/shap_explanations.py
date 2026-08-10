@@ -14,6 +14,7 @@ from app.inference.model_registry import ArtifactPredictor, ModelRegistry
 @dataclass(slots=True)
 class _StageExplainer:
     predictor: ArtifactPredictor
+    pipeline: Any
     explainer: Any
     transformed_names: list[str]
 
@@ -64,10 +65,15 @@ class ExplanationService:
         import shap
 
         pipeline = predictor.model
+        while not hasattr(pipeline, "named_steps") and hasattr(pipeline, "estimator"):
+            pipeline = pipeline.estimator
+        if not hasattr(pipeline, "named_steps"):
+            raise RuntimeError("promoted calibrated model has no explainable base pipeline")
         preprocess = pipeline.named_steps["preprocess"]
         classifier = pipeline.named_steps["classifier"]
         stage_explainer = _StageExplainer(
             predictor=predictor,
+            pipeline=pipeline,
             explainer=shap.TreeExplainer(classifier),
             transformed_names=[str(name) for name in preprocess.get_feature_names_out()],
         )
@@ -82,7 +88,7 @@ class ExplanationService:
         explained_class: str,
     ) -> dict[str, Any]:
         holder = self._stage_explainer(stage, predictor)
-        pipeline = holder.predictor.model
+        pipeline = holder.pipeline
         raw = pd.DataFrame(
             [[features[name] for name in FEATURE_ORDER]], columns=FEATURE_ORDER
         )
@@ -143,6 +149,11 @@ class ExplanationService:
             "output_value": output_value,
             "additivity_error": additivity_error,
             "method": "SHAP TreeExplainer",
+            "calibration_scope": (
+                "contributions explain the fitted tree model before sigmoid calibration"
+                if holder.predictor.metadata.get("probability_calibrated")
+                else "model output is not probability calibrated"
+            ),
             "output_units": (
                 "raw_margin" if hasattr(pipeline, "decision_function") else "probability"
             ),

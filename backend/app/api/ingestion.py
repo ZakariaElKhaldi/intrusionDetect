@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import TypeAdapter, ValidationError
 
 from app.api.auth import get_current_admin
-
 from app.database.models import ValidationFailure
 from app.features.canonical_schema import FlowObservation
 from app.ingestion.schemas import (
@@ -17,15 +17,19 @@ from app.ingestion.schemas import (
     IngestionState,
     IngestionStatusResponse,
     OutboxEventListResponse,
+    RedriveRequest,
+    RedriveResponse,
 )
 from app.ingestion.service import (
     IdempotencyConflictError,
     QueueFullError,
+    RedriveRefusedError,
     enqueue_observations,
     get_event,
     ingestion_status,
     list_jobs,
     list_outbox_events,
+    redrive_events,
 )
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
@@ -111,8 +115,6 @@ async def _ingest(
             session.rollback()
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-
-
 @router.post(
     "/events",
     response_model=IngestionBatchResponse,
@@ -134,6 +136,37 @@ async def ingest_offline_pcap_events(
 ) -> IngestionBatchResponse:
     """Server-owned channel for the local, offline PCAP ingestion command."""
     return await _ingest(request, response, ingestion_channel="offline_pcap")
+
+
+@router.post("/jobs/redrive", response_model=RedriveResponse)
+async def redrive_ingestion_jobs(
+    payload: RedriveRequest,
+    request: Request,
+    operator: Annotated[str, Depends(get_current_admin)],
+) -> RedriveResponse:
+    def compatibility_check(raw: dict) -> None:
+        observation = FlowObservation.model_validate(raw)
+        context = observation.network_context
+        fingerprint = context.extractor_fingerprint if context else None
+        request.app.state.registry.resolve_route(
+            observation.schema_version, fingerprint
+        )
+
+    with request.app.state.SessionLocal() as session:
+        try:
+            results = redrive_events(
+                session,
+                [str(event_id) for event_id in payload.event_ids],
+                operator=operator,
+                reason=payload.reason,
+                compatibility_check=compatibility_check,
+                dry_run=payload.dry_run,
+            )
+        except RedriveRefusedError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return RedriveResponse(dry_run=payload.dry_run, results=results)
 
 
 @router.get("/events/{event_id}", response_model=IngestionEventResponse)

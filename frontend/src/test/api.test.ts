@@ -13,6 +13,7 @@ import {
   liveEventFromSocketMessage,
   startReplay,
   submitAlertFeedback,
+  setApiAccessToken,
 } from "../api";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -24,7 +25,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("frontend API adapter", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { setApiAccessToken(null); vi.unstubAllGlobals(); });
 
   it("returns structured health information and null while offline", async () => {
     const health = {
@@ -270,6 +271,15 @@ describe("frontend API adapter", () => {
         }),
       }),
     );
+  });
+
+  it("adds the operator bearer token to mutation requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: "stopped" }));
+    vi.stubGlobal("fetch", fetchMock);
+    setApiAccessToken("signed-token");
+    await startReplay({ scenario: "normal", speed: 1, limit: 2 });
+    const headers = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer signed-token");
   });
 
   it("normalizes task-specific evaluation evidence without mixing stages", async () => {

@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 
 from app.api.auth import get_current_admin
-
 from app.api.schemas import (
     AlertDetail,
     AlertPage,

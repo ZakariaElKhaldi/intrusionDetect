@@ -168,5 +168,8 @@ async def test_api_exposes_snapshot_history_and_health_component(client) -> None
     }
     history = await client.get("/model-health/history")
     assert history.status_code == 200
+    cohorts = await client.get("/model-health/cohorts")
+    assert cohorts.status_code == 200
+    assert cohorts.json()["items"]
     health = (await client.get("/health")).json()
     assert "model_health" in health["components"]

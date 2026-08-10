@@ -46,10 +46,21 @@ async function startReplayFromBrowser(
   limit: number,
   speed = "4",
 ) {
+  await signIn(page);
   await page.getByLabel("Replay scenario").selectOption(scenario);
   await page.getByLabel("Replay speed").selectOption(speed);
   await page.getByLabel("Replay limit").fill(String(limit));
   await page.getByRole("button", { name: "Start replay" }).click();
+}
+
+async function signIn(page: Page) {
+  const trigger = page.getByRole("button", { name: "Operator sign in" });
+  if (!await trigger.isVisible()) return;
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Operator sign in" });
+  await dialog.getByLabel("Password").fill("e2e-password");
+  await dialog.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByText("Signed in as")).toBeVisible();
 }
 
 async function attachViewport(page: Page, name: string) {
@@ -135,6 +146,7 @@ test.describe.serial("production-preview end-to-end path", () => {
 
   test("reload hydrates alerts, SHAP works, feedback persists, and focus is restored", async ({ page }) => {
     await waitForConnectedPage(page, "alerts");
+    await signIn(page);
     const row = page.getByRole("row", { name: /^Open .* alert / }).first();
     await expect(row).toBeVisible();
     const alertId = await row.getAttribute("data-alert-id");

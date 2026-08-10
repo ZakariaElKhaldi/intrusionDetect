@@ -183,6 +183,77 @@ def evaluate_feature_window(
     }
 
 
+def evaluate_output_window(
+    reference: dict[str, Any], current: dict[str, list[Any]]
+) -> dict[str, Any]:
+    """Compare serving outputs with calibrated held-out output baselines."""
+    metrics: dict[str, Any] = {}
+    ratios: list[float] = []
+    alarms = 0
+
+    for name in ("detector_labels", "classifier_labels"):
+        evidence = reference.get(name)
+        values = [str(value) for value in current.get(name, [])]
+        if not isinstance(evidence, dict) or not values:
+            metrics[name] = {"status": "collecting", "count": len(values)}
+            continue
+        result = categorical_drift(evidence, values)
+        ratio = result["js_distance"] / max(result["js_threshold"], 1e-12)
+        result["status"] = "warning" if ratio > 1 else "healthy"
+        result["drifted"] = ratio > 1
+        ratios.append(ratio)
+        alarms += int(result["drifted"])
+        metrics[name] = result
+
+    for name in ("detector_scores", "classifier_scores"):
+        evidence = reference.get(name)
+        values = [float(value) for value in current.get(name, [])]
+        minimum = int(reference.get("minimum_classifier_support", 200)) if name.startswith(
+            "classifier"
+        ) else 1
+        if not isinstance(evidence, dict) or len(values) < minimum:
+            metrics[name] = {
+                "status": "collecting",
+                "count": len(values),
+                "minimum": minimum,
+            }
+            continue
+        result = numeric_drift(evidence, values)
+        ratio = result["js_distance"] / max(result["js_threshold"], 1e-12)
+        result["status"] = "warning" if ratio > 1 else "healthy"
+        result["drifted"] = ratio > 1
+        ratios.append(ratio)
+        alarms += int(result["drifted"])
+        metrics[name] = result
+
+    rate_reference = reference.get("attack_routing_rate")
+    detector_labels = [str(value) for value in current.get("detector_labels", [])]
+    if isinstance(rate_reference, dict) and detector_labels:
+        rate = sum(value == "attack" for value in detector_labels) / len(detector_labels)
+        movement = abs(rate - float(rate_reference["value"]))
+        threshold = float(rate_reference["absolute_change_threshold"])
+        ratio = movement / max(threshold, 1e-12)
+        drifted = ratio > 1
+        metrics["attack_routing_rate"] = {
+            "status": "warning" if drifted else "healthy",
+            "value": rate,
+            "reference": float(rate_reference["value"]),
+            "absolute_change": movement,
+            "threshold": threshold,
+            "drifted": drifted,
+        }
+        ratios.append(ratio)
+        alarms += int(drifted)
+
+    return {
+        "status": "warning" if alarms else "healthy",
+        "alarm_count": alarms,
+        "aggregate_score": max(ratios, default=0.0),
+        "aggregate_threshold": 1.0,
+        "metrics": metrics,
+    }
+
+
 def drift_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
     """Backward-compatible entrypoint with an honest insufficient-data state."""
     reference = payload.get("reference")

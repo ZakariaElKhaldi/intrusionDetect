@@ -25,6 +25,7 @@ import { sampleAlerts, sampleModels } from "./data";
 import { ReplayPanel } from "./features/overview/ReplayPanel";
 import type { Alert, AlertStatus, DashboardSummary, HealthInfo, IngestionStatus, ModelInfo, Page, ReplayScenario, ReplayStatus } from "./types";
 import { pageTitles } from "./utils";
+import { useAuth } from "./auth";
 
 type SocketState = "connecting" | "live" | "offline";
 const Overview = lazy(() => import("./features/overview/Overview").then((module) => ({ default: module.Overview })));
@@ -64,6 +65,7 @@ function pageFromUrl(): Page {
 }
 
 function App() {
+  const auth = useAuth();
   const fixtureMode = isFixtureMode();
   const [page, setPage] = useState<Page>(pageFromUrl);
   const [alerts, setAlerts] = useState<Alert[]>(fixtureMode ? sampleAlerts : []);
@@ -331,6 +333,7 @@ function App() {
 
   const handleReplay = useCallback(async () => {
     if (fixtureMode) return;
+    if (!auth.authenticated) { auth.openLogin(); return; }
     setReplayError("");
     try {
       if (!replay || ["idle", "completed", "stopped", "failed"].includes(replay.status)) {
@@ -346,16 +349,17 @@ function App() {
     } catch (error) {
       setReplayError(error instanceof Error ? error.message : "Replay request failed.");
     }
-  }, [fixtureMode, replay, replayLimit, replayScenario, replaySpeed]);
+  }, [auth, fixtureMode, replay, replayLimit, replayScenario, replaySpeed]);
 
   const stopReplay = useCallback(async () => {
+    if (!auth.authenticated) { auth.openLogin(); return; }
     setReplayError("");
     try {
       setReplay(await replayAction("stop", replaySpeed));
     } catch (error) {
       setReplayError(error instanceof Error ? error.message : "Could not stop replay.");
     }
-  }, [replaySpeed]);
+  }, [auth, replaySpeed]);
 
   const openTimeBucket = useCallback(
     (start: string, bucketMinutes = 5) => {
@@ -438,6 +442,7 @@ function App() {
             <p>{subtitle}</p>
           </div>
           <div className="topbar-actions">
+            {auth.session ? <div className="operator-session"><span>Signed in as <b>{auth.session.username}</b></span><button className="text-button" type="button" onClick={auth.logout}>Sign out</button></div> : auth.authRequired ? <button className="secondary-button" type="button" onClick={auth.openLogin}>Operator sign in</button> : <span className="operator-session">Local mutations enabled</span>}
             <div className="system-status">
               <span
                 className={`status-mark status-mark--${health ? socketState : "offline"}`}

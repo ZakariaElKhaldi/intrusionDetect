@@ -50,7 +50,8 @@ Implemented:
 - bounded server-side dataset replay with scenario, offset, limit, pause,
   resume, and speed controls; and
 - functional monitoring, alert, topology, model-evidence, and observation-lab
-  views, including read-only ingestion job/dead-letter/outbox operations;
+  views, including ingestion job/dead-letter/outbox evidence and authenticated,
+  audited manual redrive;
 - on-demand TreeSHAP attribution with explicit non-causal language; and
 - an offline NFStream extractor with deterministic event IDs, a versioned
   `nfstream-iot-v1` contract, validation reports, corpus-provenance checks,
@@ -65,7 +66,6 @@ Not implemented or not validated:
 - a collected NFStream-native labelled corpus or promoted native model bundle;
 - live network-interface capture (deliberately disabled);
 - a distributed broker or horizontally coordinated WebSocket publisher;
-- calibrated probabilities;
 - causal explanations, automatic drift response, destination reputation, or
   complete device/MUD policy enforcement; and
 - external-network, temporal, group-aware, or hardware validation.
@@ -83,20 +83,21 @@ rows only.
 
 | Stage | Champion | Validation macro-F1, 3-seed mean | Seed-42 test macro-F1 | Test FPR | Serialized size |
 |---|---|---:|---:|---:|---:|
-| Binary detector | HistGradientBoosting | 0.9965 | 0.9955 | 0.8739% | 123,465 B |
-| Attack-family classifier | HistGradientBoosting | 0.9526 | 0.9853 | 0.0087% macro one-vs-rest | 262,289 B |
+| Binary detector | HistGradientBoosting | 0.9965 | 0.9955 | 0.9155% | 124,464 B |
+| Attack-family classifier | Random Forest | 0.9522 | 0.9873 | N/A | 532,967 B |
 
 The untouched shared seed-42 test partition produces a complete cascade macro-F1
-of **0.9865**, with 18 detector false negatives. Across the three declared seeds,
-mean cascade macro-F1 is **0.9743**. These are random-split results, not deployment
+of **0.9931**, with 17 detector false negatives. Across the three declared seeds,
+mean cascade macro-F1 is **0.9873**. These are random-split results, not deployment
 validation.
 
 These are stratified random-split results from one dataset. The unusually high
 scores are useful as a reproducible in-dataset baseline, but they are not
 evidence of deployment readiness. The source table has no reliable timestamp,
 capture-session, or device grouping field, so the report explicitly marks a
-realistic split as unavailable. Scores returned by `predict_proba` are also
-uncalibrated.
+realistic split as unavailable. Both promoted champions use sigmoid calibration
+fitted only on the validation partition; the untouched test partition remains
+reserved for final evaluation.
 
 See [`models/production/evaluation-report.json`](models/production/evaluation-report.json)
 and [the evaluation protocol](docs/evaluation-protocol.md) for the exact
@@ -175,11 +176,24 @@ To stream canonical NDJSON from stdin or a file, run `make ingest-events` or
 records, honors queue backpressure, retries transient failures, and reports
 accepted, duplicate, and rejected counts.
 
+State-changing APIs require an operator token when authentication is enabled.
+Generate credentials without putting a plaintext password in configuration:
+
+```bash
+cd backend
+.venv/bin/python -m app.api.auth
+# copy the Argon2id output to IOT_IDS_ADMIN_PASSWORD_HASH
+# set IOT_IDS_SECRET_KEY to at least 32 random bytes
+```
+
+The browser keeps its short-lived token only for the current tab session. CLI
+ingestion accepts `--token` or the `IOT_IDS_API_TOKEN` environment variable.
+
 Follow a file that another process is appending to:
 
 ```bash
 cd backend
-uv run python -m app.ingestion.producer /path/to/events.ndjson --follow
+.venv/bin/python -m app.ingestion.producer /path/to/events.ndjson --follow --token "$IOT_IDS_API_TOKEN"
 ```
 
 Validate an offline capture without inference:
@@ -195,11 +209,12 @@ content-addressed corpus manifest with `make native-corpus`, train/evaluate it
 with `make native-train`, and use `make pcap-ingest PCAP=...` only after a valid
 native bundle is installed through `IOT_IDS_NFSTREAM_MODEL_DIR`.
 
-Inspect queue failures without adding unauthenticated browser mutations:
+Inspect queue failures and perform audited redrive from either the authenticated
+browser job detail or the local operator CLI:
 
 ```bash
 make ingestion-ops ARGS='list --state dead_letter'
-make ingestion-ops ARGS='redrive --event-id EVENT_ID --operator NAME --reason REASON --dry-run'
+make ingestion-ops ARGS='redrive EVENT_ID --operator NAME --reason REASON --dry-run'
 ```
 
 The API process runs model-health evaluation every five minutes. A standalone
@@ -215,12 +230,14 @@ demonstration stack.
 
 The API is available both at the root paths and under `/api/v1`:
 
-- `POST /predict` and `POST /predict/batch`
+- `POST /auth/login` and `GET /auth/me`
+- `POST /predict` and `POST /predict/batch` (authenticated)
 - `POST /ingestion/events` (JSON or NDJSON), `GET /ingestion/events/{event_id}`,
-  `GET /ingestion/jobs`, `GET /ingestion/outbox/events`, and `GET /ingestion/status`
+  `GET /ingestion/jobs`, `POST /ingestion/jobs/redrive`,
+  `GET /ingestion/outbox/events`, and `GET /ingestion/status`
 - `GET /alerts`, `GET /alerts/{id}`, and `POST /alerts/{id}/feedback`
 - `GET /models` and `GET /health`
-- `GET /model-health` and `GET /model-health/history`
+- `GET /model-health`, `GET /model-health/history`, and `GET /model-health/cohorts`
 - `POST /replay/start`, `/pause`, `/resume`, and `/stop`; `GET /replay/status`
 - `WS /live`
 

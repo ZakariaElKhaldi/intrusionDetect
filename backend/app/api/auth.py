@@ -1,144 +1,208 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
+import argparse
+import getpass
 import secrets
-import time
-from typing import Any
+import threading
+from collections import defaultdict, deque
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
+import jwt
+from fastapi import APIRouter, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from jwt import InvalidTokenError
+from pwdlib import PasswordHash
+from pydantic import BaseModel, Field
 
+TOKEN_ISSUER = "iot-intrusion-detection"
+TOKEN_AUDIENCE = "iot-ids-api"
+PASSWORD_HASH = PasswordHash.recommended()
 security = HTTPBearer(auto_error=False)
+BearerCredentials = Annotated[HTTPAuthorizationCredentials | None, Security(security)]
 
 
-def hash_password(password: str, salt: bytes | None = None) -> str:
-    salt = salt or secrets.token_bytes(16)
-    derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
-    return f"{salt.hex()}:{derived.hex()}"
+def hash_password(password: str) -> str:
+    if not password:
+        raise ValueError("password must not be empty")
+    return PASSWORD_HASH.hash(password)
 
 
 def verify_password(password: str, stored_hash: str) -> bool:
     try:
-        parts = stored_hash.split(":")
-        if len(parts) != 2:
-            return False
-        salt_hex, derived_hex = parts
-        salt = bytes.fromhex(salt_hex)
-        check = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
-        return secrets.compare_digest(check.hex(), derived_hex)
-    except Exception:
+        return PASSWORD_HASH.verify(password, stored_hash)
+    except (TypeError, ValueError):
         return False
 
 
-def create_access_token(username: str, secret_key: str, expires_in: int = 86400) -> str:
-    expires_at = int(time.time()) + expires_in
-    payload = f"{username}:{expires_at}"
-    signature = hmac.new(
-        secret_key.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
-    ).hexdigest()
-    return f"{payload}:{signature}"
+def create_access_token(
+    username: str,
+    secret_key: str,
+    *,
+    expires_in: int = 1_800,
+    now: datetime | None = None,
+) -> tuple[str, datetime]:
+    issued_at = now or datetime.now(UTC)
+    expires_at = issued_at + timedelta(seconds=expires_in)
+    payload = {
+        "sub": username,
+        "iss": TOKEN_ISSUER,
+        "aud": TOKEN_AUDIENCE,
+        "iat": issued_at,
+        "exp": expires_at,
+        "jti": str(uuid4()),
+    }
+    return jwt.encode(payload, secret_key, algorithm="HS256"), expires_at
 
 
 def verify_access_token(token: str, secret_key: str) -> str | None:
     try:
-        parts = token.split(":")
-        if len(parts) != 3:
-            return None
-        username, expires_at_str, signature = parts
-        expires_at = int(expires_at_str)
-        if time.time() > expires_at:
-            return None
-        payload = f"{username}:{expires_at}"
-        expected_sig = hmac.new(
-            secret_key.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
-        ).hexdigest()
-        if secrets.compare_digest(signature, expected_sig):
-            return username
+        payload = jwt.decode(
+            token,
+            secret_key,
+            algorithms=["HS256"],
+            audience=TOKEN_AUDIENCE,
+            issuer=TOKEN_ISSUER,
+            options={"require": ["sub", "iss", "aud", "iat", "exp", "jti"]},
+        )
+    except InvalidTokenError:
         return None
-    except Exception:
-        return None
+    subject = payload.get("sub")
+    return subject if isinstance(subject, str) and subject else None
+
+
+class LoginRateLimiter:
+    def __init__(self, *, maximum: int = 5, window_seconds: int = 300) -> None:
+        self.maximum = maximum
+        self.window_seconds = window_seconds
+        self._failures: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def retry_after(self, key: str, now: float) -> int | None:
+        with self._lock:
+            failures = self._failures[key]
+            cutoff = now - self.window_seconds
+            while failures and failures[0] <= cutoff:
+                failures.popleft()
+            if len(failures) < self.maximum:
+                return None
+            return max(1, int(failures[0] + self.window_seconds - now) + 1)
+
+    def failed(self, key: str, now: float) -> None:
+        with self._lock:
+            self._failures[key].append(now)
+
+    def succeeded(self, key: str) -> None:
+        with self._lock:
+            self._failures.pop(key, None)
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=1024)
 
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    expires_in: int = 86400
+    expires_in: int
+    expires_at: datetime
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _client_key(request: Request, username: str) -> str:
+    host = request.client.host if request.client else "unknown"
+    return f"{host}:{username.casefold()}"
+
+
+@router.get("/status")
+def authentication_status(request: Request) -> dict[str, bool]:
+    return {"enabled": bool(request.app.state.settings.auth_enabled)}
+
+
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, request: Request) -> TokenResponse:
-    settings = getattr(request.app.state, "settings", None)
-    admin_user = getattr(settings, "admin_username", "admin") if settings else "admin"
-    admin_pass = getattr(settings, "admin_password", "admin") if settings else "admin"
-    secret_key = getattr(settings, "secret_key", "intrusion-detect-secret-key-change-in-production") if settings else "intrusion-detect-secret-key-change-in-production"
+    settings = request.app.state.settings
+    limiter: LoginRateLimiter = request.app.state.login_rate_limiter
+    now = datetime.now(UTC)
+    key = _client_key(request, body.username)
+    retry_after = limiter.retry_after(key, now.timestamp())
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts",
+            headers={"Retry-After": str(retry_after)},
+        )
 
-    stored_hash = getattr(request.app.state, "admin_password_hash", None)
-    if not stored_hash:
-        stored_hash = hash_password(admin_pass)
-        request.app.state.admin_password_hash = stored_hash
-
-    if body.username != admin_user or not verify_password(body.password, stored_hash):
+    username_matches = secrets.compare_digest(body.username, settings.admin_username)
+    password_matches = verify_password(body.password, settings.admin_password_hash)
+    if not username_matches or not password_matches:
+        limiter.failed(key, now.timestamp())
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = create_access_token(body.username, secret_key)
-    return TokenResponse(access_token=token)
-
-
-@router.get("/me")
-def me(
-    credentials: HTTPAuthorizationCredentials | None = Security(security),
-    request: Request = None,  # type: ignore[assignment]
-) -> dict[str, Any]:
-    username = get_current_admin(credentials, request)
-    return {"username": username, "role": "admin"}
+    limiter.succeeded(key)
+    expires_in = settings.access_token_minutes * 60
+    token, expires_at = create_access_token(
+        body.username, settings.secret_key, expires_in=expires_in, now=now
+    )
+    return TokenResponse(
+        access_token=token,
+        expires_in=expires_in,
+        expires_at=expires_at,
+    )
 
 
 def get_current_admin(
-    credentials: HTTPAuthorizationCredentials | None = Security(security),
-    request: Request = None,  # type: ignore[assignment]
+    request: Request,
+    credentials: BearerCredentials = None,
 ) -> str:
-    if request is not None:
-        settings = getattr(request.app.state, "settings", None)
-        if settings and not getattr(settings, "auth_enabled", True):
-            return "admin"
-        secret_key = (
-            getattr(settings, "secret_key", "intrusion-detect-secret-key-change-in-production")
-            if settings
-            else "intrusion-detect-secret-key-change-in-production"
-        )
-    else:
-        secret_key = "intrusion-detect-secret-key-change-in-production"
-
+    settings = request.app.state.settings
+    if not settings.auth_enabled:
+        return settings.admin_username
     token = credentials.credentials if credentials else None
-    if not token and request is not None:
-        token = request.headers.get("X-API-Key")
-
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    username = verify_access_token(token, secret_key)
-    if not username:
+    username = verify_access_token(token, settings.secret_key)
+    if username != settings.admin_username:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return username
+
+
+@router.get("/me")
+def me(request: Request, credentials: BearerCredentials = None) -> dict[str, Any]:
+    username = get_current_admin(request, credentials)
+    return {"username": username, "role": "admin"}
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Generate an Argon2id administrator hash")
+    parser.add_argument("--password-stdin", action="store_true")
+    args = parser.parse_args(argv)
+    if args.password_stdin:
+        import sys
+
+        password = sys.stdin.readline().rstrip("\n")
+    else:
+        password = getpass.getpass("Administrator password: ")
+    print(hash_password(password))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

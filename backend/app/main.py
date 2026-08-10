@@ -8,7 +8,18 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import alerts, auth, dashboard, ingestion, live, model_health, models, predictions, replay
+from app.api import (
+    alerts,
+    auth,
+    dashboard,
+    ingestion,
+    live,
+    model_health,
+    models,
+    predictions,
+    replay,
+)
+from app.api.auth import LoginRateLimiter
 from app.config import Settings
 from app.database.models import Base, ModelVersion
 from app.database.session import create_engine_and_session
@@ -38,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        settings.validate_authentication()
         Base.metadata.create_all(engine)
         with session_factory() as session:
             for descriptor in registry.descriptors:
@@ -84,6 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.SessionLocal = session_factory
     app.state.settings = settings
+    app.state.login_rate_limiter = LoginRateLimiter()
     app.state.registry = registry
     app.state.live = LiveConnectionManager()
     app.state.replay = DatasetReplay(settings.replay_dataset_path)
@@ -141,9 +154,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             database_error = str(exc)
             ingestion_health = None
         model_health_component = app.state.model_health.component()
-        model_health_degrades_readiness = (
-            model_health_component.get("monitoring_status") == "critical"
-            and not model_health_component.get("shadow_mode", True)
+        model_health_degrades_readiness = bool(
+            model_health_component.get("degrades_readiness")
         )
         component_states = [dataset["status"], model_status, database_status]
         if model_health_degrades_readiness:

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 IngestionState = Literal[
     "queued", "processing", "retrying", "succeeded", "dead_letter"
@@ -20,6 +20,23 @@ class EnqueuedEvent(BaseModel):
 class IngestionBatchResponse(BaseModel):
     batch_id: UUID
     events: list[EnqueuedEvent]
+
+
+class RedriveRequest(BaseModel):
+    event_ids: list[UUID] = Field(min_length=1, max_length=100)
+    reason: str = Field(min_length=3, max_length=1000)
+    dry_run: bool = True
+
+
+class RedriveResult(BaseModel):
+    event_id: UUID
+    eligible: bool
+    reason: str
+
+
+class RedriveResponse(BaseModel):
+    dry_run: bool
+    results: list[RedriveResult]
 
 
 class IngestionTransitionResponse(BaseModel):

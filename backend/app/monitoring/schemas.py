@@ -38,9 +38,16 @@ class ModelHealthHistoryPoint(BaseModel):
     observation_count: int
     aggregate_score: float | None
     aggregate_threshold: float | None
+    feature_alarm_count: int = 0
+    output_alarm_count: int = 0
+    output_aggregate_score: float | None = None
 
 
 class ModelHealthHistoryResponse(BaseModel):
     items: list[ModelHealthHistoryPoint]
     limit: int
     next_cursor: str | None = None
+
+
+class ModelHealthCohortsResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)

@@ -78,6 +78,43 @@ async def test_outbox_api_distinguishes_pending_failed_and_published(client) -> 
     assert response.json()["items"][0]["status"] == "failed"
 
 
+@pytest.mark.anyio
+async def test_redrive_api_previews_then_audits_authenticated_operator(client) -> None:
+    payload = observation()
+    accepted = await client.post("/api/v1/ingestion/events", json=[payload])
+    assert accepted.status_code == 202
+    sessions = client._transport.app.state.SessionLocal  # type: ignore[attr-defined]
+    with sessions() as session:
+        job = session.scalar(
+            select(IngestionJob).where(IngestionJob.event_id == payload["event_id"])
+        )
+        job.state = "dead_letter"
+        job.error_code = "inference_timeout"
+        job.retryable = True
+        job.last_error = "temporary timeout"
+        job.completed_at = now_utc()
+        session.commit()
+
+    body = {
+        "event_ids": [payload["event_id"]],
+        "reason": "model service recovered",
+        "dry_run": True,
+    }
+    preview = await client.post("/api/v1/ingestion/jobs/redrive", json=body)
+    assert preview.status_code == 200
+    assert preview.json()["results"][0]["eligible"] is True
+    with sessions() as session:
+        assert session.scalar(select(IngestionJob)).state == "dead_letter"
+
+    body["dry_run"] = False
+    executed = await client.post("/api/v1/ingestion/jobs/redrive", json=body)
+    assert executed.status_code == 200
+    detail = await client.get(f"/api/v1/ingestion/events/{payload['event_id']}")
+    transition = detail.json()["transitions"][-1]
+    assert transition["action"] == "manual_redrive"
+    assert transition["actor"] == "admin"
+
+
 def test_manual_redrive_is_atomic_audited_and_preserves_payload_hash(tmp_path) -> None:
     from app.database.models import Base
     from app.database.session import create_engine_and_session

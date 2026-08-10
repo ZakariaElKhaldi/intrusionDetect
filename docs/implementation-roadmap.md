@@ -35,8 +35,9 @@ evidence.
 - Persisted observations, predictions, stage scores/latencies, alerts, model
   versions, and analyst feedback.
 
-**Boundary:** no authentication, authorization, retention policy, distributed
-broker, or production hardening yet.
+**Boundary:** single-operator authentication protects mutations; database user
+management, RBAC, retention policy, distributed brokers, and production
+hardening remain outside the prototype.
 
 ## Phase 3 — Investigation dashboard: complete for the prototype
 
@@ -93,16 +94,16 @@ Next work:
 **Boundary:** no distributed broker or horizontally coordinated WebSocket
 publisher; production security and retention remain separate work.
 
-## Phase 7 — NFStream-native offline PCAP path: implementation complete, data gate blocked
+## Phase 7 — NFStream-native offline PCAP path: tooling implemented, evidence gate blocked
 
 NFStream computes the complete `nfstream-iot-v1` shape under a fingerprinted
 manifest. It is intentionally distinct from `rt-iot2022-v1`. Validation/export,
-deterministic IDs, invariants, and controlled fixtures exist. Corpus tooling
-requires denied external egress, allowlisted targets, fixed rate/duration,
-generator/five-tuple/time-bound labels, 15 sessions per family across three
-runs, and whole-session 60/20/20 splits. Four candidates are evaluated and the
-server accepts only checksum-bound bundles whose support and performance gates
-all pass. Caller-authored approval is rejected; live capture remains disabled.
+deterministic IDs, invariants, manifest checks, and controlled fixtures exist.
+The repository does not itself prove that a capture lab was isolated or that
+manifest labels match genuine generator traffic; those claims require the
+authorized external collection environment and its actual evidence files.
+Training remains session-split and promotion remains checksum/support/metric
+gated. Caller-authored serving approval is rejected; live capture remains disabled.
 
 External work still required:
 

@@ -58,12 +58,12 @@ not a nested hyperparameter search.
 
 | Stage | Champion | Mean validation macro-F1 | Test macro-F1 | Test error detail | p95 single-row latency* | Size |
 |---|---|---:|---:|---|---:|---:|
-| Binary | HistGradientBoosting | 0.9965 | 0.9955 | FPR 0.8739% | 6.35 ms | 123,465 B |
-| Attack family | HistGradientBoosting | 0.9526 | 0.9853 | macro one-vs-rest FPR 0.0087% | 16.08 ms | 262,289 B |
+| Binary | HistGradientBoosting | 0.9965 | 0.9955 | FPR 0.9155% | 8.89 ms | 124,464 B |
+| Attack family | Random Forest | 0.9522 | 0.9873 | N/A | 12.42 ms | 532,967 B |
 
-The complete seed-42 detector-to-family cascade reaches macro-F1 0.9865 on the
-shared untouched test partition, including 18 attacks missed by the detector.
-Across seeds 42, 1337, and 2026, mean cascade macro-F1 is 0.9743. The evaluation
+The complete seed-42 detector-to-family cascade reaches macro-F1 0.9931 on the
+shared untouched test partition, including 17 attacks missed by the detector.
+Across seeds 42, 1337, and 2026, mean cascade macro-F1 is 0.9873. The evaluation
 report includes the ten-class confusion matrix, support and recall for every class,
 and the full validation threshold curve.
 

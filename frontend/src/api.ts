@@ -23,12 +23,26 @@ import type {
   OutboxEvent,
   ModelHealthSnapshot,
   ModelHealthHistory,
+  ModelHealthCohort,
+  RedriveResponse,
+  AuthSession,
 } from "./types";
 
 const configuredApi = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
 const API_BASE = configuredApi
   ? configuredApi.endsWith("/api/v1") ? configuredApi : `${configuredApi}/api/v1`
   : "/api/v1";
+
+let accessToken: string | null = null;
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setApiAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
 
 interface AlertWire {
   alert_id: string;
@@ -282,15 +296,35 @@ async function errorDetail(response: Response): Promise<unknown> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers,
   });
   if (!response.ok) {
     const detail = await errorDetail(response);
+    if (response.status === 401 && path !== "/auth/login") unauthorizedHandler?.();
     throw new ApiError(errorMessage(response.status, detail), response.status, detail);
   }
   return response.json() as Promise<T>;
+}
+
+export async function login(username: string, password: string): Promise<AuthSession> {
+  const value = await request<Omit<AuthSession, "username">>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+  return { ...value, username };
+}
+
+export async function getCurrentUser(): Promise<{ username: string; role: string }> {
+  return request<{ username: string; role: string }>("/auth/me");
+}
+
+export async function getAuthenticationStatus(): Promise<{ enabled: boolean }> {
+  return request<{ enabled: boolean }>("/auth/status");
 }
 
 export async function checkHealth(): Promise<HealthInfo | null> {
@@ -336,7 +370,24 @@ export async function getOutboxEvents(filters: { status?: string; limit?: number
   return cursorPage<OutboxEvent>(await request<unknown>(`/ingestion/outbox/events?${queryString(filters)}`), "Outbox events");
 }
 
-export async function getModelHealth(filters: { window: "fast" | "slow"; source?: string; extractor_fingerprint?: string }): Promise<ModelHealthSnapshot> {
+export async function redriveIngestionJobs(
+  eventIds: string[], reason: string, dryRun: boolean,
+): Promise<RedriveResponse> {
+  return request<RedriveResponse>("/ingestion/jobs/redrive", {
+    method: "POST",
+    body: JSON.stringify({ event_ids: eventIds, reason, dry_run: dryRun }),
+  });
+}
+
+type ModelHealthFilters = {
+  window: "fast" | "slow";
+  source?: string;
+  extractor_fingerprint?: string;
+  schema_version?: string;
+  model_version?: string;
+};
+
+export async function getModelHealth(filters: ModelHealthFilters): Promise<ModelHealthSnapshot> {
   const value = await request<unknown>(`/model-health?${queryString(filters)}`);
   if (!value || typeof value !== "object" || !("status" in value) || !("features" in value) || !Array.isArray(value.features)) {
     throw new ApiError("Model-health response is invalid.", 502, value);
@@ -344,12 +395,18 @@ export async function getModelHealth(filters: { window: "fast" | "slow"; source?
   return value as ModelHealthSnapshot;
 }
 
-export async function getModelHealthHistory(filters: { window: "fast" | "slow"; source?: string; extractor_fingerprint?: string; from?: string; to?: string; limit?: number }): Promise<ModelHealthHistory> {
+export async function getModelHealthHistory(filters: ModelHealthFilters & { from?: string; to?: string; limit?: number }): Promise<ModelHealthHistory> {
   const value = await request<unknown>(`/model-health/history?${queryString(filters)}`);
   if (!value || typeof value !== "object" || !("items" in value) || !Array.isArray(value.items)) {
     throw new ApiError("Model-health history response is invalid.", 502, value);
   }
   return value as ModelHealthHistory;
+}
+
+export async function getModelHealthCohorts(): Promise<ModelHealthCohort[]> {
+  const value = await request<{ items: ModelHealthCohort[] }>("/model-health/cohorts");
+  if (!Array.isArray(value.items)) throw new ApiError("Model-health cohorts response is invalid.", 502, value);
+  return value.items;
 }
 
 export async function getAlerts(): Promise<Alert[]> {
@@ -411,6 +468,7 @@ export async function getModels(): Promise<ModelInfo[]> {
       confusion_matrix: Array.isArray(metrics.confusion_matrix) ? metrics.confusion_matrix as number[][] : undefined,
       evaluation_scope: typeof metrics.evaluation_scope === "string" ? metrics.evaluation_scope : undefined,
       role,
+      probability_calibrated: model.metadata_json?.probability_calibrated === true,
     };
   });
 }
@@ -441,6 +499,7 @@ function evaluationCandidate(value: unknown, champion?: string): EvaluationCandi
     version: String(row.version ?? row.model_version ?? "evaluation-only"),
     status: Boolean(row.selected) || champion === name ? "active" : "candidate",
     role: "candidate",
+    probability_calibrated: row.probability_calibrated === true,
     selected: Boolean(row.selected) || champion === name,
     macro_f1: Number(test.macro_f1 ?? row.macro_f1 ?? 0),
     weighted_f1: Number(test.weighted_f1 ?? row.weighted_f1 ?? 0),
@@ -533,6 +592,7 @@ function explanationStage(value: unknown): AlertExplanationStage | null {
     output_value: Number(row.output_value ?? 0),
     method: String(row.method ?? "SHAP"),
     output_units: typeof row.output_units === "string" ? row.output_units : undefined,
+    calibration_scope: typeof row.calibration_scope === "string" ? row.calibration_scope : undefined,
     contributions: contributions.map((item) => {
       const contribution = item as Record<string, unknown>;
       return {

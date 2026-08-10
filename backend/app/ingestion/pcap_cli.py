@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -20,12 +21,17 @@ def _write_json(value: Any, output: str | None) -> None:
         sys.stdout.write(rendered)
 
 
-def _post_batch(api_url: str, observations: list[dict[str, Any]]) -> dict[str, Any]:
+def _post_batch(
+    api_url: str, observations: list[dict[str, Any]], token: str | None = None
+) -> dict[str, Any]:
     endpoint = f"{api_url.rstrip('/')}/api/v1/ingestion/offline-pcap/events"
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
         endpoint,
         data=json.dumps({"observations": observations}).encode(),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:
@@ -48,11 +54,17 @@ def ingest_command(args: argparse.Namespace) -> int:
     accepted = duplicates = rejected = 0
     batch: list[dict[str, Any]] = []
     responses: list[dict[str, Any]] = []
+    def submit(observations: list[dict[str, Any]]) -> dict[str, Any]:
+        return (
+            _post_batch(args.api_url, observations, args.token)
+            if args.token
+            else _post_batch(args.api_url, observations)
+        )
     for observation, _context in extract_pcap(args.capture):
         payload = observation.model_dump(mode="json")
         batch.append(payload)
         if len(batch) >= args.batch_size:
-            response = _post_batch(args.api_url, batch)
+            response = submit(batch)
             responses.append(response)
             events = response.get("events", [])
             accepted += sum(item.get("disposition") == "accepted" for item in events)
@@ -62,7 +74,7 @@ def ingest_command(args: argparse.Namespace) -> int:
             )
             batch = []
     if batch:
-        response = _post_batch(args.api_url, batch)
+        response = submit(batch)
         responses.append(response)
         events = response.get("events", [])
         accepted += sum(item.get("disposition") == "accepted" for item in events)
@@ -98,6 +110,9 @@ def parser() -> argparse.ArgumentParser:
     ingest.add_argument("capture")
     ingest.add_argument("--api-url", default="http://127.0.0.1:8000")
     ingest.add_argument("--batch-size", type=int, choices=range(1, 1001), default=100)
+    ingest.add_argument(
+        "--token", default=os.getenv("IOT_IDS_API_TOKEN"), help="API bearer token"
+    )
     ingest.add_argument("--output")
     ingest.set_defaults(handler=ingest_command)
     return command

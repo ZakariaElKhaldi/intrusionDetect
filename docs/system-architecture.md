@@ -23,11 +23,11 @@ Prepared CSV replay or /predict              |
              production manifest/checksum registry
                             |
                             v
-          HistGradientBoosting binary detector
+          calibrated HistGradientBoosting binary detector
                     |                 |
                   normal            attack
                     |                 v
-                    |   HistGradientBoosting attack family
+                    |   calibrated Random Forest attack family
                     |                 |
                     +--------+--------+
                              v

@@ -1,21 +1,23 @@
 {
+  "drift_reference": "drift-reference.json",
+  "drift_reference_sha256": "9d5eba6e37cb0693b9789182c856516e6544d9f2e6e04a345388881629dd4fa2",
   "evaluation_report": "evaluation-report.json",
-  "evaluation_report_sha256": "ab36d2a5eacdd600e6c79d9ad8889fac2affccc138c7a9841f6e0ff6c731efcc",
+  "evaluation_report_sha256": "8b4cc40522203e0f769687506f494b8ccbc502fa7b4444fcb948b24cb96c3d03",
   "models": [
     {
-      "artifact": "binary-hist_gradient_boosting-fbc864a2f90c.joblib",
-      "artifact_sha256": "6156e4ad8876b78e36e8267621a62514fc4eb6204d349a45f4e78195606c2000",
-      "metadata": "binary-hist_gradient_boosting-fbc864a2f90c.metadata.json",
-      "metadata_sha256": "fc72cabf385c31ac450d3c84e4e7df5f972f766af2c0cecfbff2546db10b29e0",
-      "model_version": "binary-hist_gradient_boosting-fbc864a2f90c",
+      "artifact": "binary-hist_gradient_boosting-2102398e1781.joblib",
+      "artifact_sha256": "6d67316cf3fb72eaa551117e207ab9ea8a640fa3adbb4001b1f89299a36c2971",
+      "metadata": "binary-hist_gradient_boosting-2102398e1781.metadata.json",
+      "metadata_sha256": "e69366aa193f20af0e0e6580fe12761ace36d67d31801549d00f9eb401fbc3e1",
+      "model_version": "binary-hist_gradient_boosting-2102398e1781",
       "target": "binary"
     },
     {
-      "artifact": "multiclass-hist_gradient_boosting-43e33432abfc.joblib",
-      "artifact_sha256": "1711d0adc4225751ce140c15639ed9570df1ed6b6522ca7ddf16d1dc5176257f",
-      "metadata": "multiclass-hist_gradient_boosting-43e33432abfc.metadata.json",
-      "metadata_sha256": "c2a95fa195757c4c9870d2744c2d7a862162ab8e92fd1c8ad18ee939c2ae9b81",
-      "model_version": "multiclass-hist_gradient_boosting-43e33432abfc",
+      "artifact": "multiclass-random_forest-bfe3010d65de.joblib",
+      "artifact_sha256": "e5656ee1f74a96587c2b6d1af377bd7fc3551445f4560d4bedc7adc68d70a0ae",
+      "metadata": "multiclass-random_forest-bfe3010d65de.metadata.json",
+      "metadata_sha256": "892d45c62cae7388be1f86787fdd5366e784f08b080ce9b3ad006133a6884ede",
+      "model_version": "multiclass-random_forest-bfe3010d65de",
       "target": "multiclass"
     }
   ],

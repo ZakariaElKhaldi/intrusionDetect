@@ -6,6 +6,7 @@ from app.detection.drift import (
     benjamini_hochberg,
     categorical_drift,
     evaluate_feature_window,
+    evaluate_output_window,
     numeric_drift,
 )
 
@@ -83,3 +84,43 @@ def test_empty_window_is_collecting() -> None:
         "observation_count": 0,
         "features": [],
     }
+
+
+def test_output_window_uses_calibrated_label_score_and_rate_thresholds() -> None:
+    reference = {
+        "detector_labels": {
+            "vocabulary": ["normal", "attack"],
+            "counts": {"normal": 9, "attack": 1, "__OTHER__": 0},
+            "js_threshold": 0.1,
+        },
+        "detector_scores": numeric_reference(threshold=0.1),
+        "classifier_labels": {
+            "vocabulary": ["scan"],
+            "counts": {"scan": 10, "__OTHER__": 0},
+            "js_threshold": 0.1,
+        },
+        "classifier_scores": numeric_reference(threshold=0.1),
+        "minimum_classifier_support": 2,
+        "attack_routing_rate": {"value": 0.1, "absolute_change_threshold": 0.1},
+    }
+    healthy = evaluate_output_window(
+        reference,
+        {
+            "detector_labels": ["normal"] * 9 + ["attack"],
+            "detector_scores": list(range(10)),
+            "classifier_labels": ["scan"] * 10,
+            "classifier_scores": list(range(10)),
+        },
+    )
+    shifted = evaluate_output_window(
+        reference,
+        {
+            "detector_labels": ["attack"] * 10,
+            "detector_scores": [100.0 + value for value in range(10)],
+            "classifier_labels": ["unknown"] * 10,
+            "classifier_scores": [100.0 + value for value in range(10)],
+        },
+    )
+    assert healthy["status"] == "healthy"
+    assert shifted["status"] == "warning"
+    assert shifted["alarm_count"] >= 4

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from app.api.auth import get_current_admin
 from app.features.canonical_schema import (
     BatchPredictionRequest,
     BatchPredictionResponse,
@@ -13,7 +14,12 @@ from app.service import broadcast_staged, process_observation, stage_observation
 router = APIRouter(tags=["predictions"])
 
 
-@router.post("/predict", response_model=PredictionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/predict",
+    response_model=PredictionResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_admin)],
+)
 async def predict(observation: FlowObservation, request: Request) -> PredictionResponse:
     with request.app.state.SessionLocal() as session:
         try:
@@ -26,7 +32,10 @@ async def predict(observation: FlowObservation, request: Request) -> PredictionR
 
 
 @router.post(
-    "/predict/batch", response_model=BatchPredictionResponse, status_code=status.HTTP_201_CREATED
+    "/predict/batch",
+    response_model=BatchPredictionResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_admin)],
 )
 async def predict_batch(
     batch: BatchPredictionRequest, request: Request

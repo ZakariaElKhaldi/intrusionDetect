@@ -163,6 +163,35 @@ export interface OutboxEvent {
   published_at: string | null;
 }
 
+export interface RedriveResult {
+  event_id: string;
+  eligible: boolean;
+  reason: string;
+}
+
+export interface RedriveResponse {
+  dry_run: boolean;
+  results: RedriveResult[];
+}
+
+export interface AuthSession {
+  access_token: string;
+  token_type: "bearer";
+  expires_in: number;
+  expires_at: string;
+  username: string;
+}
+
+export interface ModelHealthCohort {
+  model_version: string;
+  detector_model_version: string;
+  classifier_model_version: string | null;
+  schema_version: string;
+  ingestion_channel: string;
+  extractor_fingerprint: string | null;
+  deployment_eligible: boolean;
+}
+
 export type ModelHealthStatus = "blocked" | "incompatible_source" | "collecting" | "healthy" | "warning" | "critical";
 
 export interface ModelHealthSnapshot {
@@ -188,6 +217,9 @@ export interface ModelHealthHistoryItem {
   observation_count: number;
   aggregate_score: number | null;
   aggregate_threshold: number | null;
+  feature_alarm_count: number;
+  output_alarm_count: number;
+  output_aggregate_score: number | null;
 }
 
 export interface ModelHealthHistory {
@@ -287,6 +319,7 @@ export interface AlertExplanationStage {
   output_value: number;
   method: string;
   output_units?: string;
+  calibration_scope?: string;
   contributions: ExplanationContribution[];
 }
 
@@ -339,6 +372,7 @@ export interface ModelInfo {
   confusion_matrix?: number[][];
   evaluation_scope?: string;
   role?: "detector" | "classifier" | "candidate";
+  probability_calibrated?: boolean;
 }
 
 export interface LivePrediction {

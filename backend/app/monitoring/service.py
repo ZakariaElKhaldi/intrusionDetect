@@ -9,8 +9,15 @@ import numpy as np
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.database.models import DriftSnapshot, Observation, Prediction, ValidationFailure
-from app.detection.drift import evaluate_feature_window
+from app.database.models import (
+    Alert,
+    AnalystFeedback,
+    DriftSnapshot,
+    Observation,
+    Prediction,
+    ValidationFailure,
+)
+from app.detection.drift import evaluate_feature_window, evaluate_output_window
 from app.inference.model_registry import ModelRegistry, ModelRoute
 from app.monitoring.reference import DriftReferenceError, load_drift_reference
 from app.monitoring.schemas import (
@@ -34,6 +41,7 @@ WINDOWS: dict[WindowName, WindowPolicy] = {
     "slow": WindowPolicy(timedelta(days=7), 20_000, 5_000),
 }
 DEPLOYMENT_CHANNEL = "live_capture"
+NORMAL_LABELS = {"normal", "normal_traffic", "benign"}
 
 
 def _utc(value: datetime) -> datetime:
@@ -46,6 +54,11 @@ def _cohort_key(cohort: dict[str, Any]) -> str:
 
 def _snapshot_response(row: DriftSnapshot) -> ModelHealthSnapshotResponse:
     evidence = row.evidence or {}
+    aggregate = {
+        "score": row.aggregate_score,
+        "threshold": row.aggregate_threshold,
+        **evidence.get("aggregate", {}),
+    }
     return ModelHealthSnapshotResponse(
         status=row.status,
         reason=row.reason,
@@ -53,10 +66,7 @@ def _snapshot_response(row: DriftSnapshot) -> ModelHealthSnapshotResponse:
         cohort=row.cohort,
         reference=row.reference,
         observation_count=row.observation_count,
-        aggregate={
-            "score": row.aggregate_score,
-            "threshold": row.aggregate_threshold,
-        },
+        aggregate=aggregate,
         features=evidence.get("features", []),
         unseen_categories=evidence.get("unseen_categories", []),
         outputs=evidence.get("outputs", {}),
@@ -238,6 +248,72 @@ class ModelHealthService:
                 for observation, prediction in observations
                 if observation.ground_truth is not None
             ]
+            ground_truth_performance: dict[str, Any] = {}
+            if labelled:
+                binary_truth = [
+                    "normal"
+                    if str(observation.ground_truth).casefold() in NORMAL_LABELS
+                    else "attack"
+                    for observation, _prediction in labelled
+                ]
+                binary_predictions = [
+                    prediction.binary_prediction for _observation, prediction in labelled
+                ]
+                attacks = sum(value == "attack" for value in binary_truth)
+                normals = len(binary_truth) - attacks
+                true_attacks = sum(
+                    truth == "attack" and predicted == "attack"
+                    for truth, predicted in zip(
+                        binary_truth, binary_predictions, strict=True
+                    )
+                )
+                false_attacks = sum(
+                    truth == "normal" and predicted == "attack"
+                    for truth, predicted in zip(
+                        binary_truth, binary_predictions, strict=True
+                    )
+                )
+                cascade_truth = [
+                    "normal"
+                    if truth == "normal"
+                    else str(observation.ground_truth)
+                    for (observation, _prediction), truth in zip(
+                        labelled, binary_truth, strict=True
+                    )
+                ]
+                cascade_predictions = [
+                    "normal"
+                    if prediction.binary_prediction == "normal"
+                    else prediction.attack_class or "unclassified_attack"
+                    for _observation, prediction in labelled
+                ]
+                ground_truth_performance = {
+                    "labelled_count": len(labelled),
+                    "detector_attack_recall": true_attacks / attacks if attacks else None,
+                    "detector_normal_false_positive_rate": (
+                        false_attacks / normals if normals else None
+                    ),
+                    "cascade_accuracy": sum(
+                        truth == predicted
+                        for truth, predicted in zip(
+                            cascade_truth, cascade_predictions, strict=True
+                        )
+                    )
+                    / len(cascade_truth),
+                }
+            event_ids = [observation.event_id for observation, _prediction in observations]
+            feedback_rows = []
+            if event_ids:
+                feedback_rows = list(
+                    session.execute(
+                        select(AnalystFeedback.status)
+                        .join(Alert, Alert.alert_id == AnalystFeedback.alert_id)
+                        .where(Alert.event_id.in_(event_ids))
+                    ).scalars()
+                )
+            reviewed = [
+                value for value in feedback_rows if value in {"confirmed", "false_positive"}
+            ]
             evidence["performance"] = {
                 "end_to_end_latency_ms_median": (
                     float(np.median(latencies)) if latencies else None
@@ -245,7 +321,16 @@ class ModelHealthService:
                 "end_to_end_latency_ms_p95": (
                     float(np.quantile(latencies, 0.95)) if latencies else None
                 ),
-                "analyst_or_ground_truth_labelled_count": len(labelled),
+                "ground_truth": ground_truth_performance,
+                "analyst_review": {
+                    "reviewed_alert_count": len(reviewed),
+                    "confirmed": reviewed.count("confirmed"),
+                    "false_positive": reviewed.count("false_positive"),
+                    "confirmed_rate": (
+                        reviewed.count("confirmed") / len(reviewed) if reviewed else None
+                    ),
+                    "scope": "reviewed alerts only; not a complete ground-truth sample",
+                },
             }
             score = threshold = None
             if route is None:
@@ -294,7 +379,24 @@ class ModelHealthService:
                 predictions = [prediction for _, prediction in observations]
                 attacks = sum(item.binary_prediction == "attack" for item in predictions)
                 scores = [item.detection_score for item in predictions]
-                evidence["outputs"] = {
+                output_result = evaluate_output_window(
+                    reference.get("outputs", {}),
+                    {
+                        "detector_labels": [
+                            item.binary_prediction for item in predictions
+                        ],
+                        "detector_scores": scores,
+                        "classifier_labels": [
+                            item.attack_class for item in predictions if item.attack_class
+                        ],
+                        "classifier_scores": [
+                            item.attack_class_score
+                            for item in predictions
+                            if item.attack_class_score is not None
+                        ],
+                    },
+                )
+                output_result["current"] = {
                     "detector_labels": {
                         "attack": attacks,
                         "normal": len(predictions) - attacks,
@@ -303,20 +405,21 @@ class ModelHealthService:
                     "routing_rate": attacks / len(predictions),
                     "detection_score_median": float(np.median(scores)),
                     "detection_score_p95": float(np.quantile(scores, 0.95)),
-                    "classifier_labels": {
-                        label: sum(item.attack_class == label for item in predictions)
-                        for label in sorted(
-                            {
-                                item.attack_class
-                                for item in predictions
-                                if item.attack_class
-                            }
-                        )
-                    },
-                    "reference": reference.get("outputs", {}),
                 }
+                evidence["outputs"] = output_result
+                feature_alarm_count = sum(
+                    bool(feature.get("drifted")) for feature in evidence["features"]
+                )
+                evidence["aggregate"] = {
+                    "feature_alarm_count": feature_alarm_count,
+                    "output_alarm_count": output_result["alarm_count"],
+                    "output_aggregate_score": output_result["aggregate_score"],
+                }
+                if output_result["status"] == "warning":
+                    status = "warning"
+                score = max(float(score or 0), float(output_result["aggregate_score"]))
                 reason = (
-                    "calibrated feature alarms indicate changed traffic distribution"
+                    "calibrated feature or output alarms indicate changed traffic distribution"
                     if status == "warning"
                     else "no calibrated distribution alarm is active"
                 )
@@ -393,12 +496,34 @@ class ModelHealthService:
             for row in rows
         ]
 
+    def cohorts(self) -> list[dict[str, Any]]:
+        observed = self.observed_cohorts()
+        deployment = self.deployment_cohort()
+        keys: set[str] = set()
+        result: list[dict[str, Any]] = []
+        for cohort in [deployment, *observed]:
+            key = _cohort_key(cohort)
+            if key not in keys:
+                keys.add(key)
+                result.append(cohort)
+        return sorted(
+            result,
+            key=lambda item: (
+                not bool(item.get("deployment_eligible")),
+                str(item.get("ingestion_channel")),
+                str(item.get("schema_version")),
+                str(item.get("extractor_fingerprint") or ""),
+            ),
+        )
+
     def latest(
         self,
         *,
         window: WindowName = "fast",
         source: str | None = None,
         extractor_fingerprint: str | None = None,
+        schema_version: str | None = None,
+        model_version: str | None = None,
     ) -> ModelHealthSnapshotResponse | None:
         with self.session_factory() as session:
             rows = list(
@@ -415,6 +540,14 @@ class ModelHealthService:
                     for item in rows
                     if (source is None or item.cohort.get("ingestion_channel") == source)
                     and (
+                        schema_version is None
+                        or item.cohort.get("schema_version") == schema_version
+                    )
+                    and (
+                        model_version is None
+                        or item.cohort.get("model_version") == model_version
+                    )
+                    and (
                         extractor_fingerprint is None
                         or item.cohort.get("extractor_fingerprint")
                         == extractor_fingerprint
@@ -422,6 +555,8 @@ class ModelHealthService:
                     and (
                         source is not None
                         or extractor_fingerprint is not None
+                        or schema_version is not None
+                        or model_version is not None
                         or item.deployment_eligible
                     )
                 ),
@@ -445,6 +580,8 @@ class ModelHealthService:
         limit: int = 100,
         source: str | None = None,
         extractor_fingerprint: str | None = None,
+        schema_version: str | None = None,
+        model_version: str | None = None,
     ) -> ModelHealthHistoryResponse:
         with self.session_factory() as session:
             candidates = list(
@@ -460,12 +597,22 @@ class ModelHealthService:
             for item in candidates
             if (source is None or item.cohort.get("ingestion_channel") == source)
             and (
+                schema_version is None
+                or item.cohort.get("schema_version") == schema_version
+            )
+            and (
+                model_version is None
+                or item.cohort.get("model_version") == model_version
+            )
+            and (
                 extractor_fingerprint is None
                 or item.cohort.get("extractor_fingerprint") == extractor_fingerprint
             )
             and (
                 source is not None
                 or extractor_fingerprint is not None
+                or schema_version is not None
+                or model_version is not None
                 or item.deployment_eligible
             )
         ][:limit]
@@ -477,6 +624,19 @@ class ModelHealthService:
                     observation_count=row.observation_count,
                     aggregate_score=row.aggregate_score,
                     aggregate_threshold=row.aggregate_threshold,
+                    feature_alarm_count=int(
+                        (row.evidence or {}).get("aggregate", {}).get(
+                            "feature_alarm_count", 0
+                        )
+                    ),
+                    output_alarm_count=int(
+                        (row.evidence or {}).get("aggregate", {}).get(
+                            "output_alarm_count", 0
+                        )
+                    ),
+                    output_aggregate_score=(row.evidence or {}).get(
+                        "aggregate", {}
+                    ).get("output_aggregate_score"),
                 )
                 for row in rows
             ],
@@ -490,7 +650,7 @@ class ModelHealthService:
         degrades = latest.status == "critical" and not latest.shadow_mode
         degrades = degrades and bool(latest.cohort.get("deployment_eligible"))
         return {
-            "status": "degraded" if latest.status != "healthy" else "ready",
+            "status": "degraded" if degrades else "ready",
             "reason": latest.reason,
             "monitoring_status": latest.status,
             "shadow_mode": latest.shadow_mode,
