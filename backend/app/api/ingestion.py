@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import TypeAdapter, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from app.api.auth import get_current_admin
 from app.api.errors import safe_validation_details
@@ -86,35 +87,44 @@ async def _ingest(
         observations = await _parse_observations(request)
     except HTTPException as exc:
         if exc.status_code == 422:
-            with request.app.state.SessionLocal() as session:
-                session.add(
-                    ValidationFailure(
-                        error_code="schema_rejected",
-                        ingestion_channel=ingestion_channel,
-                        details={"status_code": 422},
+            def record_validation_failure() -> None:
+                with request.app.state.SessionLocal() as session:
+                    session.add(
+                        ValidationFailure(
+                            error_code="schema_rejected",
+                            ingestion_channel=ingestion_channel,
+                            details={"status_code": 422},
+                        )
                     )
-                )
-                session.commit()
+                    session.commit()
+
+            await run_in_threadpool(record_validation_failure)
         raise
-    with request.app.state.SessionLocal() as session:
-        try:
-            return enqueue_observations(
-                observations,
-                session,
-                queue_limit=request.app.state.settings.ingestion_queue_limit,
-                ingestion_channel=ingestion_channel,
-            )
-        except QueueFullError as exc:
-            session.rollback()
-            response.headers["Retry-After"] = "1"
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=str(exc),
-                headers={"Retry-After": "1"},
-            ) from exc
-        except IdempotencyConflictError as exc:
-            session.rollback()
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    def enqueue() -> IngestionBatchResponse:
+        with request.app.state.SessionLocal() as session:
+            try:
+                return enqueue_observations(
+                    observations,
+                    session,
+                    queue_limit=request.app.state.settings.ingestion_queue_limit,
+                    ingestion_channel=ingestion_channel,
+                )
+            except Exception:
+                session.rollback()
+                raise
+
+    try:
+        return await run_in_threadpool(enqueue)
+    except QueueFullError as exc:
+        response.headers["Retry-After"] = "1"
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": "1"},
+        ) from exc
+    except IdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 @router.post(
     "/events",
@@ -140,7 +150,7 @@ async def ingest_offline_pcap_events(
 
 
 @router.post("/jobs/redrive", response_model=RedriveResponse)
-async def redrive_ingestion_jobs(
+def redrive_ingestion_jobs(
     payload: RedriveRequest,
     request: Request,
     operator: Annotated[str, Depends(get_current_admin)],
@@ -171,7 +181,7 @@ async def redrive_ingestion_jobs(
 
 
 @router.get("/events/{event_id}", response_model=IngestionEventResponse)
-async def ingestion_event(event_id: str, request: Request) -> IngestionEventResponse:
+def ingestion_event(event_id: str, request: Request) -> IngestionEventResponse:
     with request.app.state.SessionLocal() as session:
         result = get_event(session, event_id)
     if result is None:
@@ -180,7 +190,7 @@ async def ingestion_event(event_id: str, request: Request) -> IngestionEventResp
 
 
 @router.get("/jobs", response_model=IngestionJobListResponse)
-async def ingestion_jobs(
+def ingestion_jobs(
     request: Request,
     state: IngestionState | None = None,
     error_code: str | None = Query(default=None, min_length=1, max_length=64),
@@ -209,7 +219,7 @@ async def ingestion_jobs(
 
 
 @router.get("/outbox/events", response_model=OutboxEventListResponse)
-async def outbox_events(
+def outbox_events(
     request: Request,
     status_filter: str | None = Query(
         default=None, alias="status", pattern="^(pending|failed|published)$"
@@ -232,7 +242,7 @@ async def outbox_events(
 
 
 @router.get("/status", response_model=IngestionStatusResponse)
-async def status_summary(request: Request) -> IngestionStatusResponse:
+def status_summary(request: Request) -> IngestionStatusResponse:
     with request.app.state.SessionLocal() as session:
         return ingestion_status(
             session, lease_seconds=request.app.state.settings.worker_lease_seconds

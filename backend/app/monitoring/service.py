@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from threading import Lock
 from typing import Any, Literal
 
 import numpy as np
@@ -94,6 +95,7 @@ class ModelHealthService:
         self.registry = registry
         self.shadow_mode = shadow_mode
         self.retention_days = retention_days
+        self._evaluation_lock = Lock()
         self.windows = {
             "fast": WindowPolicy(timedelta(hours=24), 5_000, fast_minimum),
             "slow": WindowPolicy(timedelta(days=7), 20_000, slow_minimum),
@@ -153,6 +155,22 @@ class ModelHealthService:
         return list(session.execute(query).tuples())
 
     def evaluate(
+        self,
+        window: WindowName,
+        *,
+        cohort: dict[str, Any] | None = None,
+        checked_at: datetime | None = None,
+    ) -> ModelHealthSnapshotResponse:
+        # Evaluation persists chronology-sensitive state. Serialize it even
+        # though callers execute in Starlette's shared worker pool.
+        with self._evaluation_lock:
+            return self._evaluate_unlocked(
+                window,
+                cohort=cohort,
+                checked_at=checked_at,
+            )
+
+    def _evaluate_unlocked(
         self,
         window: WindowName,
         *,

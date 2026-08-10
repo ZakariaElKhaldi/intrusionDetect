@@ -54,6 +54,11 @@ jobs:
         run: make download-data
       - name: Run the complete engineering gate
         run: make project-preflight
+      - name: Audit production dependency locks
+        run: |
+          ./scripts/audit_python_dependencies.sh
+          cd frontend
+          npm audit --audit-level=high
       - name: Validate and build the deployment stack
         run: |
           docker compose config --quiet

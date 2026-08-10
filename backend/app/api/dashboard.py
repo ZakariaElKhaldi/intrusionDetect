@@ -66,7 +66,7 @@ def _severity_timeline(
 
 
 @router.get("/summary")
-async def dashboard_summary(
+def dashboard_summary(
     request: Request,
     time_range: Literal["15m", "1h", "24h", "7d", "all"] = Query(
         default="24h", alias="range"

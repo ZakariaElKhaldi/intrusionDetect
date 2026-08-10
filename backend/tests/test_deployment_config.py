@@ -107,3 +107,25 @@ def test_ci_actions_are_immutable_and_least_privilege() -> None:
     assert "docker compose build" in release_gate
     assert "docker compose up --detach" in release_gate
     assert "docker compose down --volumes --remove-orphans" in release_gate
+
+
+def test_ci_and_release_gate_audit_all_locked_dependency_graphs() -> None:
+    audit_script = (REPOSITORY / "scripts/audit_python_dependencies.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'PIP_AUDIT_VERSION="2.10.1"' in audit_script
+    assert '"pip-audit@${PIP_AUDIT_VERSION}"' in audit_script
+    assert "--locked" in audit_script
+    assert "--all-extras" in audit_script
+    assert "--all-groups" in audit_script
+    assert "--require-hashes" in audit_script
+    assert "export_lock backend" in audit_script
+    assert "export_lock machine-learning" in audit_script
+
+    ci = (REPOSITORY / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    release = (REPOSITORY / ".github/workflows/release-gate.yml").read_text(
+        encoding="utf-8"
+    )
+    for workflow in (ci, release):
+        assert "./scripts/audit_python_dependencies.sh" in workflow
+        assert "npm audit --audit-level=high" in workflow

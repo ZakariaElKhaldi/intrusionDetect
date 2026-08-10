@@ -149,8 +149,9 @@ make demo
 ```
 
 Pull requests and pushes to `main` run the pinned, read-only-permission CI
-workflow for lint, unit tests, builds, artifact verification, migrations, and a
-production dependency audit. A separate PostgreSQL 17 job runs migrations and
+workflow for lint, unit tests, builds, artifact verification, migrations, and
+hashed-lock vulnerability audits for npm, backend Python, and ML Python
+dependencies. A separate PostgreSQL 17 job runs migrations and
 exercises `SKIP LOCKED` claims plus concurrent redrive/claim serialization. Tag
 builds and manual release-gate runs additionally download the checksummed UCI
 dataset and execute `make project-preflight`, including browser E2E.

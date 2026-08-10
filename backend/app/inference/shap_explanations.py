@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass
+from threading import RLock
 from typing import Any
 
 import numpy as np
@@ -27,8 +28,18 @@ class ExplanationService:
         self.max_cached_alerts = max_cached_alerts
         self._explainers: dict[str, _StageExplainer] = {}
         self._results: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._lock = RLock()
 
     def explain_alert(
+        self,
+        alert_id: str,
+        features: dict[str, Any],
+        predicted_class: str,
+    ) -> dict[str, Any]:
+        with self._lock:
+            return self._explain_alert_locked(alert_id, features, predicted_class)
+
+    def _explain_alert_locked(
         self,
         alert_id: str,
         features: dict[str, Any],

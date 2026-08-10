@@ -220,7 +220,7 @@ def create_app(
         return {"status": "alive"}
 
     @app.get("/metrics", tags=["health"], include_in_schema=False)
-    async def metrics() -> Response:
+    def metrics() -> Response:
         application_metrics: ApplicationMetrics = app.state.metrics
         application_metrics.live_connections.set(len(app.state.live.connections))
         try:
@@ -253,7 +253,7 @@ def create_app(
 
     @app.get("/health", tags=["health"])
     @app.get("/api/v1/health", tags=["health"], include_in_schema=False)
-    async def health() -> dict:
+    def health() -> dict:
         dataset = dataset_health.status()
         fallback_active = bool(
             registry.detector.metadata.get("fallback")
@@ -451,8 +451,8 @@ def create_app(
 
     @app.get("/readyz", tags=["health"], include_in_schema=False)
     @app.get("/api/v1/readyz", tags=["health"], include_in_schema=False)
-    async def readyz() -> Response:
-        evidence = await health()
+    def readyz() -> Response:
+        evidence = health()
         status_code = (
             status.HTTP_503_SERVICE_UNAVAILABLE
             if evidence["readiness"] == "blocked"

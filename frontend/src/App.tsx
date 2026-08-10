@@ -23,6 +23,7 @@ import {
 } from "./api";
 import { sampleAlerts, sampleModels } from "./data";
 import { ReplayPanel } from "./features/overview/ReplayPanel";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import type { Alert, AlertStatus, DashboardSummary, HealthInfo, IngestionStatus, ModelInfo, Page, ReplayScenario, ReplayStatus } from "./types";
 import { pageTitles } from "./utils";
 import { useAuth } from "./auth";
@@ -481,8 +482,9 @@ function App() {
             </div>
           ) : null}
           {healthError && health ? <div className="inline-notice" role="alert">{healthError}</div> : null}
-          <Suspense fallback={<div className="panel data-state" role="status">Loading workspace…</div>}>
-          {page === "overview" ? (
+          <ErrorBoundary resetKey={page} title={`${title} workspace unavailable`}>
+            <Suspense fallback={<div className="panel data-state" role="status">Loading workspace…</div>}>
+            {page === "overview" ? (
             <div className="monitor-page">
               <ReplayPanel
                 replay={replay}
@@ -543,21 +545,30 @@ function App() {
             />
           ) : null}
           {page === "models" ? <ModelAnalysis models={models} fixtureMode={fixtureMode} descriptorLoading={modelsLoading} descriptorError={modelsError} /> : null}
-          {page === "testing" ? <ObservationLab /> : null}
-          </Suspense>
+            {page === "testing" ? <ObservationLab /> : null}
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
 
       {selectedAlert ? (
-        <Suspense fallback={null}>
-          <AlertDrawer
-            alert={selectedAlert}
-            onClose={() => setSelectedAlert(null)}
-            onStatusChange={updateAlertStatus}
-            loadExplanation={!fixtureMode}
-            readOnly={fixtureMode}
-          />
-        </Suspense>
+        <ErrorBoundary
+          resetKey={selectedAlert.id}
+          title="Alert details unavailable"
+          message="The alert remains unchanged. Close this detail view and try opening it again."
+          resetLabel="Close details"
+          onReset={() => setSelectedAlert(null)}
+        >
+          <Suspense fallback={null}>
+            <AlertDrawer
+              alert={selectedAlert}
+              onClose={() => setSelectedAlert(null)}
+              onStatusChange={updateAlertStatus}
+              loadExplanation={!fixtureMode}
+              readOnly={fixtureMode}
+            />
+          </Suspense>
+        </ErrorBoundary>
       ) : null}
     </div>
   );

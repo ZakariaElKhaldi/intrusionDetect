@@ -219,6 +219,12 @@ h1, h2, h3, p { margin-top: 0; }
 .chart-empty { display: grid; min-height: inherit; place-items: center; padding: 28px; color: var(--ink-soft); font-size: 10px; text-align: center; }
 .data-state { min-height: 180px; display: grid; place-items: center; padding: 28px; color: var(--ink-soft); font-size: 10px; text-align: center; }
 .data-state--error { border-color: var(--accent); color: var(--accent-dark); }
+.error-boundary { min-height: 220px; display: grid; place-items: center; padding: 32px; border-color: var(--accent-dark); }
+.error-boundary-copy { width: min(560px, 100%); text-align: center; }
+.error-boundary-copy h1, .error-boundary-copy h2 { margin-bottom: 8px; }
+.error-boundary-copy p { color: var(--ink-soft); line-height: 1.55; }
+.error-boundary-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+.fatal-error-boundary { min-height: 100vh; display: grid; place-items: center; padding: 32px; background: var(--canvas); }
 .recent-list { display: grid; }
 .recent-alert {
   display: grid;

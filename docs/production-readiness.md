@@ -18,6 +18,10 @@ not treated as proof of detection effectiveness or operational capacity.
 - Operator dialogs contain keyboard focus, close with Escape, and return focus
   to their invoking control. Automated tests cover WCAG 2.1 A/AA Axe findings,
   keyboard operation, mobile reflow, and the authentication dialog behavior.
+- React render failures are contained at the application and workspace levels.
+  Recovery UI uses an accessible alert, moves focus to the retry action, keeps
+  thrown details out of operator-visible copy, and resets when navigation
+  changes instead of leaving the dashboard blank.
 - The containerized UI uses a same-origin API/WebSocket proxy and emits CSP,
   frame, MIME-sniffing, referrer, and browser-permission headers. The backend
   container runs as UID/GID 10001 and exposes distinct liveness and readiness
@@ -51,6 +55,10 @@ not treated as proof of detection effectiveness or operational capacity.
   browser E2E and all preflight checks. They are also configured to build the
   Compose images, exercise the same-origin container route, verify non-root
   users/read-only roots, and remove the disposable database volume afterward.
+- CI and release jobs audit the complete hashed backend and machine-learning
+  lock exports with a pinned PyPA `pip-audit` tool, and audit the npm lockfile.
+  The first Python audit identified and removed the vulnerable pytest 8.4.2
+  development dependency instead of excluding development tooling.
 - API, ingestion-worker, and model-health-worker startup validate runtime
   settings and refuse uninitialized or stale database schemas. Table creation
   is limited to an explicit programmatic test path; deployed services require
@@ -93,9 +101,13 @@ Security-header choices follow the [OWASP HTTP Headers][owasp-headers] and
 [W3C WAI-ARIA Authoring Practices dialog pattern][w3c-dialog]. Probe separation
 follows [Kubernetes liveness and readiness semantics][k8s-probes], and the
 unprivileged runtime follows [Docker's build best practices][docker-build].
+Render-failure containment follows [React's Error Boundary guidance][react-errors],
+and Python dependency auditing uses the [PyPA `pip-audit` contract][pip-audit].
 
 [owasp-headers]: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
 [owasp-csp]: https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html
 [w3c-dialog]: https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/
 [k8s-probes]: https://kubernetes.io/docs/concepts/workloads/pods/probes/
 [docker-build]: https://docs.docker.com/build/building/best-practices/
+[react-errors]: https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary
+[pip-audit]: https://github.com/pypa/pip-audit

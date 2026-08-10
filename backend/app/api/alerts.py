@@ -49,7 +49,7 @@ def _alert_response(
 
 
 @router.get("/alerts", response_model=list[AlertResponse])
-async def list_alerts(
+def list_alerts(
     request: Request,
     severity: str | None = None,
     alert_status: str | None = Query(default=None, alias="status"),
@@ -73,7 +73,7 @@ async def list_alerts(
 
 
 @router.get("/alerts/page", response_model=AlertPage)
-async def page_alerts(
+def page_alerts(
     request: Request,
     severity: str | None = None,
     alert_status: str | None = Query(default=None, alias="status"),
@@ -151,7 +151,7 @@ async def page_alerts(
 
 
 @router.get("/alerts/{alert_id}", response_model=AlertDetail)
-async def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
+def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
     with request.app.state.SessionLocal() as session:
         alert = session.get(Alert, str(alert_id))
         if not alert:
@@ -191,7 +191,7 @@ async def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
 
 
 @router.get("/alerts/{alert_id}/explanation")
-async def get_alert_explanation(alert_id: UUID, request: Request) -> dict:
+def get_alert_explanation(alert_id: UUID, request: Request) -> dict:
     with request.app.state.SessionLocal() as session:
         alert = session.get(Alert, str(alert_id))
         if not alert:
@@ -224,7 +224,7 @@ async def get_alert_explanation(alert_id: UUID, request: Request) -> dict:
     response_model=FeedbackResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def add_feedback(
+def add_feedback(
     alert_id: UUID,
     payload: FeedbackRequest,
     request: Request,

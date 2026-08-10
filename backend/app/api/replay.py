@@ -59,7 +59,7 @@ def _status(request: Request) -> ReplayStatus:
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(get_current_admin)],
 )
-async def start_replay(payload: ReplayRequest, request: Request) -> ReplayStatus:
+def start_replay(payload: ReplayRequest, request: Request) -> ReplayStatus:
     try:
         if payload.mode == "dataset":
             request.app.state.replay.start_dataset(
@@ -85,14 +85,14 @@ async def start_replay(payload: ReplayRequest, request: Request) -> ReplayStatus
 
 
 @router.get("/status", response_model=ReplayStatus)
-async def replay_status(request: Request) -> ReplayStatus:
+def replay_status(request: Request) -> ReplayStatus:
     return _status(request)
 
 
 @router.post(
     "/pause", response_model=ReplayStatus, dependencies=[Depends(get_current_admin)]
 )
-async def pause_replay(request: Request) -> ReplayStatus:
+def pause_replay(request: Request) -> ReplayStatus:
     try:
         request.app.state.replay.pause()
     except RuntimeError as exc:
@@ -103,7 +103,7 @@ async def pause_replay(request: Request) -> ReplayStatus:
 @router.post(
     "/resume", response_model=ReplayStatus, dependencies=[Depends(get_current_admin)]
 )
-async def resume_replay(payload: ReplayControl, request: Request) -> ReplayStatus:
+def resume_replay(payload: ReplayControl, request: Request) -> ReplayStatus:
     try:
         request.app.state.replay.resume(payload.speed)
     except RuntimeError as exc:
@@ -114,6 +114,6 @@ async def resume_replay(payload: ReplayControl, request: Request) -> ReplayStatu
 @router.post(
     "/stop", response_model=ReplayStatus, dependencies=[Depends(get_current_admin)]
 )
-async def stop_replay(request: Request) -> ReplayStatus:
+def stop_replay(request: Request) -> ReplayStatus:
     request.app.state.replay.stop()
     return _status(request)

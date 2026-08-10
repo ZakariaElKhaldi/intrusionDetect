@@ -14,12 +14,12 @@ router = APIRouter(prefix="/model-health", tags=["model-health"])
 
 
 @router.get("/cohorts", response_model=ModelHealthCohortsResponse)
-async def model_health_cohorts(request: Request) -> ModelHealthCohortsResponse:
+def model_health_cohorts(request: Request) -> ModelHealthCohortsResponse:
     return ModelHealthCohortsResponse(items=request.app.state.model_health.cohorts())
 
 
 @router.get("", response_model=ModelHealthSnapshotResponse)
-async def model_health(
+def model_health(
     request: Request,
     window: Literal["fast", "slow"] = "fast",
     source: str | None = Query(default=None, max_length=32),
@@ -42,7 +42,7 @@ async def model_health(
 
 
 @router.get("/history", response_model=ModelHealthHistoryResponse)
-async def model_health_history(
+def model_health_history(
     request: Request,
     window: Literal["fast", "slow"] = "fast",
     limit: int = Query(default=100, ge=1, le=500),

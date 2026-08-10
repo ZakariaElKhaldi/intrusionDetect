@@ -20,7 +20,7 @@ class ModelResponse(BaseModel):
 
 
 @router.get("/models", response_model=list[ModelResponse])
-async def list_models(request: Request) -> list[ModelResponse]:
+def list_models(request: Request) -> list[ModelResponse]:
     from app.database.models import ModelVersion
 
     with request.app.state.SessionLocal() as session:
@@ -32,7 +32,7 @@ async def list_models(request: Request) -> list[ModelResponse]:
 
 
 @router.get("/evaluation")
-async def get_evaluation(
+def get_evaluation(
     request: Request,
     stage: Literal["binary", "multiclass"] = Query(...),
 ) -> dict:

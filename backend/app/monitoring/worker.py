@@ -2,38 +2,50 @@ from __future__ import annotations
 
 import asyncio
 
+from starlette.concurrency import run_in_threadpool
+
 from app.config import Settings
 from app.database.schema import verify_schema_current
 from app.database.session import create_engine_and_session
 from app.inference.model_registry import ModelRegistry
 from app.live import LiveConnectionManager
+from app.monitoring.schemas import ModelHealthSnapshotResponse
 from app.monitoring.service import ModelHealthService
 
 
-async def evaluate_once(service: ModelHealthService, live: LiveConnectionManager) -> None:
+def _changed_snapshots(
+    service: ModelHealthService,
+) -> list[ModelHealthSnapshotResponse]:
     cohorts = service.observed_cohorts()
     deployment = service.deployment_cohort()
     if not any(cohort == deployment for cohort in cohorts):
         cohorts.append(deployment)
+    changed: list[ModelHealthSnapshotResponse] = []
     for cohort in cohorts:
         for window in ("fast", "slow"):
             snapshot = service.evaluate(window, cohort=cohort)
             if snapshot.__dict__.pop("_status_changed", False):
-                await live.broadcast(
-                    {
-                        "type": "model_health.updated",
-                        "data": {
-                            "status": snapshot.status,
-                            "reason": snapshot.reason,
-                            "window": snapshot.window,
-                            "cohort": snapshot.cohort,
-                            "observation_count": snapshot.observation_count,
-                            "aggregate": snapshot.aggregate,
-                            "checked_at": snapshot.checked_at.isoformat(),
-                            "shadow_mode": snapshot.shadow_mode,
-                        },
-                    },
-                )
+                changed.append(snapshot)
+    return changed
+
+
+async def evaluate_once(service: ModelHealthService, live: LiveConnectionManager) -> None:
+    for snapshot in await run_in_threadpool(_changed_snapshots, service):
+        await live.broadcast(
+            {
+                "type": "model_health.updated",
+                "data": {
+                    "status": snapshot.status,
+                    "reason": snapshot.reason,
+                    "window": snapshot.window,
+                    "cohort": snapshot.cohort,
+                    "observation_count": snapshot.observation_count,
+                    "aggregate": snapshot.aggregate,
+                    "checked_at": snapshot.checked_at.isoformat(),
+                    "shadow_mode": snapshot.shadow_mode,
+                },
+            }
+        )
 
 
 async def monitoring_loop(

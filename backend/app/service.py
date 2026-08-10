@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from time import perf_counter
 from uuid import UUID
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
+from starlette.concurrency import run_in_threadpool
 
 from app.database.models import Alert, Observation, Prediction
 from app.detection.device_profiles import evaluate_device_profile
@@ -167,17 +168,48 @@ async def broadcast_staged(
         await live.broadcast(event)
 
 
+def persist_observations(
+    observations: tuple[FlowObservation, ...],
+    session_factory: sessionmaker[Session],
+    registry: ModelRegistry,
+    *,
+    ingestion_channel: str = "direct_prediction",
+) -> tuple[StagedObservation, ...]:
+    """Run one atomic synchronous inference transaction in a worker thread."""
+    with session_factory() as session:
+        try:
+            staged = tuple(
+                stage_observation(
+                    observation,
+                    session,
+                    registry,
+                    ingestion_channel=ingestion_channel,
+                )
+                for observation in observations
+            )
+            session.commit()
+            return staged
+        except Exception:
+            session.rollback()
+            raise
+
+
 async def process_observation(
     observation: FlowObservation,
-    session: Session,
+    session_factory: sessionmaker[Session],
     registry: ModelRegistry,
     live: LiveConnectionManager,
     *,
     ingestion_channel: str = "direct_prediction",
 ) -> PredictionResponse:
-    staged = stage_observation(
-        observation, session, registry, ingestion_channel=ingestion_channel
-    )
-    session.commit()
+    staged = (
+        await run_in_threadpool(
+            persist_observations,
+            (observation,),
+            session_factory,
+            registry,
+            ingestion_channel=ingestion_channel,
+        )
+    )[0]
     await broadcast_staged(staged, live)
     return staged.response

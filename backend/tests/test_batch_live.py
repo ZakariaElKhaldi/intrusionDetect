@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -15,7 +18,7 @@ from app.features.canonical_schema import FlowObservation
 from app.inference.model_registry import ModelRegistry
 from app.live import LiveConnectionManager
 from app.main import create_app
-from app.service import process_observation
+from app.service import broadcast_staged, persist_observations
 
 
 @pytest.mark.anyio
@@ -45,6 +48,42 @@ async def test_batch_prediction_and_versioned_alias(
     assert attack["attack_class_score_calibrated"] is False
     assert (await fallback_client.get("/api/v1/models")).status_code == 200
     assert (await fallback_client.get("/api/v1/alerts")).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_blocked_inference_transaction_does_not_stall_liveness(
+    fallback_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api import predictions as prediction_api
+
+    original = prediction_api.persist_observations
+    release = threading.Event()
+
+    def delayed_persistence(*args, **kwargs):
+        release.wait(timeout=0.75)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(prediction_api, "persist_observations", delayed_persistence)
+    timer = threading.Timer(0.75, release.set)
+    timer.start()
+    started = time.perf_counter()
+    prediction_task = asyncio.create_task(
+        fallback_client.post(
+            "/predict/batch",
+            json={"observations": [observation()]},
+        )
+    )
+    await asyncio.sleep(0.05)
+    scheduling_delay = time.perf_counter() - started
+    liveness = await asyncio.wait_for(fallback_client.get("/livez"), timeout=0.4)
+    release.set()
+    prediction = await prediction_task
+    timer.cancel()
+
+    assert scheduling_delay < 0.4
+    assert liveness.status_code == 200
+    assert prediction.status_code == 201
 
 
 class FakeSocket:
@@ -163,13 +202,13 @@ async def test_service_broadcasts_authoritative_prediction_and_alert_events(
     payload = observation(attack=True)
     payload["features"]["flow_SYN_flag_count"] = 100
 
-    with session_factory() as session:
-        response = await process_observation(
-            FlowObservation.model_validate(payload),
-            session,
-            ModelRegistry(allow_fallback=True),
-            live,
-        )
+    staged = persist_observations(
+        (FlowObservation.model_validate(payload),),
+        session_factory,
+        ModelRegistry(allow_fallback=True),
+    )[0]
+    await broadcast_staged(staged, live)
+    response = staged.response
 
     assert [message["type"] for message in socket.messages] == [
         "prediction.created",
@@ -195,13 +234,13 @@ async def test_normal_prediction_broadcasts_no_alert_event(tmp_path) -> None:
     payload["features"]["flow_RST_flag_count"] = 0
     payload["features"]["flow_pkts_per_sec"] = 0
 
-    with session_factory() as session:
-        response = await process_observation(
-            FlowObservation.model_validate(payload),
-            session,
-            ModelRegistry(allow_fallback=True),
-            live,
-        )
+    staged = persist_observations(
+        (FlowObservation.model_validate(payload),),
+        session_factory,
+        ModelRegistry(allow_fallback=True),
+    )[0]
+    await broadcast_staged(staged, live)
+    response = staged.response
 
     assert response.binary_prediction == "normal"
     assert response.alert_id is None
