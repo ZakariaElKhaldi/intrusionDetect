@@ -58,6 +58,11 @@ class ApplicationMetrics:
             "Currently connected WebSocket monitoring clients.",
             registry=self.registry,
         )
+        self.live_connection_rejections = Counter(
+            "iot_ids_live_websocket_rejections_total",
+            "WebSocket monitoring connections rejected because capacity was reached.",
+            registry=self.registry,
+        )
 
     def render(self) -> bytes:
         return generate_latest(self.registry)

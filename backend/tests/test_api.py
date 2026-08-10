@@ -33,13 +33,18 @@ async def test_health_models_and_packaged_prediction(client: httpx.AsyncClient) 
     assert body["binary_prediction"] in {"normal", "attack"}
     assert body["detector_model_version"] == body["model_version"]
     assert body["detection_score"] == body["confidence"]
+    assert body["detection_score_calibrated"] is True
+    assert health.json()["detector_probability_calibrated"] is True
+    assert health.json()["classifier_probability_calibrated"] is True
     if body["binary_prediction"] == "normal":
         assert body["classifier_model_version"] is None
         assert body["attack_class_score"] is None
+        assert body["attack_class_score_calibrated"] is None
     else:
         assert body["classifier_model_version"].startswith("multiclass-")
         assert body["attack_class"]
         assert body["attack_class_score"] is not None
+        assert body["attack_class_score_calibrated"] is True
     assert len(body["raw_features"]) == 83
     assert body["end_to_end_latency_ms"] >= body["latency_ms"]
     assert body["total_latency_ms"] == body["end_to_end_latency_ms"]
@@ -56,6 +61,7 @@ async def test_stage_evaluation_is_compact_and_requires_filter(
     assert response.status_code == 200
     body = response.json()
     assert body["stage"] == "binary"
+    assert body["probability_calibrated"] is True
     assert len(body["evaluation_seeds"]) == 3
     assert len(body["candidates"]) == 4
     assert sum(candidate["selected"] for candidate in body["candidates"]) == 1

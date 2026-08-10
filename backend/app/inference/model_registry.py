@@ -536,17 +536,29 @@ class ModelRegistry:
                 }
             )
 
+        predictor = self.detector if stage == "binary" else self.classifier
+        probability_calibrated = (
+            predictor.metadata.get("probability_calibrated") is True
+        )
         notes = list(self.evaluation_report.get("limitations", []))
         notes.extend(
             [
                 "Candidate selection aggregates the declared random seeds; "
                 "displayed test metrics use the promoted seed.",
                 "Random-split evidence is not deployment validation.",
-                "Reported classifier scores are uncalibrated probabilities.",
+                (
+                    "The promoted artifact reports calibrated probabilities; "
+                    "deployment calibration must still be monitored on "
+                    "representative labelled traffic."
+                    if probability_calibrated
+                    else "The promoted artifact does not declare probability calibration; "
+                    "treat its numeric output as a model score."
+                ),
             ]
         )
         response = {
             "stage": stage,
+            "probability_calibrated": probability_calibrated,
             "evaluation_seeds": self.evaluation_report.get("evaluation_seeds", []),
             "split_definition": split.get("definition", {}),
             "candidates": candidates,

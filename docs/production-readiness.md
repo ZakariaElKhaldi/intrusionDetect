@@ -25,6 +25,9 @@ not treated as proof of detection effectiveness or operational capacity.
 - The API rejects unapproved HTTP host headers using an explicit deployment
   allowlist. Local defaults accept only loopback/internal names; deployments
   must set `IOT_IDS_ALLOWED_HOSTS` to their ingress hostname.
+- All HTTP request bodies are bounded even when `Content-Length` is absent, and
+  each API process enforces a configurable live WebSocket connection ceiling.
+  Capacity refusals use close code `1013` and increment a Prometheus counter.
 - `/metrics` uses the official Prometheus Python client and exposes normalized
   route counts/latency plus database, queue, dead-letter, outbox, and live
   connection gauges without event-, user-, or device-level labels.
@@ -34,7 +37,9 @@ not treated as proof of detection effectiveness or operational capacity.
   tokens, database URLs, and caller-provided identity values.
 - The promoted RT-IoT2022 artifacts, schema, dataset checksum, calibration
   metadata, and drift reference are cryptographically bound and checked during
-  preflight.
+  preflight. Prediction responses label detector and family values with the
+  exact serving artifact's calibration declaration rather than relying on
+  global UI copy.
 - GitHub Actions are configured with full-commit action pins and read-only
   repository permissions. The normal gate is hermetic over the tracked sample
   and model bundle; a separate PostgreSQL 17 job is configured to verify

@@ -53,6 +53,8 @@ export interface HealthInfo {
   model_version: string;
   detector_model_version?: string;
   classifier_model_version?: string | null;
+  detector_probability_calibrated?: boolean;
+  classifier_probability_calibrated?: boolean;
   live_connections: number;
   dataset_ready?: boolean;
   dataset_checksum?: string | null;
@@ -335,6 +337,7 @@ export interface EvaluationCandidate extends ModelInfo {
 
 export interface EvaluationReport {
   stage: "binary" | "multiclass";
+  probability_calibrated?: boolean;
   candidates: EvaluationCandidate[];
   selected_champion?: string;
   measurement_notes: string[];
@@ -384,7 +387,9 @@ export interface LivePrediction {
   attack_class: string | null;
   confidence?: number;
   detection_score: number;
+  detection_score_calibrated?: boolean;
   attack_class_score?: number | null;
+  attack_class_score_calibrated?: boolean | null;
   detector_latency_ms?: number;
   classifier_latency_ms?: number | null;
   total_latency_ms?: number;

@@ -35,17 +35,17 @@ from app.ingestion.service import (
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 OBSERVATIONS = TypeAdapter(list[FlowObservation])
-MAX_REQUEST_BYTES = 50 * 1024 * 1024
 
 
 async def _bounded_body(request: Request) -> bytes:
+    max_request_bytes = request.app.state.settings.max_request_body_bytes
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > MAX_REQUEST_BYTES:
+    if content_length and int(content_length) > max_request_bytes:
         raise HTTPException(status_code=413, detail="ingestion request body is too large")
     chunks = bytearray()
     async for chunk in request.stream():
         chunks.extend(chunk)
-        if len(chunks) > MAX_REQUEST_BYTES:
+        if len(chunks) > max_request_bytes:
             raise HTTPException(status_code=413, detail="ingestion request body is too large")
     return bytes(chunks)
 

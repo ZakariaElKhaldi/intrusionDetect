@@ -8,7 +8,9 @@ router = APIRouter(tags=["live"])
 @router.websocket("/live")
 async def live(websocket: WebSocket) -> None:
     manager = websocket.app.state.live
-    await manager.connect(websocket)
+    if not await manager.connect(websocket):
+        websocket.app.state.metrics.live_connection_rejections.inc()
+        return
     try:
         while True:
             message = await websocket.receive_text()
@@ -16,4 +18,3 @@ async def live(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-

@@ -260,6 +260,9 @@ can serve HTTP, while `/readyz` returns `503` when required runtime components
 are blocked. `/health` remains the detailed public monitoring view. `/metrics`
 exports low-cardinality Prometheus request count/latency, in-flight request,
 database, ingestion queue, dead-letter, outbox, and live-connection metrics.
+The API enforces a configurable body-size ceiling for declared and streamed
+request bodies, and the public monitoring stream rejects connections above its
+configured per-process capacity with WebSocket close code `1013`.
 Application logs default to structured JSON with request IDs and normalized
 route templates; raw Uvicorn access logs are disabled in the production image
 to avoid duplicating or accidentally widening the logged request surface.

@@ -17,7 +17,9 @@ class InferenceResult:
     attack_class: str | None
     confidence: float
     detection_score: float
+    detection_score_calibrated: bool
     attack_class_score: float | None
+    attack_class_score_calibrated: bool | None
     latency_ms: float
     detector_latency_ms: float
     classifier_latency_ms: float | None
@@ -49,7 +51,15 @@ def run_inference(
         attack_class=attack_class,
         confidence=detection_score,
         detection_score=detection_score,
+        detection_score_calibrated=(
+            registry.detector.metadata.get("probability_calibrated") is True
+        ),
         attack_class_score=attack_class_score,
+        attack_class_score_calibrated=(
+            registry.classifier.metadata.get("probability_calibrated") is True
+            if classifier_model_version is not None
+            else None
+        ),
         latency_ms=latency,
         detector_latency_ms=detector_latency,
         classifier_latency_ms=classifier_latency,

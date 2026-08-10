@@ -107,7 +107,9 @@ interface PredictionWire {
   attack_class: string | null;
   confidence?: number;
   detection_score?: number;
+  detection_score_calibrated?: boolean;
   attack_class_score?: number | null;
+  attack_class_score_calibrated?: boolean | null;
   detector_latency_ms?: number;
   classifier_latency_ms?: number | null;
   total_latency_ms?: number;
@@ -239,7 +241,9 @@ function predictionFromWire(value: PredictionWire): LivePrediction | null {
     attack_class: typeof value.attack_class === "string" ? value.attack_class : null,
     confidence: value.confidence,
     detection_score: value.detection_score ?? value.confidence ?? 0,
+    detection_score_calibrated: value.detection_score_calibrated === true,
     attack_class_score: value.attack_class_score,
+    attack_class_score_calibrated: value.attack_class_score_calibrated,
     detector_latency_ms: value.detector_latency_ms ?? value.latency_ms,
     classifier_latency_ms: value.classifier_latency_ms,
     total_latency_ms: value.total_latency_ms,

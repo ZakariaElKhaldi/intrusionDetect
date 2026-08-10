@@ -26,6 +26,8 @@ class Settings:
     model_health_fast_minimum: int = 1_000
     model_health_slow_minimum: int = 5_000
     model_health_retention_days: int = 90
+    max_request_body_bytes: int = 50 * 1024 * 1024
+    max_live_connections: int = 250
     auth_enabled: bool = False
     admin_username: str = "admin"
     admin_password_hash: str = ""
@@ -91,6 +93,12 @@ class Settings:
             model_health_retention_days=int(
                 os.getenv("IOT_IDS_MODEL_HEALTH_RETENTION_DAYS", "90")
             ),
+            max_request_body_bytes=int(
+                os.getenv("IOT_IDS_MAX_REQUEST_BODY_BYTES", str(50 * 1024 * 1024))
+            ),
+            max_live_connections=int(
+                os.getenv("IOT_IDS_MAX_LIVE_CONNECTIONS", "250")
+            ),
             auth_enabled=os.getenv("IOT_IDS_AUTH_ENABLED", "true").lower()
             in {"1", "true", "yes"},
             admin_username=os.getenv("IOT_IDS_ADMIN_USERNAME", "admin"),
@@ -138,6 +146,12 @@ class Settings:
             )
         if not 1 <= self.model_health_retention_days <= 3_650:
             raise ValueError("IOT_IDS_MODEL_HEALTH_RETENTION_DAYS must be between 1 and 3650")
+        if not 1_024 <= self.max_request_body_bytes <= 256 * 1024 * 1024:
+            raise ValueError(
+                "IOT_IDS_MAX_REQUEST_BODY_BYTES must be between 1024 and 268435456"
+            )
+        if not 1 <= self.max_live_connections <= 10_000:
+            raise ValueError("IOT_IDS_MAX_LIVE_CONNECTIONS must be between 1 and 10000")
         invalid_origins = [
             origin
             for origin in self.cors_origins

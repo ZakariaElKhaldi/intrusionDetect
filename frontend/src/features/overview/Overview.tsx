@@ -185,7 +185,7 @@ export function Overview({
         <Metric
           label="Median detector score"
           value={summary?.median_detection_score == null ? `${(medianConfidence * 100).toFixed(1)}%` : `${(summary.median_detection_score * 100).toFixed(1)}%`}
-          detail="Detector output; not a calibrated probability"
+          detail="Persisted detector values; probability semantics follow each prediction's serving artifact"
           icon={Crosshair}
         />
       </section>
@@ -225,7 +225,9 @@ export function Overview({
             <div><span>Stream</span><b>{socketState}</b></div>
             <div><span>Schema</span><b className="mono">{health?.schema_version ?? "Not reported"}</b></div>
             <div><span>Detector</span><b className="mono">{health?.detector_model_version ?? health?.model_version ?? "Not reported"}</b></div>
+            <div><span>Detector probability</span><b>{health?.detector_probability_calibrated === undefined ? "Not reported" : health.detector_probability_calibrated ? "Calibrated" : "Model score only"}</b></div>
             <div><span>Classifier</span><b className="mono">{health?.classifier_model_version ?? "Not reported"}</b></div>
+            <div><span>Classifier probability</span><b>{health?.classifier_probability_calibrated === undefined ? "Not reported" : health.classifier_probability_calibrated ? "Calibrated" : "Model score only"}</b></div>
             <div><span>Dataset</span><b>{health?.dataset_ready === undefined ? "Not reported" : health.dataset_ready ? "Ready" : "Unavailable"}</b></div>
             <div><span>Dataset SHA-256</span><b className="mono checksum">{health?.dataset_checksum ?? "Not reported"}</b></div>
             <div><span>Production bundle</span><b>{health?.production_bundle_valid === undefined ? "Not reported" : health.production_bundle_valid ? "Verified" : "Invalid"}</b></div>

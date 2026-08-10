@@ -32,6 +32,7 @@ from app.database.models import Base, ModelVersion
 from app.database.schema import verify_schema_current
 from app.database.session import create_engine_and_session
 from app.health import DatasetHealthCache
+from app.http_limits import RequestBodyLimitMiddleware
 from app.inference.model_registry import ModelRegistry
 from app.inference.shap_explanations import ExplanationService
 from app.ingestion.dataset_replay import DatasetReplay
@@ -120,7 +121,9 @@ def create_app(
     app.state.settings = settings
     app.state.login_rate_limiter = LoginRateLimiter()
     app.state.registry = registry
-    app.state.live = LiveConnectionManager()
+    app.state.live = LiveConnectionManager(
+        max_connections=settings.max_live_connections
+    )
     app.state.replay = DatasetReplay(settings.replay_dataset_path)
     app.state.explanations = ExplanationService(registry)
     app.state.model_health = ModelHealthService(
@@ -153,6 +156,10 @@ def create_app(
         TrustedHostMiddleware,
         allowed_hosts=list(settings.allowed_hosts),
         www_redirect=False,
+    )
+    app.add_middleware(
+        RequestBodyLimitMiddleware,
+        max_bytes=settings.max_request_body_bytes,
     )
 
     @app.middleware("http")
@@ -312,6 +319,12 @@ def create_app(
             "model_version": registry.predictor.version,
             "detector_model_version": registry.detector.version,
             "classifier_model_version": registry.classifier.version,
+            "detector_probability_calibrated": (
+                registry.detector.metadata.get("probability_calibrated") is True
+            ),
+            "classifier_probability_calibrated": (
+                registry.classifier.metadata.get("probability_calibrated") is True
+            ),
             "fallback": fallback_active,
             "fallback_status": {
                 "active": fallback_active,
@@ -350,6 +363,9 @@ def create_app(
                     ),
                     "model_version": registry.detector.version,
                     "fallback": detector_fallback,
+                    "probability_calibrated": (
+                        registry.detector.metadata.get("probability_calibrated") is True
+                    ),
                 },
                 "classifier": {
                     "status": "degraded" if classifier_fallback else "ready",
@@ -360,6 +376,9 @@ def create_app(
                     ),
                     "model_version": registry.classifier.version,
                     "fallback": classifier_fallback,
+                    "probability_calibrated": (
+                        registry.classifier.metadata.get("probability_calibrated") is True
+                    ),
                 },
                 "bundle": {
                     "status": model_status,

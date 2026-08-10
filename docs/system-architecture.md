@@ -115,7 +115,12 @@ standalone multiclass metrics do not measure the complete cascade.
 ```
 
 `confidence` is retained as a compatibility alias for the detector's selected
-class score. Neither stage's score is calibrated probability.
+class score. Prediction responses also carry `detection_score_calibrated` and
+`attack_class_score_calibrated`, derived from the exact serving artifacts. The
+current promoted bundle declares sigmoid-calibrated probabilities; fallback or
+future artifacts that do not declare calibration remain labelled as model
+scores. Calibration measured on RT-IoT2022 is not proof of calibration on a
+deployment network and must be monitored with representative labelled traffic.
 
 ### Live events
 

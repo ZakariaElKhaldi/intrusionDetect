@@ -180,15 +180,12 @@ values to features for a prediction. Attribution can help inspect model
 behavior, but it is not causal evidence and does not prove the prediction is
 correct.
 
-The current backend returns the largest raw numeric feature values. The UI
-correctly labels these as highlighted values, not contributions. Future work
-should add:
-
-- permutation importance on held-out data for global analysis;
-- local TreeSHAP for the selected tree models;
-- the transformed/model feature name alongside the original field;
-- direction and baseline/reference value; and
-- tests that prevent raw values from being presented as attribution.
+The current backend computes local TreeSHAP explanations for both stages of the
+promoted tree cascade, verifies the additive reconstruction in tests, and
+labels them as non-causal model contributions. Development fallback models
+refuse SHAP requests rather than presenting raw values as attribution. Global
+importance stability and human-factor validation with analysts remain future
+work.
 
 ## 9. Drift and operational monitoring
 
@@ -233,12 +230,13 @@ change is evidence of changed traffic, not proof of accuracy loss.
 The project is best described as:
 
 > A reproducible, two-stage RT-IoT2022 network-flow classification and replay
-> prototype with strict artifact provenance, persistence, live investigation,
-> and an explicit path toward extractor, generalization, behavior-policy,
-> explanation, and drift validation.
+> prototype with strict artifact provenance, calibrated serving probabilities,
+> persistence, live investigation, local TreeSHAP evidence, and shadow-mode
+> distribution monitoring, plus an explicit path toward extractor,
+> generalization, behavior-policy, and target-network validation.
 
-It should not yet be described as a live, explainable, behavior-aware,
-drift-monitored, or edge-deployed IDS.
+It should not yet be described as a live-capture, externally validated,
+behavior-policy-aware, automatically adapting, or edge-deployed IDS.
 
 ## Primary sources
 
@@ -248,3 +246,5 @@ drift-monitored, or edge-deployed IDS.
 - [NIST IR 8349, IoT device network behavior methodology (2025)](https://doi.org/10.6028/NIST.IR.8349)
 - [IETF RFC 8520, Manufacturer Usage Description](https://www.rfc-editor.org/info/rfc8520/)
 - [Lundberg and Lee, SHAP (2017)](https://proceedings.neurips.cc/paper_files/paper/2017/hash/8a20a8621978632d76c43dfd28b67767-Abstract.html)
+- [scikit-learn probability calibration guide](https://scikit-learn.org/stable/modules/calibration.html)
+- [OWASP API4:2023 Unrestricted Resource Consumption](https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/)

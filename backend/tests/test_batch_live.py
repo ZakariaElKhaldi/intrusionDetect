@@ -35,8 +35,12 @@ async def test_batch_prediction_and_versioned_alias(
     attack = next(item for item in predictions if item["binary_prediction"] == "attack")
     assert normal["classifier_model_version"] is None
     assert normal["classifier_latency_ms"] is None
+    assert normal["detection_score_calibrated"] is False
+    assert normal["attack_class_score_calibrated"] is None
     assert attack["classifier_model_version"] == "deterministic-fallback-classifier-v1"
     assert attack["attack_class_score"] == 0.5
+    assert attack["detection_score_calibrated"] is False
+    assert attack["attack_class_score_calibrated"] is False
     assert (await fallback_client.get("/api/v1/models")).status_code == 200
     assert (await fallback_client.get("/api/v1/alerts")).status_code == 200
 
@@ -50,6 +54,33 @@ class FakeSocket:
         if self.fail:
             raise RuntimeError("disconnected")
         self.messages.append(message)
+
+
+class FakeConnectSocket(FakeSocket):
+    def __init__(self) -> None:
+        super().__init__()
+        self.accepted = False
+        self.closed: tuple[int, str] | None = None
+
+    async def accept(self) -> None:
+        self.accepted = True
+
+    async def close(self, *, code: int, reason: str) -> None:
+        self.closed = (code, reason)
+
+
+@pytest.mark.anyio
+async def test_live_manager_rejects_connections_above_capacity() -> None:
+    manager = LiveConnectionManager(max_connections=1)
+    first = FakeConnectSocket()
+    excess = FakeConnectSocket()
+
+    assert await manager.connect(first) is True  # type: ignore[arg-type]
+    assert await manager.connect(excess) is False  # type: ignore[arg-type]
+    assert first in manager.connections
+    assert first.messages == [{"type": "connection", "status": "connected"}]
+    assert excess not in manager.connections
+    assert excess.closed == (1013, "live connection capacity reached")
 
 
 @pytest.mark.anyio

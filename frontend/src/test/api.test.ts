@@ -209,7 +209,9 @@ describe("frontend API adapter", () => {
         attack_class: null,
         confidence: 0.04,
         detection_score: 0.04,
+        detection_score_calibrated: true,
         attack_class_score: null,
+        attack_class_score_calibrated: null,
         detector_latency_ms: 1.2,
         classifier_latency_ms: null,
         alert_id: null,
@@ -222,6 +224,7 @@ describe("frontend API adapter", () => {
         prediction_id: "prediction-1",
         detector_model_version: "detector-v2",
         detection_score: 0.04,
+        detection_score_calibrated: true,
         alert_id: null,
       }),
     });

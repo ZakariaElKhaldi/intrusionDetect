@@ -153,7 +153,9 @@ class PredictionContract(BaseModel):
     attack_class: str | None
     confidence: float = Field(ge=0, le=1)
     detection_score: float = Field(ge=0, le=1)
+    detection_score_calibrated: bool
     attack_class_score: float | None = Field(default=None, ge=0, le=1)
+    attack_class_score_calibrated: bool | None = None
     latency_ms: float = Field(ge=0)
     detector_latency_ms: float = Field(ge=0)
     classifier_latency_ms: float | None = Field(default=None, ge=0)

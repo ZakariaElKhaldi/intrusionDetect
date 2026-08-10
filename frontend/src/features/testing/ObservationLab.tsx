@@ -15,7 +15,9 @@ interface PredictionResult {
   attack_class?: string | null;
   confidence?: number;
   detection_score?: number;
+  detection_score_calibrated?: boolean;
   attack_class_score?: number | null;
+  attack_class_score_calibrated?: boolean | null;
   alert_id?: string | null;
 }
 
@@ -164,7 +166,7 @@ export function ObservationLab() {
         <PanelHeading
           eyebrow="Prediction output"
           title="Results"
-          description="Scores are model outputs. Treat them as calibrated probabilities only when the active bundle metadata confirms calibration."
+          description="Each result reports whether its detector and classifier values come from a probability-calibrated serving artifact."
           action={results.length ? <span className="panel-heading-meta">{results.length} evaluated</span> : undefined}
         />
         {!results.length ? (
@@ -190,8 +192,8 @@ export function ObservationLab() {
                       <td>{result.attack_class ?? "—"}</td>
                       <td>{String(rows[page * pageSize + index]?.Attack_type ?? rows[page * pageSize + index]?.ground_truth ?? "Not provided")}</td>
                       <td>{(() => { const truth=String(rows[page*pageSize+index]?.Attack_type??rows[page*pageSize+index]?.ground_truth??""); if(!truth)return "—"; const predicted=result.binary_prediction==="normal"?"normal":result.attack_class??"attack"; return predicted.toLowerCase()===truth.toLowerCase()?"Yes":"No"; })()}</td>
-                      <td>{typeof (result.detection_score ?? result.confidence) === "number" ? `${((result.detection_score ?? result.confidence ?? 0) * 100).toFixed(1)}%` : "—"}</td>
-                      <td>{typeof result.attack_class_score === "number" ? `${(result.attack_class_score * 100).toFixed(1)}%` : "—"}</td>
+                      <td>{typeof (result.detection_score ?? result.confidence) === "number" ? <>{((result.detection_score ?? result.confidence ?? 0) * 100).toFixed(1)}%<small>{result.detection_score_calibrated ? " calibrated probability" : " model score"}</small></> : "—"}</td>
+                      <td>{typeof result.attack_class_score === "number" ? <>{(result.attack_class_score * 100).toFixed(1)}%<small>{result.attack_class_score_calibrated ? " calibrated probability" : " model score"}</small></> : "—"}</td>
                       <td className="mono">
                         {result.detector_model_version ?? result.model_version ?? "—"}
                         {result.classifier_model_version ? ` / ${result.classifier_model_version}` : ""}
