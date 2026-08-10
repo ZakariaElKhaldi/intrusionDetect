@@ -161,6 +161,48 @@ async def test_login_me_and_protected_mutations(tmp_path) -> None:
 
 
 @pytest.mark.anyio
+async def test_every_state_changing_api_rejects_missing_credentials(tmp_path) -> None:
+    app = create_app(
+        authenticated_settings(tmp_path, "mutation-matrix.db"),
+        initialize_schema_for_tests=True,
+    )
+    mutation_paths = {
+        "/predict": "/predict",
+        "/predict/batch": "/predict/batch",
+        "/ingestion/events": "/ingestion/events",
+        "/ingestion/offline-pcap/events": "/ingestion/offline-pcap/events",
+        "/ingestion/jobs/redrive": "/ingestion/jobs/redrive",
+        "/replay/start": "/replay/start",
+        "/replay/pause": "/replay/pause",
+        "/replay/resume": "/replay/resume",
+        "/replay/stop": "/replay/stop",
+        "/alerts/{alert_id}/feedback": (
+            "/alerts/00000000-0000-0000-0000-000000000000/feedback"
+        ),
+    }
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            for route_path, request_path in mutation_paths.items():
+                response = await client.post(request_path, json={})
+                assert response.status_code == 401, route_path
+                assert response.json() == {"detail": "Authentication required"}
+                assert response.headers["www-authenticate"] == "Bearer"
+
+    schema = app.openapi()
+    documented_mutations = {
+        path
+        for path, operations in schema["paths"].items()
+        if any(method in operations for method in ("post", "put", "patch", "delete"))
+        and path != "/auth/login"
+    }
+    assert documented_mutations == set(mutation_paths)
+    for path in documented_mutations:
+        assert schema["paths"][path]["post"]["security"] == [{"HTTPBearer": []}]
+
+
+@pytest.mark.anyio
 async def test_login_validation_never_reflects_passwords(tmp_path) -> None:
     app = create_app(
         authenticated_settings(tmp_path, "validation.db"),

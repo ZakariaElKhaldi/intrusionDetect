@@ -21,6 +21,7 @@ class Settings:
     worker_poll_seconds: float = 0.5
     worker_lease_seconds: int = 60
     outbox_poll_seconds: float = 0.5
+    outbox_lease_seconds: int = 30
     model_health_interval_seconds: float = 300.0
     model_health_shadow_mode: bool = True
     model_health_fast_minimum: int = 1_000
@@ -28,6 +29,7 @@ class Settings:
     model_health_retention_days: int = 90
     max_request_body_bytes: int = 50 * 1024 * 1024
     max_live_connections: int = 250
+    live_send_timeout_seconds: float = 2.0
     auth_enabled: bool = False
     admin_username: str = "admin"
     admin_password_hash: str = ""
@@ -77,6 +79,9 @@ class Settings:
             worker_poll_seconds=float(os.getenv("IOT_IDS_WORKER_POLL_SECONDS", "0.5")),
             worker_lease_seconds=int(os.getenv("IOT_IDS_WORKER_LEASE_SECONDS", "60")),
             outbox_poll_seconds=float(os.getenv("IOT_IDS_OUTBOX_POLL_SECONDS", "0.5")),
+            outbox_lease_seconds=int(
+                os.getenv("IOT_IDS_OUTBOX_LEASE_SECONDS", "30")
+            ),
             model_health_interval_seconds=float(
                 os.getenv("IOT_IDS_MODEL_HEALTH_INTERVAL_SECONDS", "300")
             ),
@@ -98,6 +103,9 @@ class Settings:
             ),
             max_live_connections=int(
                 os.getenv("IOT_IDS_MAX_LIVE_CONNECTIONS", "250")
+            ),
+            live_send_timeout_seconds=float(
+                os.getenv("IOT_IDS_LIVE_SEND_TIMEOUT_SECONDS", "2")
             ),
             auth_enabled=os.getenv("IOT_IDS_AUTH_ENABLED", "true").lower()
             in {"1", "true", "yes"},
@@ -139,6 +147,8 @@ class Settings:
                 raise ValueError(f"{name} must be greater than 0 and at most 86400")
         if not 1 <= self.worker_lease_seconds <= 86_400:
             raise ValueError("IOT_IDS_WORKER_LEASE_SECONDS must be between 1 and 86400")
+        if not 3 <= self.outbox_lease_seconds <= 3_600:
+            raise ValueError("IOT_IDS_OUTBOX_LEASE_SECONDS must be between 3 and 3600")
         if not 1 <= self.model_health_fast_minimum <= self.model_health_slow_minimum:
             raise ValueError(
                 "model-health minimums must be positive and the slow minimum must "
@@ -152,6 +162,15 @@ class Settings:
             )
         if not 1 <= self.max_live_connections <= 10_000:
             raise ValueError("IOT_IDS_MAX_LIVE_CONNECTIONS must be between 1 and 10000")
+        if not 0.1 <= self.live_send_timeout_seconds <= 60:
+            raise ValueError(
+                "IOT_IDS_LIVE_SEND_TIMEOUT_SECONDS must be between 0.1 and 60"
+            )
+        if self.outbox_lease_seconds < self.live_send_timeout_seconds + 2:
+            raise ValueError(
+                "IOT_IDS_OUTBOX_LEASE_SECONDS must be at least two seconds longer "
+                "than IOT_IDS_LIVE_SEND_TIMEOUT_SECONDS"
+            )
         invalid_origins = [
             origin
             for origin in self.cors_origins

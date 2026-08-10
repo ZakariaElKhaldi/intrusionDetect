@@ -9,6 +9,8 @@ not treated as proof of detection effectiveness or operational capacity.
 - Authentication fails closed when enabled without an Argon2id password hash or
   a 32-byte signing secret. Mutation APIs use short-lived bearer tokens, login
   attempts are throttled, and authentication responses are marked `no-store`.
+  The browser honors the server's `Retry-After` value, states when another
+  attempt is allowed, and does not assume or disclose the configured username.
 - Redrive and analyst-feedback audit identities are derived from the validated
   token; caller-authored identity fields are never persisted as operator
   evidence.
@@ -25,7 +27,8 @@ not treated as proof of detection effectiveness or operational capacity.
 - The containerized UI uses a same-origin API/WebSocket proxy and emits CSP,
   frame, MIME-sniffing, referrer, and browser-permission headers. The backend
   container runs as UID/GID 10001 and exposes distinct liveness and readiness
-  probes.
+  probes. Compose publishes the direct API/debug port on host loopback only;
+  external browser traffic enters through the frontend gateway.
 - The API rejects unapproved HTTP host headers using an explicit deployment
   allowlist. Local defaults accept only loopback/internal names; deployments
   must set `IOT_IDS_ALLOWED_HOSTS` to their ingress hostname.
@@ -64,12 +67,17 @@ not treated as proof of detection effectiveness or operational capacity.
   is limited to an explicit programmatic test path; deployed services require
   `alembic upgrade head` to complete first.
 - Synchronous SQLAlchemy, model-inference, validation, replay-scan, and
-  model-health work on request/background paths runs in Starlette's bounded
-  worker pool instead of occupying the asyncio event loop. Database sessions
-  are created and consumed within the same worker thread, chronology-sensitive
-  health evaluation is serialized, and replay state changes share one control
-  lock. A regression test holds inference persistence and verifies that the
-  liveness endpoint remains responsive.
+  model-health work on request/background paths runs outside the asyncio event
+  loop. Request work uses Starlette's bounded pool; one dedicated outbox thread
+  serializes its database work. Database sessions are created and consumed
+  within their owning thread, chronology-sensitive health evaluation is
+  serialized, and replay state changes share one control lock. A regression
+  test holds inference persistence and verifies that liveness remains responsive.
+- Outbox delivery commits a conditional lease before network I/O, recovers
+  abandoned leases, applies capped retry delay, and finalizes only the matching
+  claim token. WebSocket fan-out is concurrent and disconnects an individual
+  stalled client after a configurable deadline. Operations APIs expose claimed
+  and retry timing without exposing the claim token.
 - Dashboard summaries use database-side counts and grouped distributions. The
   exact median reads at most two ordered scores, so the public `range=all`
   endpoint no longer materializes every persisted prediction, alert, or raw
@@ -118,6 +126,14 @@ and Python dependency auditing uses the [PyPA `pip-audit` contract][pip-audit].
 Concurrency boundaries follow [FastAPI's guidance for blocking I/O][fastapi-async]
 and [Starlette's bounded thread-pool behavior][starlette-threadpool]; session
 ownership follows SQLAlchemy's [session-per-thread model][sqlalchemy-session].
+Outbox semantics follow AWS's [transactional-outbox guidance][aws-outbox],
+including commit-before-send, ordering, and idempotent handling of possible
+duplicates. Cross-thread WebSocket scheduling uses Python's documented
+[`run_coroutine_threadsafe` contract][python-asyncio].
+The operations UI exposes “delivering,” lease expiry, and scheduled retry
+timing directly, applying Nielsen Norman Group's [visibility-of-status and
+recognition-over-recall heuristics][nng-heuristics] rather than asking an
+operator to infer those states from an attempt counter.
 
 [owasp-headers]: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
 [owasp-csp]: https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html
@@ -129,3 +145,6 @@ ownership follows SQLAlchemy's [session-per-thread model][sqlalchemy-session].
 [fastapi-async]: https://fastapi.tiangolo.com/async/
 [starlette-threadpool]: https://www.starlette.io/threadpool/
 [sqlalchemy-session]: https://docs.sqlalchemy.org/en/20/orm/session_basics.html#is-the-session-thread-safe-is-asyncsession-safe-to-share-in-concurrent-tasks
+[aws-outbox]: https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html
+[python-asyncio]: https://docs.python.org/3.11/library/asyncio-task.html#scheduling-from-other-threads
+[nng-heuristics]: https://media.nngroup.com/media/articles/attachments/Heuristic_Summary1_A4_compressed.pdf

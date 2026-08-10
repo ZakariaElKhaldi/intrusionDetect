@@ -48,11 +48,13 @@ function storedSession(): AuthSession | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const fixtureMode = new URLSearchParams(window.location.search).get("fixture") === "true";
   const [session, setSession] = useState<AuthSession | null>(() => storedSession());
   const [authRequired, setAuthRequired] = useState(true);
   const [loginOpen, setLoginOpen] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [retryAvailableAt, setRetryAvailableAt] = useState<Date | null>(null);
   const loginDialog = useRef<HTMLElement>(null);
   const returnFocusTo = useRef<HTMLElement | null>(null);
 
@@ -76,17 +78,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (fixtureMode) return;
     void getAuthenticationStatus().then((value) => setAuthRequired(value.enabled)).catch(() => undefined);
-  }, []);
+  }, [fixtureMode]);
 
   useEffect(() => {
+    if (fixtureMode) {
+      setApiAccessToken(null);
+      setUnauthorizedHandler(null);
+      return;
+    }
     setApiAccessToken(session?.access_token ?? null);
     setUnauthorizedHandler(() => { logout(); openLogin(); });
     if (session) {
       void getCurrentUser().catch(() => { logout(); openLogin(); });
     }
     return () => setUnauthorizedHandler(null);
-  }, [logout, openLogin, session?.access_token]);
+  }, [fixtureMode, logout, openLogin, session?.access_token]);
 
   useEffect(() => {
     if (!session) return;
@@ -98,6 +106,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const expiryTimer = window.setTimeout(logout, remaining);
     return () => window.clearTimeout(expiryTimer);
   }, [logout, session]);
+
+  useEffect(() => {
+    if (!retryAvailableAt) return;
+    const remaining = retryAvailableAt.valueOf() - Date.now();
+    if (remaining <= 0) {
+      setRetryAvailableAt(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setRetryAvailableAt(null), remaining);
+    return () => window.clearTimeout(timer);
+  }, [retryAvailableAt]);
 
   const containDialogFocus = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -128,12 +147,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError("");
     try {
       const next = await login(String(data.get("username")), String(data.get("password")));
+      setRetryAvailableAt(null);
       setApiAccessToken(next.access_token);
       window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       setSession(next);
       closeLogin();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Sign in failed.");
+      if (
+        reason && typeof reason === "object"
+        && "status" in reason && reason.status === 429
+        && "retryAfterSeconds" in reason
+        && typeof reason.retryAfterSeconds === "number"
+      ) {
+        setRetryAvailableAt(new Date(Date.now() + reason.retryAfterSeconds * 1_000));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -147,7 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
   }), [authRequired, logout, openLogin, session]);
 
-  return <AuthContext.Provider value={value}>{children}{loginOpen ? <div className="dialog-backdrop" role="presentation"><section ref={loginDialog} className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description" onKeyDown={containDialogFocus}><h2 id="auth-title">Operator sign in</h2><p id="auth-description">Authentication is required for actions that change system state.</p><form onSubmit={(event) => void submit(event)}><label>Username<input name="username" autoComplete="username" required autoFocus defaultValue="admin"/></label><label>Password<input name="password" type="password" autoComplete="current-password" required/></label>{error ? <div className="data-state data-state--error" role="alert">{error}</div> : null}<div className="dialog-actions"><button type="button" className="secondary-button" onClick={closeLogin}>Cancel</button><button type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button></div></form></section></div> : null}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{children}{loginOpen ? <div className="dialog-backdrop" role="presentation"><section ref={loginDialog} className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description" onKeyDown={containDialogFocus}><h2 id="auth-title">Operator sign in</h2><p id="auth-description">Authentication is required for actions that change system state.</p><form onSubmit={(event) => void submit(event)}><label>Username<input name="username" autoComplete="username" required autoFocus/></label><label>Password<input name="password" type="password" autoComplete="current-password" required/></label>{error ? <div className="data-state data-state--error auth-error" role="alert">{error}</div> : null}{retryAvailableAt ? <p className="auth-retry">Try again after <time dateTime={retryAvailableAt.toISOString()}>{retryAvailableAt.toLocaleTimeString()}</time>.</p> : null}<div className="dialog-actions"><button type="button" className="secondary-button" onClick={closeLogin}>Cancel</button><button className="primary-button" type="submit" disabled={submitting || Boolean(retryAvailableAt)}>{submitting ? "Signing in…" : "Sign in"}</button></div></form></section></div> : null}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthValue {

@@ -24,7 +24,11 @@ describe("IngestionOperations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getIngestionJobs).mockResolvedValue({ items: [job], total: 1, limit: 20, next_cursor: null });
-    vi.mocked(getOutboxEvents).mockResolvedValue({ items: [{ outbox_id: "out-1", event_id: "event-1", event_type: "prediction.created", status: "published", publish_attempts: 1, last_error: null, created_at: job.created_at, published_at: job.updated_at }], total: 1, limit: 20, next_cursor: null });
+    vi.mocked(getOutboxEvents).mockResolvedValue({ items: [
+      { outbox_id: "out-1", event_id: "event-1", event_type: "prediction.created", status: "published", publish_attempts: 1, last_error: null, claimed: false, claim_expires_at: null, next_attempt_at: null, created_at: job.created_at, published_at: job.updated_at },
+      { outbox_id: "out-2", event_id: "event-2", event_type: "alert.created", status: "pending", publish_attempts: 0, last_error: null, claimed: true, claim_expires_at: job.available_at, next_attempt_at: null, created_at: job.created_at, published_at: null },
+      { outbox_id: "out-3", event_id: "event-3", event_type: "prediction.created", status: "failed", publish_attempts: 2, last_error: "stream unavailable", claimed: false, claim_expires_at: null, next_attempt_at: job.available_at, created_at: job.created_at, published_at: null },
+    ], total: 3, limit: 20, next_cursor: null });
     vi.mocked(getIngestionEvent).mockResolvedValue({ ...job, transitions: [{ transition_id: "transition-1", from_state: "processing", to_state: "retrying", action: "retry_scheduled", attempt: 2, error_code: "publish_timeout", actor: "worker-a", reason: "Transient failure", created_at: job.updated_at }] });
     vi.mocked(redriveIngestionJobs).mockResolvedValue({ dry_run: true, results: [{ event_id: "event-1", eligible: true, reason: "eligible" }] });
   });
@@ -33,17 +37,24 @@ describe("IngestionOperations", () => {
     render(<IngestionOperations fixtureMode={false}/>);
     expect(await screen.findByRole("table", { name: /Ingestion jobs/ })).toBeInTheDocument();
     expect(screen.getByText("publish_timeout")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /View history for event event-1/ }));
-    expect(await screen.findByRole("region", { name: "Job history for event-1" })).toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: /View history for event event-1/ });
+    await userEvent.click(trigger);
+    const detail = await screen.findByRole("region", { name: "Job history for event-1" });
+    await waitFor(() => expect(detail).toHaveFocus());
     expect(screen.getByRole("table", { name: "Immutable state transitions" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /redrive|retry job/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close history" }));
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it("loads independently filtered outbox evidence", async () => {
     render(<IngestionOperations fixtureMode={false}/>);
     await userEvent.click(screen.getByRole("tab", { name: "Outbox" }));
     expect(await screen.findByRole("table", { name: /Outbox delivery events/ })).toBeInTheDocument();
-    expect(screen.getByText("prediction.created")).toBeInTheDocument();
+    expect(screen.getAllByText("prediction.created")).toHaveLength(2);
+    expect(screen.getByText("Complete")).toBeInTheDocument();
+    expect(screen.getByText(/Delivering · lease expires/)).toBeInTheDocument();
+    expect(screen.getByText(/Retry scheduled/)).toBeInTheDocument();
   });
 
   it("does not request live operational evidence in fixture mode", async () => {
@@ -61,6 +72,19 @@ describe("IngestionOperations", () => {
     await userEvent.type(await screen.findByLabelText("Operator reason"), "service recovered");
     await userEvent.click(screen.getByRole("button", { name: "Check eligibility" }));
     expect(await screen.findByText("Eligible for transactional redrive.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Redrive job" })).toBeEnabled();
+    const review = screen.getByRole("button", { name: "Review redrive" });
+    await waitFor(() => expect(review).toBeEnabled());
+    expect(redriveIngestionJobs).toHaveBeenCalledTimes(1);
+    await userEvent.click(review);
+    expect(screen.getByRole("region", { name: "Confirm manual redrive" })).toHaveTextContent("service recovered");
+    expect(screen.getByRole("button", { name: "Confirm redrive" })).toHaveFocus();
+    expect(redriveIngestionJobs).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("region", { name: "Confirm manual redrive" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Review redrive" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm redrive" }));
+    await waitFor(() => expect(redriveIngestionJobs).toHaveBeenLastCalledWith(
+      ["event-1"], "service recovered", false,
+    ));
   });
 });

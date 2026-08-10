@@ -6,10 +6,14 @@ from fastapi import WebSocket
 
 
 class LiveConnectionManager:
-    def __init__(self, max_connections: int = 250) -> None:
+    def __init__(
+        self, max_connections: int = 250, send_timeout_seconds: float = 2.0
+    ) -> None:
         self.max_connections = max_connections
+        self.send_timeout_seconds = send_timeout_seconds
         self.connections: set[WebSocket] = set()
         self._connect_lock = asyncio.Lock()
+        self._broadcast_lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket) -> bool:
         async with self._connect_lock:
@@ -27,11 +31,20 @@ class LiveConnectionManager:
         self.connections.discard(websocket)
 
     async def broadcast(self, message: dict) -> None:
-        stale: list[WebSocket] = []
-        for connection in list(self.connections):
+        async def send(connection: WebSocket) -> WebSocket | None:
             try:
-                await connection.send_json(message)
+                await asyncio.wait_for(
+                    connection.send_json(message), timeout=self.send_timeout_seconds
+                )
             except Exception:
-                stale.append(connection)
+                return connection
+            return None
+
+        async with self._broadcast_lock:
+            connections = list(self.connections)
+            stale = await asyncio.gather(
+                *(send(connection) for connection in connections)
+            )
         for connection in stale:
-            self.disconnect(connection)
+            if connection is not None:
+                self.disconnect(connection)

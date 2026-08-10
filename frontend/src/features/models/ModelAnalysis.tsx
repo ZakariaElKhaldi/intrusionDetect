@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getEvaluation } from "../../api";
 import { ConfusionMatrixChart, ModelComparisonChart } from "../../components/charts";
 import { PanelHeading } from "../../components/PanelHeading";
+import { TabList, tabId } from "../../components/TabList";
 import type { EvaluationReport, ModelInfo, ThresholdAnalysis } from "../../types";
 import { ModelHealth } from "./ModelHealth";
 
@@ -65,11 +66,16 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
   return (
     <div className="models-page">
       <ModelHealth fixtureMode={fixtureMode}/>
-      <div className="stage-tabs" role="tablist" aria-label="Evaluation stage">
-        <button role="tab" aria-selected={stage === "binary"} onClick={() => setStage("binary")}>Detector</button>
-        <button role="tab" aria-selected={stage === "multiclass"} onClick={() => setStage("multiclass")}>Classifier</button>
-      </div>
+      <TabList
+        baseId="evaluation-stage"
+        label="Evaluation stage"
+        options={[{ value: "binary", label: "Detector" }, { value: "multiclass", label: "Classifier" }]}
+        panelId="evaluation-stage-panel"
+        selected={stage}
+        onSelect={setStage}
+      />
 
+      <div id="evaluation-stage-panel" role="tabpanel" aria-labelledby={tabId("evaluation-stage", stage)}>
       <div className="research-warning" role="note">
         Random shared-split evidence estimates performance on this dataset; it is not deployment validation.
         {active?.probability_calibrated ? " Serving scores use sigmoid calibration fitted on the validation partition." : " Uncalibrated scores must not be read as probabilities."}
@@ -130,7 +136,7 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
               title="Three-seed validation aggregates"
               description="These validation aggregates selected the champion. The confusion matrix remains held-out test evidence."
             />
-            <div className="seed-table">
+            <div className="seed-table" role="region" aria-label="Three-seed validation aggregate table" tabIndex={0}>
               <div className={`seed-row ${stage === "multiclass" ? "seed-row--three" : ""} seed-row--head`}><span>Candidate</span><span>Macro F1</span>{stage === "binary" ? <span>FPR</span> : null}<span>p95 latency</span></div>
               {candidates.map((candidate) => (
                 <div className={`seed-row ${stage === "multiclass" ? "seed-row--three" : ""}`} key={candidate.name}>
@@ -177,6 +183,7 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
       {!loading && !error && !candidates.length ? (
         <div className="panel data-state">No evaluation records were returned for the {taskName.toLowerCase()}.</div>
       ) : null}
+      </div>
     </div>
   );
 }

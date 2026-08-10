@@ -193,15 +193,47 @@ export function Overview({
       <IngestionStatusPanel status={ingestion} loading={ingestionLoading} error={ingestionError} fixtureMode={fixtureMode} onRetry={onRetryIngestion}/>
       <IngestionOperations fixtureMode={fixtureMode} refreshKey={ingestion?.generated_at}/>
 
-      <section className="panel timeline-panel">
-        <PanelHeading
-          eyebrow="Investigation timeline"
-          title="Alerts by severity"
-          description={`${summary?.scope.bucket_minutes ?? 5}-minute buckets. Select a bar to inspect alerts from that interval.`}
-          action={<span className="panel-heading-meta">{summary?.alerts.total ?? alerts.length} alerts</span>}
-        />
-        {summary ? <PersistedTimeline summary={summary} onSelect={onTimeBucket}/> : alertsLoading ? <div className="data-state" role="status">Loading persisted timeline…</div> : (summaryError || alertsError) ? <div className="data-state data-state--error" role="alert"><span>{summaryError || alertsError}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry summary</button> : null}</div> : <div className="chart-empty">No persisted summary is available.</div>}
-      </section>
+      <div className="overview-primary">
+        <section className="panel timeline-panel">
+          <PanelHeading
+            eyebrow="Investigation timeline"
+            title="Alerts by severity"
+            description={`${summary?.scope.bucket_minutes ?? 5}-minute buckets. Select a bar to inspect alerts from that interval.`}
+            action={<span className="panel-heading-meta">{summary?.alerts.total ?? alerts.length} alerts</span>}
+          />
+          {summary ? <PersistedTimeline summary={summary} onSelect={onTimeBucket}/> : alertsLoading ? <div className="data-state" role="status">Loading persisted timeline…</div> : (summaryError || alertsError) ? <div className="data-state data-state--error" role="alert"><span>{summaryError || alertsError}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry summary</button> : null}</div> : <div className="chart-empty">Persisted timeline unavailable in fixture preview. Connect the API to inspect time-bucket evidence.</div>}
+        </section>
+
+        <section className="panel">
+          <PanelHeading
+            eyebrow="Detection workload"
+            title="Detection families"
+            description="Total alerts split into resolved and unresolved work."
+          />
+          {summary ? <CountBars values={summary.family_counts} label="Persisted detection families"/> : alerts.length ? <DetectionRankingChart alerts={alerts} height={340} /> : <div className="chart-empty">No detection families recorded.</div>}
+        </section>
+
+        <section className="panel">
+          <PanelHeading
+            eyebrow="Investigation queue"
+            title="Recent unresolved alerts"
+            description="Ordered by observation time; selecting a row preserves the surrounding list."
+            action={<Clock3 aria-hidden="true" size={15} />}
+          />
+          <div className="recent-list">
+            {recent.map((alert) => (
+              <button key={alert.id} className="recent-alert" onClick={() => onOpenAlert(alert)}>
+                <span className={`recent-icon recent-icon--${alert.severity}`} aria-hidden="true">!</span>
+                <span><b>{alert.attack_type}</b><small>{alert.source_ip} to {alert.destination_ip}</small></span>
+                <SeverityLabel severity={alert.severity} />
+                <time dateTime={alert.timestamp}>{formatTime(alert.timestamp)}</time>
+                <ArrowRight aria-hidden="true" size={13} />
+              </button>
+            ))}
+            {!recent.length && <div className="chart-empty">No unresolved alerts in the current dataset.</div>}
+          </div>
+        </section>
+      </div>
 
       <div className="overview-side">
         <section className="panel">
@@ -237,36 +269,6 @@ export function Overview({
           </div>
         </section>
       </div>
-
-      <section className="panel">
-        <PanelHeading
-          eyebrow="Detection workload"
-          title="Detection families"
-          description="Total alerts split into resolved and unresolved work."
-        />
-        {summary ? <CountBars values={summary.family_counts} label="Persisted detection families"/> : alerts.length ? <DetectionRankingChart alerts={alerts} height={340} /> : <div className="chart-empty">No detection families recorded.</div>}
-      </section>
-
-      <section className="panel">
-        <PanelHeading
-          eyebrow="Investigation queue"
-          title="Recent unresolved alerts"
-          description="Ordered by observation time; selecting a row preserves the surrounding list."
-          action={<Clock3 aria-hidden="true" size={15} />}
-        />
-        <div className="recent-list">
-          {recent.map((alert) => (
-            <button key={alert.id} className="recent-alert" onClick={() => onOpenAlert(alert)}>
-              <span className={`recent-icon recent-icon--${alert.severity}`} aria-hidden="true">!</span>
-              <span><b>{alert.attack_type}</b><small>{alert.source_ip} to {alert.destination_ip}</small></span>
-              <SeverityLabel severity={alert.severity} />
-              <time dateTime={alert.timestamp}>{formatTime(alert.timestamp)}</time>
-              <ArrowRight aria-hidden="true" size={13} />
-            </button>
-          ))}
-          {!recent.length && <div className="chart-empty">No unresolved alerts in the current dataset.</div>}
-        </div>
-      </section>
     </div>
   );
 }

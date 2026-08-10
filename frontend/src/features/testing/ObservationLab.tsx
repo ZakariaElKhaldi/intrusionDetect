@@ -32,7 +32,7 @@ function normalizeResults(value: unknown): PredictionResult[] {
   return [value as PredictionResult];
 }
 
-export function ObservationLab() {
+export function ObservationLab({ fixtureMode = false }: { fixtureMode?: boolean }) {
   const auth = useAuth();
   const [rows, setRows] = useState<Record<string, string | number>[]>([]);
   const [filename, setFilename] = useState("");
@@ -151,8 +151,9 @@ export function ObservationLab() {
         ) : <div className="validation-item"><FileSearch /><span>Select a file to inspect its schema.</span></div>}
 
         <div className="step-label"><b>3</b> Run inference</div>
+        {fixtureMode ? <div className="validation-item" role="note"><FileSearch /><span>Fixture preview validates files locally but cannot send predictions. Connect the API to run inference.</span></div> : null}
         <div className="lab-actions">
-          <button className="primary-button" disabled={!schema.valid || loading} onClick={run}>
+          <button className="primary-button" disabled={fixtureMode || !schema.valid || loading} onClick={run}>
             {loading ? "Running…" : `Predict ${rows.length || 0} row${rows.length === 1 ? "" : "s"}`}
           </button>
           <button className="secondary-button" disabled={!rows.length && !response} onClick={clear}>

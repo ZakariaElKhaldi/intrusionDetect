@@ -257,10 +257,23 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly detail?: unknown,
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    return Number.isSafeInteger(seconds) ? seconds : undefined;
+  }
+  const retryAt = Date.parse(trimmed);
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.max(0, Math.ceil((retryAt - Date.now()) / 1_000));
 }
 
 function errorMessage(status: number, payload: unknown): string {
@@ -333,7 +346,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const detail = await errorDetail(response);
     if (response.status === 401 && path !== "/auth/login") unauthorizedHandler?.();
-    throw new ApiError(errorMessage(response.status, detail), response.status, detail);
+    throw new ApiError(
+      errorMessage(response.status, detail),
+      response.status,
+      detail,
+      parseRetryAfter(response.headers.get("Retry-After")),
+    );
   }
   return response.json() as Promise<T>;
 }

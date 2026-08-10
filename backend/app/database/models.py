@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -180,6 +180,15 @@ class IngestionJobTransition(Base):
 
 class OutboxEvent(Base):
     __tablename__ = "outbox_events"
+    __table_args__ = (
+        Index(
+            "ix_outbox_events_delivery_claim",
+            "published_at",
+            "next_attempt_at",
+            "claim_expires_at",
+            "created_at",
+        ),
+    )
 
     outbox_id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid4())
@@ -193,6 +202,13 @@ class OutboxEvent(Base):
     )
     publish_attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    claim_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    claim_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class WorkerState(Base):

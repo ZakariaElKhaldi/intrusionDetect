@@ -58,6 +58,7 @@ async function signIn(page: Page) {
   if (!await trigger.isVisible()) return;
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: "Operator sign in" });
+  await dialog.getByLabel("Username").fill("admin");
   await dialog.getByLabel("Password").fill("e2e-password");
   await dialog.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByText("Signed in as")).toBeVisible();

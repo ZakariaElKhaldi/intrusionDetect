@@ -423,4 +423,18 @@ describe("frontend API adapter", () => {
       message: "Input should be valid",
     } satisfies Partial<ApiError>);
   });
+
+  it("preserves Retry-After guidance on throttled requests", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      detail: "Too many failed login attempts",
+    }, { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "120" } })));
+
+    const failure = import("../api").then(({ login }) => login("admin", "incorrect"));
+    await expect(failure).rejects.toMatchObject({
+      name: "ApiError",
+      status: 429,
+      message: "Too many failed login attempts",
+      retryAfterSeconds: 120,
+    } satisfies Partial<ApiError>);
+  });
 });

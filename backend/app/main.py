@@ -36,7 +36,7 @@ from app.http_limits import RequestBodyLimitMiddleware
 from app.inference.model_registry import ModelRegistry
 from app.inference.shap_explanations import ExplanationService
 from app.ingestion.dataset_replay import DatasetReplay
-from app.ingestion.outbox import dispatch_loop, stop_dispatcher
+from app.ingestion.outbox import OutboxDispatcher
 from app.ingestion.service import ingestion_status
 from app.live import LiveConnectionManager
 from app.metrics import ApplicationMetrics
@@ -88,13 +88,13 @@ def create_app(
                     )
                     session.add(row)
             session.commit()
-        dispatcher = asyncio.create_task(
-            dispatch_loop(
-                session_factory,
-                app.state.live,
-                poll_seconds=settings.outbox_poll_seconds,
-            )
+        dispatcher = OutboxDispatcher(
+            session_factory,
+            app.state.live,
+            poll_seconds=settings.outbox_poll_seconds,
+            lease_seconds=settings.outbox_lease_seconds,
         )
+        dispatcher.start()
         monitor = asyncio.create_task(
             monitoring_loop(
                 app.state.model_health,
@@ -104,7 +104,7 @@ def create_app(
         )
         yield
         app.state.replay.stop()
-        await stop_dispatcher(dispatcher)
+        await dispatcher.stop()
         monitor.cancel()
         try:
             await monitor
@@ -122,7 +122,8 @@ def create_app(
     app.state.login_rate_limiter = LoginRateLimiter()
     app.state.registry = registry
     app.state.live = LiveConnectionManager(
-        max_connections=settings.max_live_connections
+        max_connections=settings.max_live_connections,
+        send_timeout_seconds=settings.live_send_timeout_seconds,
     )
     app.state.replay = DatasetReplay(settings.replay_dataset_path)
     app.state.explanations = ExplanationService(registry)

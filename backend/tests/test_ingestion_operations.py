@@ -75,7 +75,11 @@ async def test_outbox_api_distinguishes_pending_failed_and_published(client) -> 
     response = await client.get("/api/v1/ingestion/outbox/events", params={"status": "failed"})
     assert response.status_code == 200
     assert response.json()["total"] == 1
-    assert response.json()["items"][0]["status"] == "failed"
+    item = response.json()["items"][0]
+    assert item["status"] == "failed"
+    assert item["claimed"] is False
+    assert item["claim_expires_at"] is None
+    assert item["next_attempt_at"] is None
 
 
 @pytest.mark.anyio

@@ -41,8 +41,10 @@ services:
       IOT_IDS_WORKER_POLL_SECONDS: "0.5"
       IOT_IDS_WORKER_LEASE_SECONDS: "60"
       IOT_IDS_OUTBOX_POLL_SECONDS: "0.5"
+      IOT_IDS_OUTBOX_LEASE_SECONDS: "${IOT_IDS_OUTBOX_LEASE_SECONDS:-30}"
       IOT_IDS_MAX_REQUEST_BODY_BYTES: "${IOT_IDS_MAX_REQUEST_BODY_BYTES:-52428800}"
       IOT_IDS_MAX_LIVE_CONNECTIONS: "${IOT_IDS_MAX_LIVE_CONNECTIONS:-250}"
+      IOT_IDS_LIVE_SEND_TIMEOUT_SECONDS: "${IOT_IDS_LIVE_SEND_TIMEOUT_SECONDS:-2}"
       IOT_IDS_AUTH_ENABLED: "${IOT_IDS_AUTH_ENABLED:-true}"
       IOT_IDS_ADMIN_USERNAME: "${IOT_IDS_ADMIN_USERNAME:-admin}"
       IOT_IDS_ADMIN_PASSWORD_HASH: "${IOT_IDS_ADMIN_PASSWORD_HASH:?generate an Argon2id hash first}"
@@ -59,7 +61,7 @@ services:
       dockerfile: backend/Dockerfile
     environment: *backend-environment
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     restart: unless-stopped
     depends_on:
       migration:

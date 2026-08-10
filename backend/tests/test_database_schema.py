@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import sqlalchemy as sa
 from alembic.config import Config
 
 from alembic import command
@@ -47,5 +48,14 @@ def test_schema_check_accepts_every_declared_alembic_head(
 
     engine, _ = create_engine_and_session(database_url)
     verify_schema_current(engine)
+    inspector = sa.inspect(engine)
+    outbox_columns = {
+        column["name"] for column in inspector.get_columns("outbox_events")
+    }
+    outbox_indexes = {
+        index["name"] for index in inspector.get_indexes("outbox_events")
+    }
+    assert {"claim_token", "claim_expires_at", "next_attempt_at"} <= outbox_columns
+    assert "ix_outbox_events_delivery_claim" in outbox_indexes
     engine.dispose()
-    assert expected_schema_heads() == {"20260807_03"}
+    assert expected_schema_heads() == {"20260810_04"}

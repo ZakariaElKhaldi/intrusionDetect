@@ -191,6 +191,55 @@ async def test_live_manager_broadcasts_and_removes_stale_connections() -> None:
 
 
 @pytest.mark.anyio
+async def test_live_manager_times_out_slow_connections_without_blocking_healthy_ones() -> None:
+    class SlowSocket(FakeSocket):
+        async def send_json(self, message: dict[str, Any]) -> None:
+            await asyncio.Event().wait()
+
+    manager = LiveConnectionManager(send_timeout_seconds=0.02)
+    healthy = FakeSocket()
+    slow = SlowSocket()
+    manager.connections.update({healthy, slow})  # type: ignore[arg-type]
+
+    await asyncio.wait_for(
+        manager.broadcast({"type": "prediction", "data": {"event_id": "fixture"}}),
+        timeout=0.2,
+    )
+
+    assert healthy.messages[0]["type"] == "prediction"
+    assert slow not in manager.connections
+
+
+@pytest.mark.anyio
+async def test_live_manager_serializes_broadcasts_per_connection() -> None:
+    class SerialSocket(FakeSocket):
+        def __init__(self) -> None:
+            super().__init__()
+            self.sending = False
+            self.overlapped = False
+
+        async def send_json(self, message: dict[str, Any]) -> None:
+            if self.sending:
+                self.overlapped = True
+            self.sending = True
+            await asyncio.sleep(0.01)
+            self.messages.append(message)
+            self.sending = False
+
+    manager = LiveConnectionManager(send_timeout_seconds=0.2)
+    socket = SerialSocket()
+    manager.connections.add(socket)  # type: ignore[arg-type]
+
+    await asyncio.gather(
+        manager.broadcast({"type": "first"}),
+        manager.broadcast({"type": "second"}),
+    )
+
+    assert socket.overlapped is False
+    assert [message["type"] for message in socket.messages] == ["first", "second"]
+
+
+@pytest.mark.anyio
 async def test_service_broadcasts_authoritative_prediction_and_alert_events(
     tmp_path,
 ) -> None:

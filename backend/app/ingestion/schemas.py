@@ -114,6 +114,9 @@ class OutboxEventResponse(BaseModel):
     status: Literal["pending", "published", "failed"]
     publish_attempts: int
     last_error: str | None
+    claimed: bool
+    claim_expires_at: datetime | None
+    next_attempt_at: datetime | None
     created_at: datetime
     published_at: datetime | None
 

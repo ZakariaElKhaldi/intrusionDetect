@@ -453,14 +453,13 @@ function App() {
       </aside>
 
       <div className="workspace">
-        {fixtureMode ? <div className="fixture-badge" role="status">Fixture data · not connected evidence</div> : null}
         <header className="topbar">
           <div className="page-title">
             <h1>{title}</h1>
             <p>{subtitle}</p>
           </div>
           <div className="topbar-actions">
-            {auth.session ? <div className="operator-session"><span>Signed in as <b>{auth.session.username}</b></span><button className="text-button" type="button" onClick={auth.logout}>Sign out</button></div> : auth.authRequired ? <button className="secondary-button" type="button" onClick={auth.openLogin}>Operator sign in</button> : <span className="operator-session">Local mutations enabled</span>}
+            {fixtureMode ? <span className="operator-session">Read-only preview</span> : auth.session ? <div className="operator-session"><span>Signed in as <b>{auth.session.username}</b></span><button className="text-button" type="button" onClick={auth.logout}>Sign out</button></div> : auth.authRequired ? <button className="secondary-button" type="button" onClick={auth.openLogin}>Operator sign in</button> : <span className="operator-session">Local mutations enabled</span>}
             <div className="system-status">
               <span
                 className={`status-mark status-mark--${health ? socketState : "offline"}`}
@@ -473,6 +472,7 @@ function App() {
             </div>
           </div>
         </header>
+        {fixtureMode ? <div className="fixture-badge" role="status">Fixture data · not connected evidence</div> : null}
 
         <main id="main-content" tabIndex={-1}>
           {!fixtureMode && healthChecked && !health ? (
@@ -545,7 +545,7 @@ function App() {
             />
           ) : null}
           {page === "models" ? <ModelAnalysis models={models} fixtureMode={fixtureMode} descriptorLoading={modelsLoading} descriptorError={modelsError} /> : null}
-            {page === "testing" ? <ObservationLab /> : null}
+            {page === "testing" ? <ObservationLab fixtureMode={fixtureMode} /> : null}
             </Suspense>
           </ErrorBoundary>
         </main>

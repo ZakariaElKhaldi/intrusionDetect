@@ -420,6 +420,9 @@ def list_outbox_events(
                 ),
                 publish_attempts=row.publish_attempts,
                 last_error=row.last_error,
+                claimed=row.claim_token is not None,
+                claim_expires_at=row.claim_expires_at,
+                next_attempt_at=row.next_attempt_at,
                 created_at=row.created_at,
                 published_at=row.published_at,
             )

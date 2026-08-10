@@ -248,7 +248,9 @@ Open `http://localhost:5173`; OpenAPI documentation is at
 `http://localhost:8000/docs`. `make docker-up` starts the PostgreSQL-backed
 demonstration stack after the required secrets in `.env` are configured. The
 containerized frontend serves API and WebSocket traffic through its same-origin
-Nginx proxy, so browser deployments do not need cross-origin API URLs.
+Nginx proxy, so browser deployments do not need cross-origin API URLs. Compose
+binds the direct port `8000` to host loopback only; remote clients must use the
+frontend gateway or an explicitly configured trusted ingress.
 
 ## Deployment and security boundary
 

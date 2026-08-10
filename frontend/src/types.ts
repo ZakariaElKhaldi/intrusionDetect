@@ -161,6 +161,9 @@ export interface OutboxEvent {
   status: "pending" | "published" | "failed";
   publish_attempts: number;
   last_error: string | null;
+  claimed: boolean;
+  claim_expires_at: string | null;
+  next_attempt_at: string | null;
   created_at: string;
   published_at: string | null;
 }

@@ -55,4 +55,9 @@ def test_resource_limit_configuration_is_bounded() -> None:
         Settings(max_request_body_bytes=1_023).validate()
     with pytest.raises(ValueError, match="MAX_LIVE_CONNECTIONS"):
         Settings(max_live_connections=0).validate()
-
+    with pytest.raises(ValueError, match="LIVE_SEND_TIMEOUT_SECONDS"):
+        Settings(live_send_timeout_seconds=0).validate()
+    with pytest.raises(ValueError, match="OUTBOX_LEASE_SECONDS"):
+        Settings(outbox_lease_seconds=2).validate()
+    with pytest.raises(ValueError, match="at least two seconds longer"):
+        Settings(outbox_lease_seconds=3, live_send_timeout_seconds=3).validate()

@@ -9,9 +9,10 @@ import pytest
 from conftest import observation
 from sqlalchemy import delete, func, select
 
-from app.database.models import Base, IngestionJob, IngestionJobTransition
+from app.database.models import Base, IngestionJob, IngestionJobTransition, OutboxEvent
 from app.database.session import create_engine_and_session
 from app.features.canonical_schema import FlowObservation
+from app.ingestion.outbox import _claim_one, _mark_published
 from app.ingestion.service import (
     claim_next_job,
     enqueue_observations,
@@ -53,6 +54,43 @@ def _delete_jobs(sessions, event_ids: list[str]) -> None:
             )
         )
         session.execute(delete(IngestionJob).where(IngestionJob.event_id.in_(event_ids)))
+
+
+def test_postgres_outbox_claim_allows_only_one_dispatcher(postgres_sessions) -> None:
+    event_id = observation()["event_id"]
+    with postgres_sessions.begin() as session:
+        session.add(
+            OutboxEvent(
+                event_id=event_id,
+                event_type="prediction.created",
+                payload={"type": "prediction.created", "data": {}},
+            )
+        )
+
+    start = Barrier(2)
+
+    def claim():
+        start.wait()
+        return _claim_one(postgres_sessions, lease_seconds=30)
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            claims = [
+                future.result(timeout=10)
+                for future in (executor.submit(claim), executor.submit(claim))
+            ]
+        claimed = [claim for claim in claims if claim is not None]
+        assert len(claimed) == 1
+        assert _mark_published(postgres_sessions, claimed[0]) is True
+        with postgres_sessions() as session:
+            row = session.scalar(
+                select(OutboxEvent).where(OutboxEvent.event_id == event_id)
+            )
+            assert row.published_at is not None
+            assert row.publish_attempts == 1
+    finally:
+        with postgres_sessions.begin() as session:
+            session.execute(delete(OutboxEvent).where(OutboxEvent.event_id == event_id))
 
 
 def test_postgres_claim_skips_a_row_locked_by_another_worker(postgres_sessions) -> None:

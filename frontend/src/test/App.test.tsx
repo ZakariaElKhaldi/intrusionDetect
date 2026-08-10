@@ -65,5 +65,19 @@ describe("dashboard", () => {
     history.replaceState(null, "", "/?fixture=true");
     render(<App />);
     expect(screen.getByText("Fixture data · not connected evidence")).toBeInTheDocument();
+    expect(screen.getByText("Read-only preview")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Operator sign in" })).not.toBeInTheDocument();
+  });
+
+  it("keeps fixture observation validation local and read-only", async () => {
+    history.replaceState(null, "", "/?fixture=true");
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Test observations" }));
+    await user.click(await screen.findByRole("button", { name: "Load verified normal example" }));
+
+    expect(screen.getByText(/Fixture preview validates files locally/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Predict 1 row" })).toBeDisabled();
   });
 });

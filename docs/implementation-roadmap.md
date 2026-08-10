@@ -88,11 +88,17 @@ Next work:
 - durable PostgreSQL inbox with SQLite single-worker development mode;
 - event-ID idempotency, queue capacity, leases, retry/dead-letter handling;
 - transactional observation/prediction/alert/outbox persistence;
-- post-commit event publication and restart recovery; and
-- queue, worker, and outbox evidence in health and Monitor.
+- post-commit at-least-once publication with atomic claim leases, expired-claim
+  recovery, capped retry backoff, and bounded concurrent WebSocket sends; and
+- queue, worker, and outbox evidence in health and Monitor; and
+- authenticated manual dead-letter redrive with dry-run eligibility evidence,
+  mandatory audit reason, explicit browser confirmation, and immutable history.
 
-**Boundary:** no distributed broker or horizontally coordinated WebSocket
-publisher; production security and retention remain separate work.
+**Boundary:** duplicate delivery remains possible after a send succeeds but its
+publication acknowledgement is interrupted, so browser consumers deduplicate
+stable event identities. There is no distributed broker or horizontally
+coordinated WebSocket publisher; production security and retention remain
+separate work.
 
 ## Phase 7 — NFStream-native offline PCAP path: tooling implemented, evidence gate blocked
 

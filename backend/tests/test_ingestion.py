@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 from datetime import timedelta
@@ -14,7 +15,7 @@ from app.database.models import Base, IngestionJob, Observation, OutboxEvent, Pr
 from app.database.session import create_engine_and_session
 from app.features.canonical_schema import FlowObservation
 from app.inference.model_registry import ModelRegistry
-from app.ingestion.outbox import dispatch_one
+from app.ingestion.outbox import OutboxDispatcher, dispatch_one
 from app.ingestion.producer import iter_lines
 from app.ingestion.service import enqueue_observations, now_utc, recover_expired_leases
 from app.ingestion.worker import IngestionWorker
@@ -200,6 +201,7 @@ def test_expired_processing_lease_is_recovered(tmp_path) -> None:
 class RecordingLive:
     def __init__(self, fail: bool = False) -> None:
         self.fail = fail
+        self.send_timeout_seconds = 2.0
         self.messages: list[dict] = []
 
     async def broadcast(self, message: dict) -> None:
@@ -208,8 +210,20 @@ class RecordingLive:
         self.messages.append(message)
 
 
+class BlockingLive:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def broadcast(self, _message: dict) -> None:
+        self.started.set()
+        await self.release.wait()
+
+
 @pytest.mark.anyio
-async def test_outbox_retries_publish_failure_without_losing_event(tmp_path) -> None:
+async def test_outbox_retries_publish_failure_without_losing_event(
+    tmp_path,
+) -> None:
     engine, sessions, _registry = _worker_fixture(tmp_path)
     with sessions() as session:
         session.add(
@@ -225,11 +239,120 @@ async def test_outbox_retries_publish_failure_without_losing_event(tmp_path) -> 
         row = session.scalar(select(OutboxEvent))
         assert row.published_at is None
         assert row.publish_attempts == 1
+        assert row.claim_token is None
+        assert row.claim_expires_at is None
+        assert row.next_attempt_at is not None
+    assert await dispatch_one(sessions, RecordingLive()) is False  # type: ignore[arg-type]
+    with sessions() as session:
+        row = session.scalar(select(OutboxEvent))
+        row.next_attempt_at = now_utc() - timedelta(seconds=1)
+        session.commit()
     healthy = RecordingLive()
     assert await dispatch_one(sessions, healthy) is True  # type: ignore[arg-type]
     assert healthy.messages == [{"type": "prediction.created", "data": {"value": 1}}]
     with sessions() as session:
         assert session.scalar(select(OutboxEvent)).published_at is not None
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_outbox_claim_prevents_concurrent_duplicate_delivery(
+    tmp_path,
+) -> None:
+    engine, sessions, _registry = _worker_fixture(tmp_path)
+    with sessions() as session:
+        session.add(
+            OutboxEvent(
+                event_id=observation()["event_id"],
+                event_type="prediction.created",
+                payload={"type": "prediction.created", "data": {"value": 1}},
+            )
+        )
+        session.commit()
+
+    blocked = BlockingLive()
+    first = asyncio.create_task(dispatch_one(sessions, blocked))  # type: ignore[arg-type]
+    await asyncio.wait_for(blocked.started.wait(), timeout=1)
+    duplicate = RecordingLive()
+    assert await dispatch_one(sessions, duplicate) is False  # type: ignore[arg-type]
+    assert duplicate.messages == []
+    blocked.release.set()
+    assert await first is True
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_cancelled_outbox_delivery_releases_claim_for_restart(
+    tmp_path,
+) -> None:
+    engine, sessions, _registry = _worker_fixture(tmp_path)
+    payload = {"type": "prediction.created", "data": {"value": 1}}
+    with sessions() as session:
+        session.add(
+            OutboxEvent(
+                event_id=observation()["event_id"],
+                event_type="prediction.created",
+                payload=payload,
+            )
+        )
+        session.commit()
+
+    blocked = BlockingLive()
+    delivery = asyncio.create_task(dispatch_one(sessions, blocked))  # type: ignore[arg-type]
+    await asyncio.wait_for(blocked.started.wait(), timeout=1)
+    delivery.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await delivery
+    with sessions() as session:
+        row = session.scalar(select(OutboxEvent))
+        assert row.claim_token is None
+        assert row.claim_expires_at is None
+        assert row.publish_attempts == 1
+
+    healthy = RecordingLive()
+    assert await dispatch_one(sessions, healthy) is True  # type: ignore[arg-type]
+    assert healthy.messages == [payload]
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_background_outbox_dispatcher_publishes_and_stops_cleanly(tmp_path) -> None:
+    engine, sessions, _registry = _worker_fixture(tmp_path)
+    payload = {"type": "prediction.created", "data": {"value": 1}}
+    with sessions() as session:
+        session.add(
+            OutboxEvent(
+                event_id=observation()["event_id"],
+                event_type="prediction.created",
+                payload=payload,
+                claim_token="abandoned-claim",
+                claim_expires_at=now_utc() - timedelta(seconds=1),
+            )
+        )
+        session.commit()
+
+    live = RecordingLive()
+    dispatcher = OutboxDispatcher(
+        sessions,
+        live,  # type: ignore[arg-type]
+        poll_seconds=0.01,
+        lease_seconds=5,
+    )
+    dispatcher.start()
+    try:
+        for _ in range(100):
+            with sessions() as session:
+                published = session.scalar(select(OutboxEvent)).published_at
+            if published is not None:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            pytest.fail("outbox dispatcher did not publish the claimed event")
+    finally:
+        await dispatcher.stop()
+
+    assert live.messages == [payload]
+    assert dispatcher.running is False
     engine.dispose()
 
 

@@ -49,7 +49,13 @@ synchronous behavior. The production-capable ingestion route validates and
 enqueues observations before returning `202`; a separate worker claims jobs,
 performs inference, and commits the observation, prediction, optional alert,
 and outbox events in one transaction. The outbox is published only after that
-commit. There is no Kafka/Redis broker or SSE path.
+commit. A short database claim lease is committed before WebSocket I/O, so a
+slow or failed client never holds a database transaction open. One dedicated
+dispatcher thread owns all synchronous outbox sessions; it schedules only the
+bounded WebSocket send on the asyncio loop. Expired claims are recoverable,
+failures use capped exponential retry delays, and clients must tolerate the
+pattern's unavoidable at-least-once duplicates. There is no Kafka/Redis broker
+or SSE path.
 
 ## 2. Model registry and cascade
 
@@ -218,6 +224,12 @@ session is opened and fully consumed by the worker thread that owns it; live
 events are broadcast only after the transaction commits. Dashboard summaries
 are computed with database-side grouped aggregates and an exact, constant-memory
 median query rather than loading the full observation history.
+
+Live publication serializes event batches to preserve per-connection order,
+then snapshots the current connection set, fans out concurrently, and applies a
+per-connection deadline. A stalled browser is disconnected without serially
+delaying healthy operators within the batch. The outbox claim lease is required
+to be longer than that send deadline.
 
 ## 9. Deployment modes
 
