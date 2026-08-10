@@ -55,6 +55,7 @@ class DatasetReplay:
         self.dataset_path = Path(dataset_path).expanduser().resolve() if dataset_path else None
         self.state = ReplayState()
         self.task: asyncio.Task | None = None
+        self.control_lock = asyncio.Lock()
         self._resume = asyncio.Event()
         self._resume.set()
         self._base_interval_ms = 1_000
@@ -106,15 +107,14 @@ class DatasetReplay:
         scenario: str,
         offset: int,
         limit: int | None,
+        prepared_total: int | None = None,
     ) -> None:
         self._ensure_idle()
-        if not self.dataset_path or not self.dataset_path.is_file():
-            raise FileNotFoundError(
-                "replay dataset is unavailable; set IOT_IDS_DATASET_PATH"
-            )
-        # Validate the scenario before the background task is accepted.
-        _scenario_matches("__validation__", scenario)
-        total = self._dataset_total(scenario, offset, limit)
+        total = (
+            self.count_dataset(scenario, offset, limit)
+            if prepared_total is None
+            else prepared_total
+        )
         self._start(
             app,
             self._dataset_observations(scenario, offset, limit),
@@ -126,6 +126,16 @@ class DatasetReplay:
             offset=offset,
             limit=limit,
         )
+
+    def count_dataset(self, scenario: str, offset: int, limit: int | None) -> int:
+        self._ensure_idle()
+        if not self.dataset_path or not self.dataset_path.is_file():
+            raise FileNotFoundError(
+                "replay dataset is unavailable; set IOT_IDS_DATASET_PATH"
+            )
+        # Validate the scenario before the background task is accepted.
+        _scenario_matches("__validation__", scenario)
+        return self._dataset_total(scenario, offset, limit)
 
     def _start(
         self,

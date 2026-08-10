@@ -14,7 +14,8 @@ async def test_dashboard_summary_and_alert_pagination(
     normal = observation()
     attack = observation(attack=True)
     attack["features"]["flow_SYN_flag_count"] = 100
-    assert (await fallback_client.post("/predict", json=normal)).status_code == 201
+    normal_response = await fallback_client.post("/predict", json=normal)
+    assert normal_response.status_code == 201
     attack_response = await fallback_client.post("/predict", json=attack)
     assert attack_response.status_code == 201
 
@@ -27,9 +28,14 @@ async def test_dashboard_summary_and_alert_pagination(
     assert body["alerts"]["unresolved"] == 1
     assert body["persisted_totals"]["unresolved_alerts"] == 1
     assert body["family_counts"] == {"suspicious_activity": 1}
-    assert body["median_detection_score"] is not None
+    expected_median = (
+        normal_response.json()["detection_score"]
+        + attack_response.json()["detection_score"]
+    ) / 2
+    assert body["median_detection_score"] == pytest.approx(expected_median)
     assert body["generated_at"] == body["checked_at"]
     assert body["scope"]["source"] == "persisted_database_records"
+    assert body["scope"]["aggregation"] == "database_grouped"
     assert body["scope"]["bucket_minutes"] == 60
     assert sum(point["total"] for point in body["severity_timeline"]) == 1
 

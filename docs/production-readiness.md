@@ -63,6 +63,18 @@ not treated as proof of detection effectiveness or operational capacity.
   settings and refuse uninitialized or stale database schemas. Table creation
   is limited to an explicit programmatic test path; deployed services require
   `alembic upgrade head` to complete first.
+- Synchronous SQLAlchemy, model-inference, validation, replay-scan, and
+  model-health work on request/background paths runs in Starlette's bounded
+  worker pool instead of occupying the asyncio event loop. Database sessions
+  are created and consumed within the same worker thread, chronology-sensitive
+  health evaluation is serialized, and replay state changes share one control
+  lock. A regression test holds inference persistence and verifies that the
+  liveness endpoint remains responsive.
+- Dashboard summaries use database-side counts and grouped distributions. The
+  exact median reads at most two ordered scores, so the public `range=all`
+  endpoint no longer materializes every persisted prediction, alert, or raw
+  observation payload in application memory. Legacy alert listing also uses a
+  single joined query instead of per-alert lookups.
 - The backend container installs the exact committed `uv.lock` graph with
   `uv sync --locked`; local virtual environments, Node modules, test artifacts,
   and repository metadata are excluded from the Docker build context.
@@ -103,6 +115,9 @@ follows [Kubernetes liveness and readiness semantics][k8s-probes], and the
 unprivileged runtime follows [Docker's build best practices][docker-build].
 Render-failure containment follows [React's Error Boundary guidance][react-errors],
 and Python dependency auditing uses the [PyPA `pip-audit` contract][pip-audit].
+Concurrency boundaries follow [FastAPI's guidance for blocking I/O][fastapi-async]
+and [Starlette's bounded thread-pool behavior][starlette-threadpool]; session
+ownership follows SQLAlchemy's [session-per-thread model][sqlalchemy-session].
 
 [owasp-headers]: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
 [owasp-csp]: https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html
@@ -111,3 +126,6 @@ and Python dependency auditing uses the [PyPA `pip-audit` contract][pip-audit].
 [docker-build]: https://docs.docker.com/build/building/best-practices/
 [react-errors]: https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary
 [pip-audit]: https://github.com/pypa/pip-audit
+[fastapi-async]: https://fastapi.tiangolo.com/async/
+[starlette-threadpool]: https://www.starlette.io/threadpool/
+[sqlalchemy-session]: https://docs.sqlalchemy.org/en/20/orm/session_basics.html#is-the-session-thread-safe-is-asyncsession-safe-to-share-in-concurrent-tasks

@@ -4,6 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, model_validator
+from starlette.concurrency import run_in_threadpool
 
 from app.api.auth import get_current_admin
 from app.features.canonical_schema import FlowObservation
@@ -59,25 +60,34 @@ def _status(request: Request) -> ReplayStatus:
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(get_current_admin)],
 )
-def start_replay(payload: ReplayRequest, request: Request) -> ReplayStatus:
+async def start_replay(payload: ReplayRequest, request: Request) -> ReplayStatus:
+    replay = request.app.state.replay
     try:
-        if payload.mode == "dataset":
-            request.app.state.replay.start_dataset(
-                request.app,
-                payload.interval_ms,
-                speed=payload.speed,
-                scenario=payload.scenario,
-                offset=payload.offset,
-                limit=payload.limit,
-            )
-        else:
-            request.app.state.replay.start_custom(
-                request.app,
-                payload.observations or [],
-                payload.interval_ms,
-                speed=payload.speed,
-                scenario=payload.scenario,
-            )
+        async with replay.control_lock:
+            if payload.mode == "dataset":
+                total = await run_in_threadpool(
+                    replay.count_dataset,
+                    payload.scenario,
+                    payload.offset,
+                    payload.limit,
+                )
+                replay.start_dataset(
+                    request.app,
+                    payload.interval_ms,
+                    speed=payload.speed,
+                    scenario=payload.scenario,
+                    offset=payload.offset,
+                    limit=payload.limit,
+                    prepared_total=total,
+                )
+            else:
+                replay.start_custom(
+                    request.app,
+                    payload.observations or [],
+                    payload.interval_ms,
+                    speed=payload.speed,
+                    scenario=payload.scenario,
+                )
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         code = 409 if isinstance(exc, RuntimeError) else 422
         raise HTTPException(status_code=code, detail=str(exc)) from exc
@@ -85,16 +95,17 @@ def start_replay(payload: ReplayRequest, request: Request) -> ReplayStatus:
 
 
 @router.get("/status", response_model=ReplayStatus)
-def replay_status(request: Request) -> ReplayStatus:
+async def replay_status(request: Request) -> ReplayStatus:
     return _status(request)
 
 
 @router.post(
     "/pause", response_model=ReplayStatus, dependencies=[Depends(get_current_admin)]
 )
-def pause_replay(request: Request) -> ReplayStatus:
+async def pause_replay(request: Request) -> ReplayStatus:
     try:
-        request.app.state.replay.pause()
+        async with request.app.state.replay.control_lock:
+            request.app.state.replay.pause()
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _status(request)
@@ -103,9 +114,10 @@ def pause_replay(request: Request) -> ReplayStatus:
 @router.post(
     "/resume", response_model=ReplayStatus, dependencies=[Depends(get_current_admin)]
 )
-def resume_replay(payload: ReplayControl, request: Request) -> ReplayStatus:
+async def resume_replay(payload: ReplayControl, request: Request) -> ReplayStatus:
     try:
-        request.app.state.replay.resume(payload.speed)
+        async with request.app.state.replay.control_lock:
+            request.app.state.replay.resume(payload.speed)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _status(request)
@@ -114,6 +126,7 @@ def resume_replay(payload: ReplayControl, request: Request) -> ReplayStatus:
 @router.post(
     "/stop", response_model=ReplayStatus, dependencies=[Depends(get_current_admin)]
 )
-def stop_replay(request: Request) -> ReplayStatus:
-    request.app.state.replay.stop()
+async def stop_replay(request: Request) -> ReplayStatus:
+    async with request.app.state.replay.control_lock:
+        request.app.state.replay.stop()
     return _status(request)

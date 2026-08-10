@@ -51,23 +51,29 @@ async def _bounded_body(request: Request) -> bytes:
     return bytes(chunks)
 
 
+def _decode_observations(body: bytes, content_type: str) -> list[FlowObservation]:
+    if content_type == "application/x-ndjson":
+        text_body = body.decode("utf-8")
+        raw = [json.loads(line) for line in text_body.splitlines() if line.strip()]
+    else:
+        raw = json.loads(body)
+        if isinstance(raw, dict):
+            raw = raw.get("observations")
+    return OBSERVATIONS.validate_python(raw)
+
+
 async def _parse_observations(request: Request) -> list[FlowObservation]:
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip()
+    if content_type not in {"application/x-ndjson", "application/json", ""}:
+        raise HTTPException(
+            status_code=415,
+            detail="use application/json or application/x-ndjson",
+        )
+    body = await _bounded_body(request)
     try:
-        body = await _bounded_body(request)
-        if content_type == "application/x-ndjson":
-            text_body = body.decode("utf-8")
-            raw = [json.loads(line) for line in text_body.splitlines() if line.strip()]
-        elif content_type in {"application/json", ""}:
-            raw = json.loads(body)
-            if isinstance(raw, dict):
-                raw = raw.get("observations")
-        else:
-            raise HTTPException(
-                status_code=415,
-                detail="use application/json or application/x-ndjson",
-            )
-        observations = OBSERVATIONS.validate_python(raw)
+        observations = await run_in_threadpool(
+            _decode_observations, body, content_type
+        )
     except (json.JSONDecodeError, UnicodeDecodeError, ValidationError, TypeError) as exc:
         detail = (
             safe_validation_details(exc.errors())

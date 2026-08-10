@@ -57,19 +57,20 @@ def list_alerts(
     offset: int = Query(default=0, ge=0),
 ) -> list[AlertResponse]:
     with request.app.state.SessionLocal() as session:
-        statement = select(Alert)
+        statement = (
+            select(Alert, Prediction, Observation)
+            .join(Prediction, Prediction.prediction_id == Alert.prediction_id)
+            .join(Observation, Observation.event_id == Alert.event_id)
+        )
         if severity:
             statement = statement.where(Alert.severity == severity)
         if alert_status:
             statement = statement.where(Alert.status == alert_status)
         statement = statement.order_by(Alert.created_at.desc()).offset(offset).limit(limit)
-        alerts = list(session.scalars(statement).all())
-        responses = []
-        for alert in alerts:
-            prediction = session.get(Prediction, alert.prediction_id)
-            observation = session.get(Observation, alert.event_id)
-            responses.append(_alert_response(alert, prediction, observation))
-        return responses
+        return [
+            _alert_response(alert, prediction, observation)
+            for alert, prediction, observation in session.execute(statement).all()
+        ]
 
 
 @router.get("/alerts/page", response_model=AlertPage)

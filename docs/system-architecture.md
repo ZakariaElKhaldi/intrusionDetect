@@ -211,6 +211,14 @@ browser. The dashboard starts a bounded 100-row replay by default.
 The backend assigns current timestamps when rows are emitted. This supports UI
 and end-to-end pipeline testing but does not imply original packet chronology.
 
+Dataset counting and synchronous inference/persistence run in the bounded
+application worker pool. Replay start, pause, resume, and stop transitions are
+serialized so a dataset scan cannot race another control request. A database
+session is opened and fully consumed by the worker thread that owns it; live
+events are broadcast only after the transaction commits. Dashboard summaries
+are computed with database-side grouped aggregates and an exact, constant-memory
+median query rather than loading the full observation history.
+
 ## 9. Deployment modes
 
 ### Local development
@@ -229,9 +237,11 @@ and end-to-end pipeline testing but does not imply original packet chronology.
 - PostgreSQL 17; and
 - production artifacts and prepared dataset copied into the backend image.
 
-Neither mode currently includes authentication, TLS termination, distributed
-broker infrastructure, horizontally coordinated WebSocket publication,
-secrets management, or production observability infrastructure.
+Both modes support the hardened single-admin authentication configuration.
+Neither mode supplies TLS termination, managed or multi-user identity,
+distributed broker infrastructure, horizontally coordinated WebSocket
+publication, centralized secrets management, or production observability
+infrastructure.
 
 ## 10. Planned boundaries
 

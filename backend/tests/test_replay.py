@@ -7,6 +7,17 @@ import pytest
 from conftest import observation
 
 
+async def _wait_for_replay(
+    client: httpx.AsyncClient, path: str = "/replay/status"
+) -> dict:
+    for _ in range(100):
+        state = (await client.get(path)).json()
+        if state["status"] in {"completed", "failed", "stopped"}:
+            return state
+        await asyncio.sleep(0.02)
+    pytest.fail("replay did not reach a terminal state within two seconds")
+
+
 @pytest.mark.anyio
 async def test_replay_start_pause_resume_speed_and_stop(
     fallback_client: httpx.AsyncClient,
@@ -48,10 +59,9 @@ async def test_replay_completes_and_persists_predictions(
         "scenario": "single-attack",
     }
     assert (await fallback_client.post("/api/v1/replay/start", json=payload)).status_code == 202
-    await asyncio.sleep(0.02)
-    state = await fallback_client.get("/api/v1/replay/status")
-    assert state.json()["status"] == "completed"
-    assert state.json()["processed"] == 1
+    state = await _wait_for_replay(fallback_client, "/api/v1/replay/status")
+    assert state["status"] == "completed"
+    assert state["processed"] == 1
     alerts = await fallback_client.get("/alerts")
     assert len(alerts.json()) == 1
 
@@ -84,8 +94,7 @@ async def test_dataset_replay_is_server_managed_lazy_and_filterable(
     assert response.status_code == 202
     assert response.json()["mode"] == "dataset"
     assert response.json()["total"] == 2
-    await asyncio.sleep(0.1)
-    state = (await fallback_client.get("/replay/status")).json()
+    state = await _wait_for_replay(fallback_client)
     assert state["status"] == "completed"
     assert state["processed"] == 2
 
