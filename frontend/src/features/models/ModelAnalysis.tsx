@@ -5,8 +5,10 @@ import { PanelHeading } from "../../components/PanelHeading";
 import { TabList, tabId } from "../../components/TabList";
 import type { EvaluationReport, ModelInfo, ThresholdAnalysis } from "../../types";
 import { ModelHealth } from "./ModelHealth";
+import { ServingModelSummary } from "./ServingModelSummary";
 
 type Stage = "binary" | "multiclass";
+type WorkspaceView = "operations" | "evaluation";
 
 function ThresholdCurve({ analysis }: { analysis: ThresholdAnalysis }) {
   const width = 720, height = 280, left = 54, top = 20, right = 18, bottom = 42;
@@ -32,6 +34,7 @@ function fallbackReport(stage: Stage, models: ModelInfo[]): EvaluationReport {
 }
 
 export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading = false, descriptorError = "" }: { models: ModelInfo[]; fixtureMode?: boolean; descriptorLoading?: boolean; descriptorError?: string }) {
+  const [view, setView] = useState<WorkspaceView>("operations");
   const [stage, setStage] = useState<Stage>("binary");
   const [reports, setReports] = useState<Partial<Record<Stage, EvaluationReport>>>({});
   const [loading, setLoading] = useState(!fixtureMode);
@@ -40,7 +43,7 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    if (fixtureMode || reports[stage]) return;
+    if (view !== "evaluation" || fixtureMode || reports[stage]) return;
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -52,7 +55,7 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [fixtureMode, reload, reports, stage]);
+  }, [fixtureMode, reload, reports, stage, view]);
 
   const report = reports[stage] ?? fallbackReport(stage, models);
   const candidates = report.candidates;
@@ -65,7 +68,30 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
 
   return (
     <div className="models-page">
-      <ModelHealth fixtureMode={fixtureMode}/>
+      <section className="panel model-workspace-intro" aria-labelledby="model-workspace-title">
+        <div>
+          <span className="eyebrow">Evidence boundaries</span>
+          <h2 id="model-workspace-title">Know what is live before reading what was tested</h2>
+          <p>Serving versions and observed production health answer operational questions. Offline evaluation compares candidates under a documented test protocol.</p>
+        </div>
+        <div className="model-evidence-map" aria-label="Model evidence map">
+          <span><b>01</b> Serving bundle</span><span><b>02</b> Production health</span><span><b>03</b> Offline evaluation</span>
+        </div>
+      </section>
+      <TabList
+        baseId="model-workspace"
+        label="Model workspace"
+        options={[{ value: "operations", label: "Serving & health" }, { value: "evaluation", label: "Offline evaluation" }]}
+        panelId="model-workspace-panel"
+        selected={view}
+        onSelect={setView}
+        className="stage-tabs model-workspace-tabs"
+      />
+      <div id="model-workspace-panel" role="tabpanel" aria-labelledby={tabId("model-workspace", view)}>
+      {view === "operations" ? <div className="model-operations-view">
+        <ServingModelSummary models={models} loading={descriptorLoading} error={descriptorError}/>
+        <ModelHealth fixtureMode={fixtureMode}/>
+      </div> : <div className="model-evaluation-view">
       <TabList
         baseId="evaluation-stage"
         label="Evaluation stage"
@@ -82,8 +108,6 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
       </div>
 
       {loading ? <div className="panel data-state" role="status">Loading {taskName.toLowerCase()} evidence…</div> : null}
-      {descriptorLoading ? <div className="panel data-state" role="status">Loading serving model descriptors…</div> : null}
-      {descriptorError ? <div className="panel data-state data-state--error" role="alert">Serving descriptors: {descriptorError}</div> : null}
       {error && !candidates.length ? <div className="panel data-state data-state--error" role="alert"><span>{error}</span><button className="secondary-button" onClick={() => { setReports((current) => ({ ...current, [stage]: undefined })); setReload((value) => value + 1); }}>Retry evaluation</button></div> : null}
 
       {!loading && candidates.length ? (
@@ -183,6 +207,8 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
       {!loading && !error && !candidates.length ? (
         <div className="panel data-state">No evaluation records were returned for the {taskName.toLowerCase()}.</div>
       ) : null}
+      </div>
+      </div>}
       </div>
     </div>
   );
