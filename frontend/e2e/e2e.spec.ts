@@ -16,8 +16,23 @@ const pages = [
   ["testing", "Observation lab"],
 ] as const;
 
+let requestToken: string | null = null;
+
+async function tokenFor(request: APIRequestContext): Promise<string> {
+  if (requestToken) return requestToken;
+  const response = await request.post("/api/v1/auth/login", {
+    data: { username: "admin", password: "e2e-password" },
+  });
+  expect(response.ok(), `API login returned ${response.status()}`).toBeTruthy();
+  requestToken = (await response.json() as { access_token: string }).access_token;
+  return requestToken;
+}
+
 async function apiJson<T>(request: APIRequestContext, path: string): Promise<T> {
-  const response = await request.get(`/api/v1${path}`);
+  const token = await tokenFor(request);
+  const response = await request.get(`/api/v1${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   expect(response.ok(), `${path} returned ${response.status()}`).toBeTruthy();
   return await response.json() as T;
 }
@@ -34,6 +49,7 @@ async function waitForReplay(
 
 async function waitForConnectedPage(page: Page, view = "overview") {
   await page.goto(`/?view=${view}`);
+  await signIn(page);
   await expect(page.getByText("Live stream connected", { exact: true })).toBeVisible();
   await expect(page.locator(".system-status small")).toContainText("stream live", {
     timeout: 10_000,
@@ -111,7 +127,8 @@ test.describe.serial("production-preview end-to-end path", () => {
   });
 
   test("operator sign-in is modal, keyboard-contained, and restores focus", async ({ page }) => {
-    await waitForConnectedPage(page);
+    await page.goto("/?view=overview");
+    await expect(page.getByText("Signed out", { exact: true })).toBeVisible();
     const trigger = page.getByRole("button", { name: "Operator sign in" });
     await trigger.click();
     const dialog = page.getByRole("dialog", { name: "Operator sign in" });

@@ -154,7 +154,20 @@ function App() {
   }, [fixtureMode, loadConnectedData]);
 
   useEffect(() => {
-    if (fixtureMode) {
+    if (fixtureMode || auth.authenticated) return;
+    setAlerts([]);
+    setQueuedAlerts([]);
+    setSelectedAlert(null);
+    setModels([]);
+    setSummary(null);
+    setIngestion(null);
+    setReplay(null);
+    setSummaryLoading(false);
+    setIngestionLoading(false);
+  }, [auth.authenticated, fixtureMode]);
+
+  useEffect(() => {
+    if (fixtureMode || !auth.authenticated) {
       setSummaryLoading(false);
       return;
     }
@@ -174,7 +187,7 @@ function App() {
   }, [auth.authenticated, fixtureMode]);
 
   useEffect(() => {
-    if (fixtureMode) {
+    if (fixtureMode || !auth.authenticated) {
       setIngestionLoading(false);
       return;
     }
@@ -189,7 +202,7 @@ function App() {
       disposed = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [fixtureMode, loadIngestionStatus]);
+  }, [auth.authenticated, fixtureMode, loadIngestionStatus]);
 
   const hydrateReplay = useCallback(async () => {
     if (fixtureMode || !auth.authenticated) return;

@@ -94,7 +94,9 @@ async def start_replay(payload: ReplayRequest, request: Request) -> ReplayStatus
     return _status(request)
 
 
-@router.get("/status", response_model=ReplayStatus)
+@router.get(
+    "/status", response_model=ReplayStatus, dependencies=[Depends(get_current_admin)]
+)
 async def replay_status(request: Request) -> ReplayStatus:
     return _status(request)
 

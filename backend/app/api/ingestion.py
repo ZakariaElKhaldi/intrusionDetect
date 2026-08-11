@@ -186,7 +186,11 @@ def redrive_ingestion_jobs(
     return RedriveResponse(dry_run=payload.dry_run, results=results)
 
 
-@router.get("/events/{event_id}", response_model=IngestionEventResponse)
+@router.get(
+    "/events/{event_id}",
+    response_model=IngestionEventResponse,
+    dependencies=[Depends(get_current_admin)],
+)
 def ingestion_event(event_id: str, request: Request) -> IngestionEventResponse:
     with request.app.state.SessionLocal() as session:
         result = get_event(session, event_id)
@@ -195,7 +199,11 @@ def ingestion_event(event_id: str, request: Request) -> IngestionEventResponse:
     return result
 
 
-@router.get("/jobs", response_model=IngestionJobListResponse)
+@router.get(
+    "/jobs",
+    response_model=IngestionJobListResponse,
+    dependencies=[Depends(get_current_admin)],
+)
 def ingestion_jobs(
     request: Request,
     state: IngestionState | None = None,
@@ -224,7 +232,11 @@ def ingestion_jobs(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/outbox/events", response_model=OutboxEventListResponse)
+@router.get(
+    "/outbox/events",
+    response_model=OutboxEventListResponse,
+    dependencies=[Depends(get_current_admin)],
+)
 def outbox_events(
     request: Request,
     status_filter: str | None = Query(
@@ -247,7 +259,11 @@ def outbox_events(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/status", response_model=IngestionStatusResponse)
+@router.get(
+    "/status",
+    response_model=IngestionStatusResponse,
+    dependencies=[Depends(get_current_admin)],
+)
 def status_summary(request: Request) -> IngestionStatusResponse:
     with request.app.state.SessionLocal() as session:
         return ingestion_status(

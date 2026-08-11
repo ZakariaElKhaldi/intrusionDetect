@@ -99,7 +99,7 @@ describe("dashboard", () => {
 
     render(<AuthProvider><App /></AuthProvider>);
 
-    await waitFor(() => expect(requests.some(({ path }) => path.endsWith("/alerts"))).toBe(true));
+    await waitFor(() => expect(requests.some(({ path }) => path.includes("/alerts"))).toBe(true));
     expect(
       requests.filter(({ path }) => !path.endsWith("/auth/status") && !path.endsWith("/health")),
     ).toEqual(expect.arrayContaining([

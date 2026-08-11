@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
+
+from app.api.auth import get_current_admin
 
 router = APIRouter(tags=["models"])
 
@@ -19,7 +21,9 @@ class ModelResponse(BaseModel):
     metadata_json: dict
 
 
-@router.get("/models", response_model=list[ModelResponse])
+@router.get(
+    "/models", response_model=list[ModelResponse], dependencies=[Depends(get_current_admin)]
+)
 def list_models(request: Request) -> list[ModelResponse]:
     from app.database.models import ModelVersion
 
@@ -31,7 +35,7 @@ def list_models(request: Request) -> list[ModelResponse]:
         )
 
 
-@router.get("/evaluation")
+@router.get("/evaluation", dependencies=[Depends(get_current_admin)])
 def get_evaluation(
     request: Request,
     stage: Literal["binary", "multiclass"] = Query(...),

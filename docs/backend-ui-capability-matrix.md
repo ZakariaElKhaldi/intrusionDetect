@@ -1,9 +1,16 @@
 # Backend-to-UI capability matrix
 
 This matrix is the authoritative inventory for the requirement that the
-operator frontend use every applicable backend capability. Public routes are
+operator frontend use every applicable backend capability. API routes are
 available both at their listed path and under `/api/v1`; the browser uses the
 versioned prefix.
+
+Authentication bootstrap (`GET /auth/status`, `POST /auth/login`) and machine
+probes remain public. When authentication is enabled, every other `Covered`
+HTTP capability is protected by the backend's shared bearer dependency. The
+live WebSocket sends its bearer credential as the first application message
+and is not marked live until the server acknowledges authentication; bearer
+credentials are never placed in its URL.
 
 “Machine-owned” and “server-owned” do not mean forgotten. They identify routes
 whose semantics would become misleading or unsafe if represented as ordinary
@@ -17,11 +24,11 @@ browser controls.
 | `GET /auth/me` | `getCurrentUser` | Validates the stored session; signed-in identity and exact local expiry time remain visible in the shell | Covered |
 | `POST /predict` | `predict` | Observation Lab local 83-feature preflight, focused preview, and immediate analysis for one valid row | Covered |
 | `POST /predict/batch` | `predict` | Observation Lab immediate analysis for 2–10,000 locally validated rows with exact result review | Covered |
-| `GET /alerts` | `getAlerts` | Initial/replay-completion synchronization; the paged route owns queue browsing | Covered, compatibility path |
+| `GET /alerts` | `getAlerts` | Initial/replay-completion synchronization; the paged route owns queue browsing; retained as a compatibility path | Covered |
 | `GET /alerts/page` | `getAlertsPage` | Search, severity, status, family, relative/custom time filters, pagination | Covered |
-| `GET /alerts/{id}` | `getAlert` | Refreshes exact alert detail; investigation exposes event, cascade, route, capture, interface, extractor, feature, model, latency, and feedback evidence | Covered |
-| `GET /alerts/{id}/explanation` | `getAlertExplanation` | Retryable stage-aware explanation with interpretation boundary, additive check, summarized waterfall, and every exact signed contribution | Covered |
-| `POST /alerts/{id}/feedback` | `submitAlertFeedback` | All backend disposition states, authenticated identity, required reasoning for terminal decisions, review/confirmation, and visible immutable history | Covered |
+| `GET /alerts/{alert_id}` | `getAlert` | Refreshes exact alert detail; investigation exposes event, cascade, route, capture, interface, extractor, feature, model, latency, and feedback evidence | Covered |
+| `GET /alerts/{alert_id}/explanation` | `getAlertExplanation` | Retryable stage-aware explanation with interpretation boundary, additive check, summarized waterfall, and every exact signed contribution | Covered |
+| `POST /alerts/{alert_id}/feedback` | `submitAlertFeedback` | All backend disposition states, authenticated identity, required reasoning for terminal decisions, review/confirmation, and visible immutable history | Covered |
 | `GET /dashboard/summary` | `getDashboardSummary` | Independently loaded persisted range with exact provenance/window, reconciled totals, prediction and alert workload, median score, severity/status/family/protocol composition, summarized chronology, exact actionable interval table, stale preservation, and retry | Covered |
 | `GET /models` | `getModels` | Runtime detector/classifier identity, active state, schema, calibration meaning, and artifact registration | Covered |
 | `GET /evaluation` | `getEvaluation` | Protocol-first detector/classifier workspace with split/seeds, validation selection, held-out test, latency, support, threshold, and cascade evidence | Covered |
@@ -34,14 +41,14 @@ browser controls.
 | `POST /ingestion/events` | `enqueueObservations` | Observation Lab durable queue mode for up to 1,000 validated rows with batch/event receipt and recovery handoff | Covered |
 | `GET /ingestion/status` | `getIngestionStatus` | Queue, throughput, retries, dead letters, worker and outbox status | Covered |
 | `GET /ingestion/jobs` | `getIngestionJobs` | State, state-specific lease/availability timing, attempts, error, source, creation range, cursor pagination | Covered |
-| `GET /ingestion/events/{id}` | `getIngestionEvent` | Focus-managed model route, retryability, recovery audit, and complete immutable transition evidence | Covered |
+| `GET /ingestion/events/{event_id}` | `getIngestionEvent` | Focus-managed model route, retryability, recovery audit, and complete immutable transition evidence | Covered |
 | `POST /ingestion/jobs/redrive` | `redriveIngestionJobs` | Required audit reason, read-only eligibility preview, focused confirmation, authenticated execution | Covered |
 | `GET /ingestion/outbox/events` | `getOutboxEvents` | Publication state, event type, cursor pagination, lease/retry timing | Covered |
 | `GET /model-health/cohorts` | `getModelHealthCohorts` | Deployment/cohort selector | Covered |
 | `GET /model-health` | `getModelHealth` | Fast/slow snapshot, state/reason, trend and exact evidence | Covered |
 | `GET /model-health/history` | `getModelHealthHistory` | Recent cohort history and exact checks | Covered |
-| `WS /live` | `socketUrl`, `liveEventFromSocketMessage` | Live prediction count, alert queue, last-event and stream state | Covered |
-| `POST /ingestion/offline-pcap/events` | Local offline-PCAP command | Server-owned ingestion channel requiring local capture/extraction workflow | Server-owned by contract |
+| `WS /live` | `socketUrl`, `socketAuthenticationMessage`, `isLiveConnectionMessage`, `isLivePongMessage`, `liveEventFromSocketMessage` | Authenticated connection acknowledgement, heartbeat/watchdog recovery, live prediction count, alert queue, last-event and stream state | Covered |
+| `POST /ingestion/offline-pcap/events` | Local offline-PCAP command | Server-owned ingestion channel requiring local capture/extraction workflow | Server-owned |
 | `GET /livez` | Container/orchestrator probe | Process liveness; not an analyst decision surface | Machine-owned |
 | `GET /readyz` | Container/orchestrator probe | Traffic readiness; human component evidence comes from `/health` | Machine-owned |
 | `GET /metrics` | Prometheus-compatible scraper | Telemetry backend input; relevant aggregates appear in operator workspaces | Machine-owned |

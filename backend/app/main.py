@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
+from fastapi import APIRouter, FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -466,15 +466,13 @@ def create_app(
     router = APIRouter()
     router.include_router(auth.router)
     router.include_router(live.router)
-    protected_router = APIRouter(dependencies=[Depends(auth.get_current_admin)])
-    protected_router.include_router(predictions.router)
-    protected_router.include_router(alerts.router)
-    protected_router.include_router(dashboard.router)
-    protected_router.include_router(models.router)
-    protected_router.include_router(replay.router)
-    protected_router.include_router(ingestion.router)
-    protected_router.include_router(model_health.router)
-    router.include_router(protected_router)
+    router.include_router(predictions.router)
+    router.include_router(alerts.router)
+    router.include_router(dashboard.router)
+    router.include_router(models.router)
+    router.include_router(replay.router)
+    router.include_router(ingestion.router)
+    router.include_router(model_health.router)
     app.include_router(router)
     app.include_router(router, prefix="/api/v1", include_in_schema=False)
     return app

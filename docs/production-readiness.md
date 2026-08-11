@@ -16,7 +16,9 @@ not treated as proof of detection effectiveness or operational capacity.
   Prometheus endpoints are explicit public exceptions for bootstrap and machine
   probes. Browser WebSockets authenticate with the first application message,
   avoiding credential-bearing URLs, and enter the live state only after the
-  server acknowledges the authenticated connection.
+  server acknowledges the authenticated connection. Accepted sockets have five
+  seconds to authenticate and pending authentication counts against the same
+  configured connection ceiling as established streams.
 - Redrive and analyst-feedback audit identities are derived from the validated
   token; caller-authored identity fields are never persisted as operator
   evidence.

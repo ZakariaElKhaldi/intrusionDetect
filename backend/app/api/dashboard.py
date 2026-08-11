@@ -4,9 +4,10 @@ from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import BigInteger, cast, extract, func, select
 
+from app.api.auth import get_current_admin
 from app.database.models import Alert, Observation, Prediction
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -65,7 +66,7 @@ def _severity_timeline(
     ]
 
 
-@router.get("/summary")
+@router.get("/summary", dependencies=[Depends(get_current_admin)])
 def dashboard_summary(
     request: Request,
     time_range: Literal["15m", "1h", "24h", "7d", "all"] = Query(

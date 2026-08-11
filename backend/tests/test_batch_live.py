@@ -11,8 +11,8 @@ import httpx
 import pytest
 from conftest import observation
 
-from app.api.live import live as live_endpoint
 from app.api.auth import create_access_token
+from app.api.live import live as live_endpoint
 from app.config import Settings
 from app.database.models import Base
 from app.database.session import create_engine_and_session

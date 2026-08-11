@@ -48,7 +48,9 @@ def _alert_response(
     )
 
 
-@router.get("/alerts", response_model=list[AlertResponse])
+@router.get(
+    "/alerts", response_model=list[AlertResponse], dependencies=[Depends(get_current_admin)]
+)
 def list_alerts(
     request: Request,
     severity: str | None = None,
@@ -73,7 +75,9 @@ def list_alerts(
         ]
 
 
-@router.get("/alerts/page", response_model=AlertPage)
+@router.get(
+    "/alerts/page", response_model=AlertPage, dependencies=[Depends(get_current_admin)]
+)
 def page_alerts(
     request: Request,
     severity: str | None = None,
@@ -151,7 +155,9 @@ def page_alerts(
         )
 
 
-@router.get("/alerts/{alert_id}", response_model=AlertDetail)
+@router.get(
+    "/alerts/{alert_id}", response_model=AlertDetail, dependencies=[Depends(get_current_admin)]
+)
 def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
     with request.app.state.SessionLocal() as session:
         alert = session.get(Alert, str(alert_id))
@@ -191,7 +197,9 @@ def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
         )
 
 
-@router.get("/alerts/{alert_id}/explanation")
+@router.get(
+    "/alerts/{alert_id}/explanation", dependencies=[Depends(get_current_admin)]
+)
 def get_alert_explanation(alert_id: UUID, request: Request) -> dict:
     with request.app.state.SessionLocal() as session:
         alert = session.get(Alert, str(alert_id))

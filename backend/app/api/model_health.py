@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from app.api.auth import get_current_admin
 from app.monitoring.schemas import (
     ModelHealthCohortsResponse,
     ModelHealthHistoryResponse,
@@ -13,12 +14,20 @@ from app.monitoring.schemas import (
 router = APIRouter(prefix="/model-health", tags=["model-health"])
 
 
-@router.get("/cohorts", response_model=ModelHealthCohortsResponse)
+@router.get(
+    "/cohorts",
+    response_model=ModelHealthCohortsResponse,
+    dependencies=[Depends(get_current_admin)],
+)
 def model_health_cohorts(request: Request) -> ModelHealthCohortsResponse:
     return ModelHealthCohortsResponse(items=request.app.state.model_health.cohorts())
 
 
-@router.get("", response_model=ModelHealthSnapshotResponse)
+@router.get(
+    "",
+    response_model=ModelHealthSnapshotResponse,
+    dependencies=[Depends(get_current_admin)],
+)
 def model_health(
     request: Request,
     window: Literal["fast", "slow"] = "fast",
@@ -41,7 +50,11 @@ def model_health(
     return result
 
 
-@router.get("/history", response_model=ModelHealthHistoryResponse)
+@router.get(
+    "/history",
+    response_model=ModelHealthHistoryResponse,
+    dependencies=[Depends(get_current_admin)],
+)
 def model_health_history(
     request: Request,
     window: Literal["fast", "slow"] = "fast",
