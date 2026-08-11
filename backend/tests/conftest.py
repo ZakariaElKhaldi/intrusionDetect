@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import os
 from collections.abc import AsyncIterator
@@ -22,9 +23,25 @@ SAMPLE = REPOSITORY / "data/sample/rt_iot2022_sample.csv"
 MODEL_DIR = REPOSITORY / "models/production"
 
 
+def _responsive_loop_factory() -> asyncio.AbstractEventLoop:
+    """Bound selector sleeps so completed worker callbacks cannot miss a wake-up.
+
+    Remove this workaround after the upstream AnyIO worker timing race is fixed:
+    https://github.com/agronholm/anyio/issues/1265
+    """
+    loop = asyncio.new_event_loop()
+
+    def wake() -> None:
+        if not loop.is_closed():
+            loop.call_later(0.01, wake)
+
+    loop.call_soon(wake)
+    return loop
+
+
 @pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
+def anyio_backend() -> tuple[str, dict[str, object]]:
+    return "asyncio", {"loop_factory": _responsive_loop_factory}
 
 
 @pytest.fixture

@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import getpass
 import logging
 import secrets
 import threading
 from collections import OrderedDict, deque
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import uuid4
@@ -19,12 +17,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import InvalidTokenError
 from pwdlib import PasswordHash
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 TOKEN_ISSUER = "iot-intrusion-detection"
 TOKEN_AUDIENCE = "iot-ids-api"
 PASSWORD_HASH = PasswordHash.recommended()
 SECURITY_LOGGER = logging.getLogger("iot_ids.security")
-PASSWORD_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="password-verify")
 security = HTTPBearer(auto_error=False)
 BearerCredentials = Annotated[HTTPAuthorizationCredentials | None, Security(security)]
 
@@ -174,8 +172,8 @@ async def login(body: LoginRequest, request: Request) -> TokenResponse:
         )
 
     username_matches = secrets.compare_digest(body.username, settings.admin_username)
-    password_matches = await asyncio.get_running_loop().run_in_executor(
-        PASSWORD_EXECUTOR, verify_password, body.password, settings.admin_password_hash
+    password_matches = await run_in_threadpool(
+        verify_password, body.password, settings.admin_password_hash
     )
     if not username_matches or not password_matches:
         for key in keys:

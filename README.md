@@ -124,7 +124,9 @@ not the prose table, as the experimental source of truth.
 
 ## Run the project
 
-Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), and Node.js 20+.
+Requirements: Python 3.12–3.14, [uv](https://docs.astral.sh/uv/), and Node.js 20+.
+The repository pins Python 3.12 for local development and CI so those environments
+match the backend container runtime; `uv sync` installs that interpreter automatically.
 
 ```bash
 make setup

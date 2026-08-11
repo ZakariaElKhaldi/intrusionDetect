@@ -168,6 +168,12 @@ and Python dependency auditing uses the [PyPA `pip-audit` contract][pip-audit].
 Concurrency boundaries follow [FastAPI's guidance for blocking I/O][fastapi-async]
 and [Starlette's bounded thread-pool behavior][starlette-threadpool]; session
 ownership follows SQLAlchemy's [session-per-thread model][sqlalchemy-session].
+Request telemetry is implemented as [pure ASGI middleware][starlette-middleware]
+so response bodies are not buffered through `BaseHTTPMiddleware` and context
+propagation remains intact. The test event loop bounds selector sleeps as a
+temporary mitigation for [AnyIO's open worker timing race][anyio-worker-race].
+The repository's [uv Python pin][uv-python] aligns local development and CI with
+the Python 3.12 production image while retaining declared support through 3.14.
 Outbox semantics follow AWS's [transactional-outbox guidance][aws-outbox],
 including commit-before-send, ordering, and idempotent handling of possible
 duplicates. Cross-thread WebSocket scheduling uses Python's documented
@@ -189,9 +195,12 @@ that a role is a behavioral promise, while the typography floor follows the
 [pip-audit]: https://github.com/pypa/pip-audit
 [fastapi-async]: https://fastapi.tiangolo.com/async/
 [starlette-threadpool]: https://www.starlette.io/threadpool/
+[starlette-middleware]: https://www.starlette.io/middleware/#pure-asgi-middleware
+[anyio-worker-race]: https://github.com/agronholm/anyio/issues/1265
+[uv-python]: https://docs.astral.sh/uv/concepts/python-versions/#python-version-files
 [sqlalchemy-session]: https://docs.sqlalchemy.org/en/20/orm/session_basics.html#is-the-session-thread-safe-is-asyncsession-safe-to-share-in-concurrent-tasks
 [aws-outbox]: https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html
-[python-asyncio]: https://docs.python.org/3.11/library/asyncio-task.html#scheduling-from-other-threads
+[python-asyncio]: https://docs.python.org/3.12/library/asyncio-task.html#scheduling-from-other-threads
 [nng-heuristics]: https://media.nngroup.com/media/articles/attachments/Heuristic_Summary1_A4_compressed.pdf
 [w3c-aria]: https://www.w3.org/WAI/ARIA/apg/practices/read-me-first/
 [uswds-type]: https://designsystem.digital.gov/components/typography/

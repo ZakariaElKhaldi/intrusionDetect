@@ -6,7 +6,7 @@ import logging
 import httpx
 import pytest
 
-from app.api.auth import hash_password
+from app.api.auth import create_access_token, hash_password
 from app.config import Settings
 from app.main import create_app
 from app.operational_logging import JsonEventFormatter
@@ -56,13 +56,17 @@ async def test_request_and_auth_logs_use_normalized_routes_without_secrets(
         ),
         initialize_schema_for_tests=True,
     )
+    token, _ = create_access_token("admin", app.state.settings.secret_key)
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.get(
                 "/api/v1/alerts?q=sensitive-query-value",
-                headers={"X-Request-ID": "request-42"},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Request-ID": "request-42",
+                },
             )
             assert response.status_code == 200
             failed = await client.post(

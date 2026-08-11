@@ -118,7 +118,12 @@ def test_compose_has_no_default_database_password_or_cross_origin_browser_url() 
     assert "read_only: true" in compose
     assert "no-new-privileges:true" in compose
     assert "cap_drop:\n    - ALL" in compose
-    assert 'command: ["python", "-m", "app.ingestion.worker"]\n    healthcheck:\n      disable: true' in compose
+    worker_healthcheck = (
+        'command: ["python", "-m", "app.ingestion.worker"]\n'
+        "    healthcheck:\n"
+        "      disable: true"
+    )
+    assert worker_healthcheck in compose
     assert "IOT_IDS_ADMIN_PASSWORD_HASH=''" in env_example
     assert "single-quoted" in env_example
 

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import re
-import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
@@ -43,9 +40,9 @@ from app.metrics import ApplicationMetrics
 from app.monitoring.service import ModelHealthService
 from app.monitoring.worker import monitoring_loop
 from app.operational_logging import configure_operational_logging
+from app.operational_middleware import OperationalMiddleware
 
 LOGGER = configure_operational_logging("WARNING", "json").getChild("api")
-REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
 def create_app(
@@ -162,57 +159,7 @@ def create_app(
         RequestBodyLimitMiddleware,
         max_bytes=settings.max_request_body_bytes,
     )
-
-    @app.middleware("http")
-    async def operational_headers(request: Request, call_next) -> Response:
-        metrics: ApplicationMetrics = request.app.state.metrics
-        metrics.http_in_flight.inc()
-        started = time.perf_counter()
-        request_id = request.headers.get("X-Request-ID", "").strip()
-        if not REQUEST_ID_PATTERN.fullmatch(request_id):
-            request_id = str(uuid4())
-        request.state.request_id = request_id
-        response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
-        error_type: str | None = None
-        try:
-            response = await call_next(request)
-            response_status = response.status_code
-        except Exception as exc:
-            error_type = type(exc).__name__
-            raise
-        finally:
-            route = request.scope.get("route")
-            route_path = getattr(route, "path", "unmatched")
-            metrics.http_requests.labels(
-                method=request.method,
-                route=route_path,
-                status_code=str(response_status),
-            ).inc()
-            metrics.http_latency.labels(
-                method=request.method,
-                route=route_path,
-            ).observe(time.perf_counter() - started)
-            metrics.http_in_flight.dec()
-            log_method = LOGGER.warning if response_status >= 500 else LOGGER.info
-            log_method(
-                "HTTP request completed",
-                extra={
-                    "event": "http.server.request.completed",
-                    "request_id": request_id,
-                    "instance_id": settings.instance_id,
-                    "http_request_method": request.method,
-                    "http_route": route_path,
-                    "http_response_status_code": response_status,
-                    "duration_ms": round((time.perf_counter() - started) * 1_000, 3),
-                    "error_type": error_type,
-                },
-            )
-        response.headers["X-Request-ID"] = request_id
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        if request.url.path.endswith(("/auth/login", "/auth/me")):
-            response.headers["Cache-Control"] = "no-store"
-        return response
+    app.add_middleware(OperationalMiddleware, settings=settings, logger=LOGGER)
 
     @app.get("/livez", tags=["health"], include_in_schema=False)
     @app.get("/api/v1/livez", tags=["health"], include_in_schema=False)
