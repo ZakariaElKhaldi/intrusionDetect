@@ -65,6 +65,10 @@ function scoreLabel(value: number | undefined, calibrated: boolean | null | unde
   return `${(value * 100).toFixed(1)}% · ${calibrated ? "calibrated probability" : "model score"}`;
 }
 
+function latencyLabel(value: number | null | undefined) {
+  return typeof value === "number" ? `${value.toFixed(2)} ms` : "Not reported";
+}
+
 function PredictionResults({
   results,
   rows,
@@ -135,6 +139,10 @@ function PredictionResults({
                     <div><dt>Detector model</dt><dd className="mono">{result.detector_model_version ?? result.model_version ?? "Not reported"}</dd></div>
                     <div><dt>Classifier model</dt><dd className="mono">{result.classifier_model_version ?? "Not invoked"}</dd></div>
                     <div><dt>Class score</dt><dd>{scoreLabel(result.attack_class_score ?? undefined, result.attack_class_score_calibrated)}</dd></div>
+                    <div><dt>Detector latency</dt><dd>{latencyLabel(result.detector_latency_ms)}</dd></div>
+                    <div><dt>Classifier latency</dt><dd>{latencyLabel(result.classifier_latency_ms)}</dd></div>
+                    <div><dt>End-to-end latency</dt><dd>{latencyLabel(result.end_to_end_latency_ms ?? result.total_latency_ms)}</dd></div>
+                    <div><dt>Prediction</dt><dd className="mono">{result.prediction_id ?? "Not reported"}</dd></div>
                     <div><dt>Event</dt><dd className="mono">{result.event_id ?? "Not reported"}</dd></div>
                   </dl>
                 </details>
@@ -204,7 +212,7 @@ export function ObservationResults({
       {response && completedMode !== "immediate" ? (
         <details className="raw-details submission-evidence">
           <summary>Inspect exact receipt</summary>
-          <pre>{JSON.stringify(response, null, 2)}</pre>
+          <pre role="region" aria-label="Exact submission receipt" tabIndex={0}>{JSON.stringify(response, null, 2)}</pre>
         </details>
       ) : null}
     </section>

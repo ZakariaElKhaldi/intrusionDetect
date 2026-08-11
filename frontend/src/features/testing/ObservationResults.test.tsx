@@ -40,7 +40,7 @@ describe("ObservationResults", () => {
     expect(screen.getByText("Family discrepancies").nextSibling).toHaveTextContent("1");
     fireEvent.click(screen.getByRole("button", { name: /Needs review 2/ }));
     expect(screen.getByText("Showing 2 results")).toBeInTheDocument();
-    expect(screen.getAllByText("Needs review")).toHaveLength(2);
+    expect(screen.getAllByText("Needs review", { selector: ".review-state" })).toHaveLength(2);
     expect(screen.queryByText("Row 1")).not.toBeInTheDocument();
   });
 
@@ -52,6 +52,7 @@ describe("ObservationResults", () => {
 
     expect(screen.getByText("2 observations received")).toBeInTheDocument();
     expect(screen.getByText("Duplicates").nextSibling).toHaveTextContent("1");
-    expect(screen.getByText("Inspect exact receipt")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Inspect exact receipt"));
+    expect(screen.getByRole("region", { name: "Exact submission receipt" })).toHaveAttribute("tabindex", "0");
   });
 });

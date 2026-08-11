@@ -413,7 +413,11 @@ export interface LivePrediction {
   alert_id: string | null;
 }
 
-export type ObservationPrediction = LivePrediction;
+export interface ObservationPrediction extends LivePrediction {
+  latency_ms?: number;
+  raw_features?: Record<string, string | number>;
+  top_features?: Array<Record<string, unknown>>;
+}
 
 export interface BatchPredictionResponse {
   predictions: ObservationPrediction[];

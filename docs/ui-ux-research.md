@@ -141,7 +141,7 @@ project's TypeScript version. The catalogue documents every currently exported
 operator-facing React surface: shared headings, severity labels, keyboard tabs,
 error containment, all chart families, alert queue and drawer, replay and
 ingestion states, overview, topology, model analysis and health, and observation
-testing. Its 43 stories cover meaningful ready, loading, empty, unavailable,
+testing. Its 57 stories cover meaningful ready, loading, empty, unavailable,
 partial, active, and failed states. Stories live next to their components and
 use Component Story Format, following Storybook's recommended structure.
 
@@ -212,6 +212,43 @@ No dependency was added. The new `SystemHealthPanel` is a focused feature
 component with ready, degraded, blocked, unavailable, and fixture Storybook
 states.
 
+## Observation-result review iteration
+
+The Observation Lab previously collapsed up to 10,000 AI outcomes into one
+nine-column table. That made discrepancies difficult to find, forced mobile
+users through a wide horizontal grid, and mixed detector, classifier, score,
+model, alert, and reference-label evidence at the same visual level. It also
+compared `normal` directly with source labels such as `MQTT_Publish`, falsely
+reporting canonical normal traffic as a mismatch.
+
+Microsoft's empirically refined human-AI interaction guidelines recommend
+making both system capability and likely error clear, showing information that
+is relevant to the current task, and making explanations available after an
+outcome. The NIST AI RMF Playbook likewise separates what happened, how an
+output was produced, and what it means in context. W3C table guidance advises
+keeping complex datasets simple or separating them into smaller topics while
+preserving responsive access to every relationship.
+
+Implementation consequences:
+
+- the default result view states the comparison scope and separates detector
+  discrepancies from attack-family discrepancies;
+- summary counts and All, Needs review, and Attack verdict filters prioritize
+  exception review without hiding the full result set;
+- each paged observation is a responsive semantic record with verdict,
+  reference, family, and alert outcome, while exact serving model and score
+  evidence uses a native disclosure;
+- score copy continues to distinguish calibrated probabilities from model
+  scores and explicitly avoids presenting a controlled upload as a performance
+  estimate;
+- canonical RT-IoT2022 normal labels are mapped to the binary normal target
+  before comparison; and
+- empty, mixed prediction, durable-queue, and custom-replay outcomes are now
+  independently documented in Storybook.
+
+No dependency was added. The backend prediction response now has a shared
+frontend type instead of crossing the API boundary as `unknown`.
+
 ## Sources
 
 - [Web Content Accessibility Guidelines (WCAG) 2.2](https://www.w3.org/TR/WCAG22/)
@@ -236,3 +273,7 @@ states.
 - [NIST Human-Centered Cybersecurity](https://csrc.nist.gov/Projects/human-centered-cybersecurity/about)
 - [Systematic Literature Review on Cyber Situational Awareness Visualizations](https://arxiv.org/abs/2112.10354)
 - [U.S. Web Design System summary-box guidance](https://designsystem.digital.gov/components/summary-box/)
+- [Guidelines for Human-AI Interaction](https://www.microsoft.com/en-us/research/wp-content/uploads/2019/01/Guidelines-for-Human-AI-Interaction-camera-ready.pdf)
+- [NIST AI Risk Management Framework Playbook](https://airc.nist.gov/docs/AI_RMF_Playbook.pdf)
+- [W3C data-table tips and responsive guidance](https://www.w3.org/WAI/tutorials/tables/tips/)
+- [W3C table captions and summaries](https://www.w3.org/WAI/tutorials/tables/caption-summary/)
