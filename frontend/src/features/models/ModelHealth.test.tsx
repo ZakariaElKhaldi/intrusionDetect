@@ -21,10 +21,14 @@ describe("ModelHealth", () => {
     vi.mocked(getModelHealthHistory).mockResolvedValue({ items: [{ checked_at: "2026-08-07T10:00:00Z", status: "warning", observation_count: 250, aggregate_score: 0.18, aggregate_threshold: 0.15, feature_alarm_count: 1, output_alarm_count: 0, output_aggregate_score: 0.2 }] });
   });
 
-  it("shows state, reason, exact evidence tables, and history", async () => {
+  it("shows operational status first and reveals exact evidence on demand", async () => {
     render(<ModelHealth fixtureMode={false}/>);
     expect(await screen.findByText("Feature shift exceeds the warning threshold.")).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "Per-feature model-health evidence" })).toBeInTheDocument();
+    const featureTable = screen.getByRole("table", { name: "Per-feature model-health evidence" });
+    expect(featureTable.closest("details")).not.toHaveAttribute("open");
+    await userEvent.click(screen.getByText("Per-feature evidence"));
+    expect(featureTable.closest("details")).toHaveAttribute("open");
+    await userEvent.click(screen.getByText("Recent health records"));
     expect(screen.getByRole("table", { name: "Recent model-health history" })).toBeInTheDocument();
     expect(screen.getAllByText("250").length).toBeGreaterThan(0);
     expect(screen.getByText("flow_duration")).toBeInTheDocument();

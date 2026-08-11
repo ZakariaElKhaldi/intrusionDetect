@@ -24,6 +24,9 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.54.1",
+    "@storybook/addon-a11y": "^10.5.7",
+    "@storybook/addon-docs": "^10.5.7",
+    "@storybook/react-vite": "^10.5.7",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
@@ -31,6 +34,7 @@
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^4.7.0",
     "jsdom": "^25.0.1",
+    "storybook": "^10.5.7",
     "typescript": "~5.7.2",
     "vite": "^6.4.3",
     "vitest": "^4.1.10"
