@@ -92,6 +92,7 @@ function App() {
   const [replay, setReplay] = useState<ReplayStatus | null>(null);
   const [replayError, setReplayError] = useState("");
   const [replaySpeed, setReplaySpeed] = useState(1);
+  const [replayOffset, setReplayOffset] = useState(0);
   const [replayLimit, setReplayLimit] = useState(40);
   const [replayScenario, setReplayScenario] = useState<ReplayScenario>("attack");
   const pageRef = useRef(page);
@@ -360,6 +361,7 @@ function App() {
         setReplay(await startReplay({
           scenario: replayScenario,
           speed: replaySpeed,
+          offset: replayOffset,
           limit: replayLimit,
         }));
         return;
@@ -369,7 +371,7 @@ function App() {
     } catch (error) {
       setReplayError(error instanceof Error ? error.message : "Replay request failed.");
     }
-  }, [auth, fixtureMode, replay, replayLimit, replayScenario, replaySpeed]);
+  }, [auth, fixtureMode, replay, replayLimit, replayOffset, replayScenario, replaySpeed]);
 
   const stopReplay = useCallback(async () => {
     if (!auth.authenticated) { auth.openLogin(); return; }
@@ -492,11 +494,13 @@ function App() {
                 replay={replay}
                 scenario={replayScenario}
                 speed={replaySpeed}
+                offset={replayOffset}
                 limit={replayLimit}
                 error={replayError || replay?.error || ""}
                 disabled={fixtureMode || !replayReady}
                 onScenario={setReplayScenario}
                 onSpeed={setReplaySpeed}
+                onOffset={setReplayOffset}
                 onLimit={setReplayLimit}
                 onPrimary={() => void handleReplay()}
                 onStop={() => void stopReplay()}

@@ -102,14 +102,14 @@ describe("frontend API adapter", () => {
       .mockResolvedValueOnce(jsonResponse(history));
     vi.stubGlobal("fetch", fetchMock);
 
-    await getIngestionJobs({ state: "retrying", source: "sensor-a", limit: 20 });
-    await getOutboxEvents({ status: "failed", limit: 20 });
+    await getIngestionJobs({ state: "retrying", source: "sensor-a", created_from: "2026-08-07T09:00:00.000Z", created_to: "2026-08-07T11:00:00.000Z", limit: 20 });
+    await getOutboxEvents({ status: "failed", event_type: "alert.created", limit: 20 });
     await getModelHealth({ window: "fast", source: "sensor-a", extractor_fingerprint: "extractor-1" });
     await getModelHealthHistory({ window: "fast", source: "sensor-a", limit: 50 });
 
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
-      "/api/v1/ingestion/jobs?state=retrying&source=sensor-a&limit=20",
-      "/api/v1/ingestion/outbox/events?status=failed&limit=20",
+      "/api/v1/ingestion/jobs?state=retrying&source=sensor-a&created_from=2026-08-07T09%3A00%3A00.000Z&created_to=2026-08-07T11%3A00%3A00.000Z&limit=20",
+      "/api/v1/ingestion/outbox/events?status=failed&event_type=alert.created&limit=20",
       "/api/v1/model-health?window=fast&source=sensor-a&extractor_fingerprint=extractor-1",
       "/api/v1/model-health/history?window=fast&source=sensor-a&limit=50",
     ]);
@@ -340,7 +340,7 @@ describe("frontend API adapter", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: "running" }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await startReplay({ scenario: "attack", speed: 4, limit: 40 });
+    await startReplay({ scenario: "attack", speed: 4, offset: 25, limit: 40 });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/replay/start",
@@ -349,7 +349,7 @@ describe("frontend API adapter", () => {
         body: JSON.stringify({
           mode: "dataset",
           scenario: "attack",
-          offset: 0,
+          offset: 25,
           limit: 40,
           interval_ms: 250,
           speed: 4,
@@ -362,7 +362,7 @@ describe("frontend API adapter", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: "stopped" }));
     vi.stubGlobal("fetch", fetchMock);
     setApiAccessToken("signed-token");
-    await startReplay({ scenario: "normal", speed: 1, limit: 2 });
+    await startReplay({ scenario: "normal", speed: 1, offset: 0, limit: 2 });
     const headers = fetchMock.mock.calls[0][1].headers as Headers;
     expect(headers.get("Authorization")).toBe("Bearer signed-token");
   });

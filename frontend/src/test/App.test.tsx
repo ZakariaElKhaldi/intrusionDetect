@@ -48,6 +48,7 @@ describe("dashboard", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Start replay" })).toBeEnabled());
     expect(screen.getByRole("combobox", { name: "Replay speed" })).toHaveValue("1");
     expect(screen.getByRole("combobox", { name: "Replay scenario" })).toHaveValue("attack");
+    expect(screen.getByRole("spinbutton", { name: "Replay offset" })).toHaveValue(0);
     expect(screen.getByRole("spinbutton", { name: "Replay limit" })).toHaveValue(40);
   });
 

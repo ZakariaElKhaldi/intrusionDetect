@@ -137,10 +137,13 @@ semantics.
 
 Storybook was added only after checking its current package metadata. Version
 10.5.7's official React/Vite adapter supports React 19, Vite 6, and the
-project's TypeScript version. The initial catalogue documents shared headings,
-severity labels, keyboard tabs, the serving bundle, and the complete model
-workspace in multiple meaningful states. Stories live next to their components
-and use Component Story Format, following Storybook's recommended structure.
+project's TypeScript version. The catalogue documents every currently exported
+operator-facing React surface: shared headings, severity labels, keyboard tabs,
+error containment, all chart families, alert queue and drawer, replay and
+ingestion states, overview, topology, model analysis and health, and observation
+testing. Its 43 stories cover meaningful ready, loading, empty, unavailable,
+partial, active, and failed states. Stories live next to their components and
+use Component Story Format, following Storybook's recommended structure.
 
 The official Docs and Accessibility addons are the only addons included. The
 project-wide accessibility setting treats automated violations as errors, while
@@ -148,6 +151,35 @@ the catalogue explicitly notes that keyboard, screen-reader, zoom, and human
 testing remain necessary. Future redesign iterations must add or update stories
 alongside their implementation so Storybook grows into the complete living UI
 inventory rather than a disconnected showcase.
+
+## Ingestion-operations completeness iteration
+
+A route-to-affordance audit found that job creation ranges and outbox event
+types existed in the backend but were absent from the operator workspace. The
+SOAR user study reports that security investigations depend on querying and
+correlating diverse evidence and that reducing context switching can improve
+efficiency. W3C form guidance additionally requires visible labels and any
+format instructions users need; placeholders alone are not sufficient.
+
+Implementation consequences:
+
+- job evidence now supports the complete state, error-code, source, created
+  after, and created before backend filter contract;
+- outbox evidence now supports both publication state and event type;
+- filter edits are drafts until an explicit Apply action, preventing a server
+  request for every keystroke and keeping cursor pagination tied to a stable
+  query;
+- the applied scope remains visible beneath the controls, while Clear filters
+  resets both the draft and server query;
+- local-time instructions accompany native date/time controls, inverted ranges
+  are rejected before any request, and all controls retain visible labels; and
+- dataset replay now exposes the backend-supported row offset, making bounded
+  later-window replays reproducible without inventing another scenario.
+
+No dependency was added. Native forms, fieldsets, labels, date/time and numeric
+inputs provide the required interaction and accessibility semantics. The full
+route mapping and explicit machine/server ownership boundaries are maintained
+in `docs/backend-ui-capability-matrix.md`.
 
 ## Sources
 
@@ -167,3 +199,6 @@ inventory rather than a disconnected showcase.
 - [Model Cards for Model Reporting](https://research.google/pubs/model-cards-for-model-reporting/)
 - [Storybook: How to write stories](https://storybook.js.org/docs/writing-stories)
 - [Storybook: Accessibility testing](https://storybook.js.org/docs/writing-tests/accessibility-testing)
+- [Testing SOAR Tools in Use](https://arxiv.org/abs/2208.06075)
+- [W3C: Understanding Labels or Instructions](https://www.w3.org/WAI/WCAG21/Understanding/labels-or-instructions.html)
+- [U.S. Web Design System date-range accessibility tests](https://designsystem.digital.gov/components/date-range-picker/accessibility-tests/)

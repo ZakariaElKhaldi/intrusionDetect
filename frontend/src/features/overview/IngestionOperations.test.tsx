@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getIngestionEvent, getIngestionJobs, getOutboxEvents, redriveIngestionJobs } from "../../api";
@@ -55,6 +55,38 @@ describe("IngestionOperations", () => {
     expect(screen.getByText("Complete")).toBeInTheDocument();
     expect(screen.getByText(/Delivering · lease expires/)).toBeInTheDocument();
     expect(screen.getByText(/Retry scheduled/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Event type"), "alert.created");
+    await userEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+    await waitFor(() => expect(getOutboxEvents).toHaveBeenLastCalledWith(expect.objectContaining({ event_type: "alert.created" })));
+  });
+
+  it("applies the complete backend job filter contract and reports the active scope", async () => {
+    render(<IngestionOperations fixtureMode={false}/>);
+    await screen.findByRole("table", { name: /Ingestion jobs/ });
+    await userEvent.selectOptions(screen.getByLabelText("State"), "retrying");
+    await userEvent.type(screen.getByLabelText("Source"), "sensor-a");
+    fireEvent.change(screen.getByLabelText(/Created after/), { target: { value: "2026-08-07T09:00" } });
+    fireEvent.change(screen.getByLabelText(/Created before/), { target: { value: "2026-08-07T11:00" } });
+    await userEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+
+    await waitFor(() => expect(getIngestionJobs).toHaveBeenLastCalledWith(expect.objectContaining({
+      state: "retrying",
+      source: "sensor-a",
+      created_from: new Date("2026-08-07T09:00").toISOString(),
+      created_to: new Date("2026-08-07T11:00").toISOString(),
+    })));
+    expect(screen.getByText(/state: retrying · source: sensor-a · from/i)).toBeInTheDocument();
+  });
+
+  it("rejects an inverted job time range before requesting it", async () => {
+    render(<IngestionOperations fixtureMode={false}/>);
+    await screen.findByRole("table", { name: /Ingestion jobs/ });
+    fireEvent.change(screen.getByLabelText(/Created after/), { target: { value: "2026-08-07T12:00" } });
+    fireEvent.change(screen.getByLabelText(/Created before/), { target: { value: "2026-08-07T11:00" } });
+    const calls = vi.mocked(getIngestionJobs).mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Created after must be earlier");
+    expect(getIngestionJobs).toHaveBeenCalledTimes(calls);
   });
 
   it("does not request live operational evidence in fixture mode", async () => {

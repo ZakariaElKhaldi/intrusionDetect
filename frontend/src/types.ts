@@ -275,6 +275,7 @@ export type ReplayLifecycle = "idle" | "running" | "paused" | "completed" | "sto
 export interface ReplayOptions {
   scenario: ReplayScenario;
   speed: number;
+  offset: number;
   limit: number;
   interval_ms?: number;
 }

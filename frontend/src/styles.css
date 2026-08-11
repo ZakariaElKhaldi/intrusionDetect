@@ -569,8 +569,9 @@ body { font-size: 16px; line-height: 1.5; }
 .replay-panel { display: grid; grid-template-columns: minmax(220px,.7fr) minmax(440px,1.3fr); gap: 18px; margin-bottom: 16px; padding: 20px; }
 .replay-panel-copy h2 { margin-bottom: 6px; font-size: 20px; }
 .replay-panel-copy p { margin: 0; color: var(--ink-soft); font-size: 14px; }
-.replay-fields { display: grid; grid-template-columns: 1.4fr .7fr .8fr; gap: 10px; }
+.replay-fields { display: grid; grid-template-columns: 1.4fr .65fr .75fr .8fr; gap: 10px; }
 .replay-fields label { display: grid; align-content: start; gap: 5px; color: var(--ink-soft); font-size: 12px; font-weight: 700; }
+.replay-fields label small { color: var(--ink-soft); font-size: 11px; font-weight: 500; }
 .replay-fields select, .replay-fields input { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 4px; background: #fff; color: var(--ink); font-size: 14px; }
 .replay-buttons { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; }
 .replay-progress { grid-column: 1 / -1; display: grid; gap: 8px; color: var(--ink-soft); font-size: 14px; }
@@ -677,6 +678,20 @@ body { font-size: 16px; line-height: 1.5; }
 .ingestion-outbox svg { width: 17px; height: 17px; }
 .operations-panel { grid-column: 1 / -1; min-width: 0; }
 .operations-tabs { margin: 14px 18px 0; }
+.operations-filter-panel { margin: 14px 18px 18px; border: 1px solid var(--line-strong); background: var(--surface-subtle); }
+.operations-filter-panel fieldset { margin: 0; padding: 14px 16px 16px; border: 0; }
+.operations-filter-panel legend { padding: 0; font-size: 13px; font-weight: 750; }
+.operations-filter-fields { display: grid; align-items: end; gap: 10px; margin-top: 10px; }
+.operations-filter-fields--jobs { grid-template-columns: minmax(130px, .65fr) repeat(2, minmax(170px, 1fr)) repeat(2, minmax(190px, 1fr)); }
+.operations-filter-fields--outbox { grid-template-columns: repeat(2, minmax(190px, 320px)); }
+.operations-filter-fields label { display: grid; grid-template-columns: 1fr auto; gap: 5px; color: var(--ink-soft); font-size: 12px; font-weight: 700; }
+.operations-filter-fields label > input, .operations-filter-fields label > select { grid-column: 1 / -1; width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 4px; background: #fff; color: var(--ink); font-size: 14px; }
+.operations-filter-fields label small { color: var(--ink-soft); font-size: 11px; font-weight: 500; }
+.operations-filter-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 16px; border-top: 1px solid var(--line); background: #fff; }
+.operations-filter-footer p { display: grid; gap: 2px; margin: 0; color: var(--ink-soft); font-size: 12px; }
+.operations-filter-footer p b { color: var(--ink); font-size: 11px; text-transform: uppercase; }
+.operations-filter-footer > div { display: flex; align-items: center; gap: 12px; }
+.operations-filter-error { padding: 10px 16px; border-top: 1px solid #dfbda9; background: var(--danger-soft); color: #842c17; font-size: 13px; }
 .operations-filters { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)) auto; align-items: end; gap: 10px; padding: 14px 18px 0; }
 .operations-filters--outbox { grid-template-columns: minmax(180px, 320px); }
 .operations-filters label, .model-health-filters label { display: grid; gap: 5px; color: var(--ink-soft); font-size: 12px; font-weight: 700; }
@@ -747,7 +762,7 @@ body { font-size: 16px; line-height: 1.5; }
 @media (max-width: 900px) {
   .replay-panel { grid-template-columns: 1fr; }
   .replay-buttons { grid-column: 1; }
-  .replay-fields { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .replay-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 
 @media (max-width: 1120px) {
@@ -758,6 +773,7 @@ body { font-size: 16px; line-height: 1.5; }
   .ingestion-metrics div:nth-child(-n+3) { border-bottom: 1px solid var(--line); }
   .model-health-toolbar { align-items: stretch; flex-direction: column; }
   .model-workspace-intro { grid-template-columns: 1fr; background: linear-gradient(160deg, #fff 0 66%, #f1f3f1 66%); }
+  .operations-filter-fields--jobs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 620px) {
@@ -777,6 +793,9 @@ body { font-size: 16px; line-height: 1.5; }
   .model-evidence-map span:last-child, .serving-model-card:last-child, .serving-model-card dl div:last-child { border-bottom: 0; }
   .model-workspace-intro { padding: 18px; }
   .model-health-disclosure summary { align-items: flex-start; flex-direction: column; justify-content: center; gap: 2px; }
+  .operations-filter-fields--jobs, .operations-filter-fields--outbox { grid-template-columns: 1fr; }
+  .operations-filter-footer { align-items: stretch; flex-direction: column; }
+  .operations-filter-footer > div { justify-content: space-between; }
 }
 
 @media (max-width: 780px) {

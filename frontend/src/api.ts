@@ -406,7 +406,7 @@ function cursorPage<T>(value: unknown, label: string): CursorPage<T> {
   return value as CursorPage<T>;
 }
 
-export async function getIngestionJobs(filters: { state?: string; error_code?: string; source?: string; limit?: number; cursor?: string } = {}): Promise<CursorPage<IngestionJob>> {
+export async function getIngestionJobs(filters: { state?: string; error_code?: string; source?: string; created_from?: string; created_to?: string; limit?: number; cursor?: string } = {}): Promise<CursorPage<IngestionJob>> {
   return cursorPage<IngestionJob>(await request<unknown>(`/ingestion/jobs?${queryString(filters)}`), "Ingestion jobs");
 }
 
@@ -414,7 +414,7 @@ export async function getIngestionEvent(eventId: string): Promise<IngestionJobDe
   return request<IngestionJobDetail>(`/ingestion/events/${encodeURIComponent(eventId)}`);
 }
 
-export async function getOutboxEvents(filters: { status?: string; limit?: number; cursor?: string } = {}): Promise<CursorPage<OutboxEvent>> {
+export async function getOutboxEvents(filters: { status?: string; event_type?: string; limit?: number; cursor?: string } = {}): Promise<CursorPage<OutboxEvent>> {
   return cursorPage<OutboxEvent>(await request<unknown>(`/ingestion/outbox/events?${queryString(filters)}`), "Outbox events");
 }
 
@@ -734,7 +734,7 @@ export async function startReplay(options: ReplayOptions): Promise<ReplayStatus>
     body: JSON.stringify({
       mode: "dataset",
       scenario: options.scenario,
-      offset: 0,
+      offset: options.offset,
       limit: options.limit,
       interval_ms: options.interval_ms ?? 250,
       speed: options.speed,

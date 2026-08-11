@@ -17,11 +17,13 @@ export interface ReplayPanelProps {
   replay: ReplayStatus | null;
   scenario: ReplayScenario;
   speed: number;
+  offset: number;
   limit: number;
   error: string;
   disabled?: boolean;
   onScenario: (value: ReplayScenario) => void;
   onSpeed: (value: number) => void;
+  onOffset: (value: number) => void;
   onLimit: (value: number) => void;
   onPrimary: () => void;
   onStop: () => void;
@@ -32,11 +34,13 @@ export function ReplayPanel({
   replay,
   scenario,
   speed,
+  offset,
   limit,
   error,
   disabled = false,
   onScenario,
   onSpeed,
+  onOffset,
   onLimit,
   onPrimary,
   onStop,
@@ -72,6 +76,11 @@ export function ReplayPanel({
           <select aria-label="Replay speed" value={speed} onChange={(event) => onSpeed(Number(event.target.value))} disabled={replay?.status === "running" || disabled}>
             <option value={0.5}>0.5×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option>
           </select>
+        </label>
+        <label>
+          <span>Start at row</span>
+          <input aria-label="Replay offset" type="number" min={0} value={offset} onChange={(event) => onOffset(Math.max(0, Number(event.target.value) || 0))} disabled={Boolean(active) || disabled} />
+          <small>0 starts with the first matching row.</small>
         </label>
         <label>
           <span>Observation limit</span>

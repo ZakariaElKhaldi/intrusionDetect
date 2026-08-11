@@ -20,3 +20,8 @@ boundaries, and interaction—not just a component’s default appearance.
 The accessibility addon is configured to treat automated violations as errors.
 Keyboard, screen-reader, zoom, and real-user testing remain required because
 automated checks only cover part of WCAG.
+
+Page-document rules for a single `main`, page-level `h1`, and landmark coverage
+are disabled only inside isolated component canvases. Full application browser
+tests enforce those rules against the assembled product, while every other Axe
+rule remains an error in Storybook.

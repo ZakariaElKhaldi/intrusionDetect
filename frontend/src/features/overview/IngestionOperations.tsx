@@ -4,6 +4,14 @@ import { useAuth } from "../../auth";
 import { PanelHeading } from "../../components/PanelHeading";
 import { TabList, tabId } from "../../components/TabList";
 import type { CursorPage, IngestionJob, IngestionJobDetail, OutboxEvent } from "../../types";
+import {
+  emptyJobFilters,
+  emptyOutboxFilters,
+  JobOperationsFilters,
+  OutboxOperationsFilters,
+  type JobFilterValues,
+  type OutboxFilterValues,
+} from "./IngestionOperationsFilters";
 
 type OperationsTab = "jobs" | "outbox";
 
@@ -22,16 +30,17 @@ function deliveryTiming(item: OutboxEvent) {
   return "Ready for delivery";
 }
 
+function toIso(value: string) {
+  return value ? new Date(value).toISOString() : "";
+}
+
 export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: boolean; refreshKey?: string }) {
   const auth = useAuth();
   const [tab, setTab] = useState<OperationsTab>("jobs");
   const [jobPage, setJobPage] = useState<CursorPage<IngestionJob> | null>(null);
   const [outboxPage, setOutboxPage] = useState<CursorPage<OutboxEvent> | null>(null);
-  const [stateFilter, setStateFilter] = useState("");
-  const [errorFilter, setErrorFilter] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("");
-  const [outboxFilter, setOutboxFilter] = useState("");
-  const [appliedJobs, setAppliedJobs] = useState({ state: "", error: "", source: "" });
+  const [appliedJobs, setAppliedJobs] = useState<JobFilterValues>({ ...emptyJobFilters });
+  const [appliedOutbox, setAppliedOutbox] = useState<OutboxFilterValues>({ ...emptyOutboxFilters });
   const [cursor, setCursor] = useState<string | undefined>();
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
   const [loading, setLoading] = useState(!fixtureMode);
@@ -49,8 +58,8 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
     setLoading(true);
     setError("");
     const request = tab === "jobs"
-      ? getIngestionJobs({ state: appliedJobs.state, error_code: appliedJobs.error, source: appliedJobs.source, limit: 20, cursor })
-      : getOutboxEvents({ status: outboxFilter, limit: 20, cursor });
+      ? getIngestionJobs({ state: appliedJobs.state, error_code: appliedJobs.error, source: appliedJobs.source, created_from: toIso(appliedJobs.createdFrom), created_to: toIso(appliedJobs.createdTo), limit: 20, cursor })
+      : getOutboxEvents({ status: appliedOutbox.status, event_type: appliedOutbox.eventType, limit: 20, cursor });
     void request.then((page) => {
       if (cancelled) return;
       if (tab === "jobs") setJobPage(page as CursorPage<IngestionJob>);
@@ -61,7 +70,15 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [appliedJobs, cursor, fixtureMode, localRefresh, outboxFilter, refreshKey, tab]);
+  }, [appliedJobs, appliedOutbox, cursor, fixtureMode, localRefresh, refreshKey, tab]);
+
+  const applyJobFilters = (filters: JobFilterValues) => {
+    setAppliedJobs(filters); setCursor(undefined); setCursorHistory([]); setSelected(null);
+  };
+
+  const applyOutboxFilters = (filters: OutboxFilterValues) => {
+    setAppliedOutbox(filters); setCursor(undefined); setCursorHistory([]); setSelected(null);
+  };
 
   const changeTab = (next: OperationsTab) => {
     setTab(next);
@@ -133,14 +150,9 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
 
           <div id="ingestion-evidence-panel" role="tabpanel" aria-labelledby={tabId("ingestion-evidence", tab)}>
           {tab === "jobs" ? (
-            <form className="operations-filters" onSubmit={(event) => { event.preventDefault(); setCursor(undefined); setCursorHistory([]); setSelected(null); setAppliedJobs({ state: stateFilter, error: errorFilter.trim(), source: sourceFilter.trim() }); }}>
-              <label>State<select value={stateFilter} onChange={(event) => setStateFilter(event.target.value)}><option value="">All states</option><option value="queued">Queued</option><option value="processing">Processing</option><option value="retrying">Retrying</option><option value="succeeded">Succeeded</option><option value="dead_letter">Dead letter</option></select></label>
-              <label>Error code<input value={errorFilter} onChange={(event) => setErrorFilter(event.target.value)} placeholder="Any error code"/></label>
-              <label>Source<input value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} placeholder="Any source"/></label>
-              <button className="secondary-button" type="submit">Apply filters</button>
-            </form>
+            <JobOperationsFilters applied={appliedJobs} onApply={applyJobFilters} />
           ) : (
-            <div className="operations-filters operations-filters--outbox"><label>Publication state<select value={outboxFilter} onChange={(event) => { setOutboxFilter(event.target.value); setCursor(undefined); setCursorHistory([]); }}><option value="">All states</option><option value="pending">Pending</option><option value="published">Published</option><option value="failed">Failed</option></select></label></div>
+            <OutboxOperationsFilters applied={appliedOutbox} onApply={applyOutboxFilters} />
           )}
 
           <div aria-live="polite" className="sr-only">{loading ? `Loading ${tab}` : error ? `${tab} unavailable` : `${tab} loaded`}</div>
