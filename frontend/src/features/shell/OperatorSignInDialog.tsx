@@ -41,7 +41,7 @@ export function OperatorSignInDialog({ error = "", submitting = false, retryAvai
     <section ref={dialog} className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description" onKeyDown={containFocus}>
       <span className="eyebrow">Authorized action</span>
       <h2 id="auth-title">Operator sign in</h2>
-      <p id="auth-description">Authentication is required only for actions that change system state. Monitoring evidence remains available while signed out.</p>
+      <p id="auth-description">Sign in to access operational evidence, live telemetry, and controls. Service availability remains visible while signed out.</p>
       <form onSubmit={submit}>
         <label>Username<input name="username" autoComplete="username" required autoFocus/></label>
         <label>Password<input name="password" type="password" autoComplete="current-password" required/></label>

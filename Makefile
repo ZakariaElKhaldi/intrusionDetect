@@ -45,7 +45,7 @@ help:
 	@echo "  make dev            Print commands for local development"
 	@echo "  make run-all        Run the full workflow, then start the application"
 	@echo "  make check-all      Run the full workflow without starting servers"
-	@echo "  make demo           Start a clean disposable demo without retraining"
+	@echo "  make demo           Start a seeded disposable demo without retraining"
 	@echo "  make demo-preflight Check demo data, bundle, and production artifacts"
 	@echo "  make project-preflight Run every acceptance check, including browser E2E"
 	@echo "  make e2e            Run Playwright against real local services/models"

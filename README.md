@@ -134,6 +134,46 @@ make verify-model
 make test
 ```
 
+### Docker demonstration on Arch Linux
+
+Install Docker Engine, Compose, and the current BuildKit builder as separate
+Arch packages, then enable the daemon:
+
+```bash
+sudo pacman -S --needed docker docker-compose docker-buildx
+sudo systemctl enable --now docker.service
+sudo usermod -aG docker "$USER"
+```
+
+Log out and back in before using Docker without `sudo`. Membership in the
+`docker` group is root-equivalent; review the [ArchWiki Docker guidance](https://wiki.archlinux.org/title/Docker)
+before granting it on a shared system.
+
+Create the ignored local environment file, generate independent secrets, and
+generate the administrator password hash interactively:
+
+```bash
+cp .env.example .env
+openssl rand -hex 24  # IOT_IDS_POSTGRES_PASSWORD
+openssl rand -hex 32  # IOT_IDS_SECRET_KEY
+cd backend && .venv/bin/python -m app.api.auth && cd ..
+```
+
+Store the Argon2id output in `IOT_IDS_ADMIN_PASSWORD_HASH` inside single quotes;
+[Docker Compose applies interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/)
+to unquoted `$` characters but treats single-quoted values literally. Then
+start and verify the stack:
+
+```bash
+docker compose config --quiet
+docker compose up --build --detach
+docker compose ps
+```
+
+The dashboard is served at `http://localhost:5173`; stop it with
+`docker compose down` (add `--volumes` only when intentionally deleting the
+demonstration database).
+
 Start the already-promoted model without retraining:
 
 ```bash
@@ -141,7 +181,10 @@ Start the already-promoted model without retraining:
 ```
 
 Run the complete engineering acceptance gate and then start a clean,
-disposable local demonstration (also without retraining):
+disposable local demonstration (also without retraining). The launcher seeds a
+small normal/attack replay through the authenticated API so the initial screen
+contains real model output; see the [presentation runbook](docs/demo-runbook.md)
+for the verified walkthrough and recovery steps:
 
 ```bash
 make project-preflight
@@ -155,6 +198,17 @@ dependencies. A separate PostgreSQL 17 job runs migrations and
 exercises `SKIP LOCKED` claims plus concurrent redrive/claim serialization. Tag
 builds and manual release-gate runs additionally download the checksummed UCI
 dataset and execute `make project-preflight`, including browser E2E.
+
+Storybook is also an executable component-test catalog. Its Vitest browser
+project smoke-tests every story, runs story `play` interactions, and treats
+automated accessibility violations as failures:
+
+```bash
+cd frontend
+npx playwright install chromium # once, unless a system Chrome is available
+npm run test:storybook
+npm run storybook               # optional interactive catalog
+```
 
 To run only the PostgreSQL integration evidence against an existing disposable
 database:
@@ -198,7 +252,11 @@ To stream canonical NDJSON from stdin or a file, run `make ingest-events` or
 records, honors queue backpressure, retries transient failures, and reports
 accepted, duplicate, and rejected counts.
 
-State-changing APIs require an operator token when authentication is enabled.
+Business-data APIs and live telemetry require an operator token when
+authentication is enabled. Only authentication bootstrap (`/auth/status` and
+`/auth/login`) and operational probes (`/livez`, `/readyz`, `/health`, and
+`/metrics`) remain public. The browser sends the bearer token in the first
+WebSocket message after opening the connection, never in the URL.
 Generate credentials without putting a plaintext password in configuration:
 
 ```bash
@@ -264,7 +322,7 @@ are blocked. `/health` remains the detailed public monitoring view. `/metrics`
 exports low-cardinality Prometheus request count/latency, in-flight request,
 database, ingestion queue, dead-letter, outbox, and live-connection metrics.
 The API enforces a configurable body-size ceiling for declared and streamed
-request bodies, and the public monitoring stream rejects connections above its
+request bodies, and the authenticated monitoring stream rejects connections above its
 configured per-process capacity with WebSocket close code `1013`. Browser
 WebSocket handshakes require an exact configured `Origin`; the production
 server caps inbound messages at 64 KiB, limits the receive queue, and disables

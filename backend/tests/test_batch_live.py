@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 import time
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ import pytest
 from conftest import observation
 
 from app.api.live import live as live_endpoint
+from app.api.auth import create_access_token
 from app.config import Settings
 from app.database.models import Base
 from app.database.session import create_engine_and_session
@@ -119,7 +121,9 @@ class FakeCounter:
 
 
 class FakePolicySocket(FakeConnectSocket):
-    def __init__(self, *, origin: str | None, messages: list[str]) -> None:
+    def __init__(
+        self, *, origin: str | None, messages: list[str], auth_enabled: bool = False
+    ) -> None:
         super().__init__()
         self.headers = {"origin": origin} if origin is not None else {}
         self.incoming = iter(messages)
@@ -129,7 +133,10 @@ class FakePolicySocket(FakeConnectSocket):
         self.app = SimpleNamespace(
             state=SimpleNamespace(
                 settings=SimpleNamespace(
-                    cors_origins=("https://console.example",)
+                    cors_origins=("https://console.example",),
+                    auth_enabled=auth_enabled,
+                    admin_username="admin",
+                    secret_key="test-secret-key-that-is-at-least-32-bytes",
                 ),
                 metrics=SimpleNamespace(
                     live_origin_rejections=self.origin_rejections,
@@ -158,6 +165,24 @@ async def test_live_manager_rejects_connections_above_capacity() -> None:
 
 
 @pytest.mark.anyio
+async def test_live_manager_counts_pending_authentication_toward_capacity() -> None:
+    manager = LiveConnectionManager(max_connections=1)
+    assert await manager.reserve() is True
+    assert manager.pending_connections == 1
+    assert await manager.reserve() is False
+
+    await manager.release_reservation()
+    assert manager.pending_connections == 0
+    assert await manager.reserve() is True
+
+    connected = FakeConnectSocket()
+    await connected.accept()
+    assert await manager.connect(connected, accepted=True, reserved=True) is True
+    assert manager.pending_connections == 0
+    assert connected in manager.connections
+
+
+@pytest.mark.anyio
 async def test_live_endpoint_enforces_browser_origin_and_message_allowlists() -> None:
     rejected = FakePolicySocket(
         origin="https://attacker.example", messages=[]
@@ -177,6 +202,38 @@ async def test_live_endpoint_enforces_browser_origin_and_message_allowlists() ->
     ]
     assert allowed.closed == (1008, "unsupported live message")
     assert allowed not in allowed.manager.connections
+
+
+@pytest.mark.anyio
+async def test_live_endpoint_authenticates_first_message_without_url_credentials() -> None:
+    rejected = FakePolicySocket(
+        origin="https://console.example",
+        messages=['{"type":"authenticate","token":"invalid"}'],
+        auth_enabled=True,
+    )
+    await live_endpoint(rejected)  # type: ignore[arg-type]
+    assert rejected.closed == (1008, "authentication required")
+    assert rejected not in rejected.manager.connections
+    assert rejected.manager.pending_connections == 0
+
+    token, _ = create_access_token(
+        "admin", "test-secret-key-that-is-at-least-32-bytes"
+    )
+    allowed = FakePolicySocket(
+        origin="https://console.example",
+        messages=[
+            json.dumps({"type": "authenticate", "token": token}),
+            "ping",
+            "unsupported",
+        ],
+        auth_enabled=True,
+    )
+    await live_endpoint(allowed)  # type: ignore[arg-type]
+    assert allowed.messages == [
+        {"type": "connection", "status": "connected"},
+        {"type": "pong"},
+    ]
+    assert allowed.closed == (1008, "unsupported live message")
 
 
 @pytest.mark.anyio

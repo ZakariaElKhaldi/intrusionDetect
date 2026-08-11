@@ -38,6 +38,7 @@ const API_BASE = configuredApi
 
 let accessToken: string | null = null;
 let unauthorizedHandler: (() => void) | null = null;
+const PUBLIC_API_PATHS = new Set(["/auth/login", "/auth/status", "/health"]);
 
 export function setApiAccessToken(token: string | null) {
   accessToken = token;
@@ -330,9 +331,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (init?.body != null && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const method = (init?.method ?? "GET").toUpperCase();
-  const requiresToken = !["GET", "HEAD", "OPTIONS"].includes(method) || path === "/auth/me";
-  if (accessToken && requiresToken && path !== "/auth/login") {
+  if (accessToken && !PUBLIC_API_PATHS.has(path)) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
   const controller = new AbortController();
@@ -784,6 +783,13 @@ export function socketUrl(): string {
   return `${protocol}//${location.host}/api/v1/live`;
 }
 
+/** Keep bearer credentials out of WebSocket URLs and send them after open. */
+export function socketAuthenticationMessage(): string | null {
+  return accessToken
+    ? JSON.stringify({ type: "authenticate", token: accessToken })
+    : null;
+}
+
 function decodedSocketValue(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try {
@@ -791,6 +797,27 @@ function decodedSocketValue(value: unknown): unknown {
   } catch {
     return null;
   }
+}
+
+/** Recognize the application-level heartbeat response emitted by the live API. */
+export function isLivePongMessage(value: unknown): boolean {
+  const decoded = decodedSocketValue(value);
+  return Boolean(
+    decoded
+    && typeof decoded === "object"
+    && (decoded as { type?: unknown }).type === "pong",
+  );
+}
+
+/** The server emits this only after origin and optional bearer checks pass. */
+export function isLiveConnectionMessage(value: unknown): boolean {
+  const decoded = decodedSocketValue(value);
+  return Boolean(
+    decoded
+    && typeof decoded === "object"
+    && (decoded as { type?: unknown }).type === "connection"
+    && (decoded as { status?: unknown }).status === "connected",
+  );
 }
 
 /** Convert the WebSocket wire envelope into the two events the UI understands. */

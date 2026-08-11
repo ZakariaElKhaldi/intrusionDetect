@@ -97,6 +97,7 @@ fi
   cd frontend
   npm run lint
   npm test -- --run
+  npm run test:storybook
   npm run build
 )
 [[ -f "${REPOSITORY_DIR}/frontend/dist/index.html" ]] || \

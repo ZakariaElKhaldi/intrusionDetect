@@ -7,10 +7,16 @@ not treated as proof of detection effectiveness or operational capacity.
 ## Implemented and locally verified
 
 - Authentication fails closed when enabled without an Argon2id password hash or
-  a 32-byte signing secret. Mutation APIs use short-lived bearer tokens, login
+  a 32-byte signing secret. Business-data APIs use short-lived bearer tokens, login
   attempts are throttled, and authentication responses are marked `no-store`.
   The browser honors the server's `Retry-After` value, states when another
   attempt is allowed, and does not assume or disclose the configured username.
+- Authorization is deny-by-default for persisted feature data and live telemetry.
+  Authentication status/login and the liveness, readiness, detailed health, and
+  Prometheus endpoints are explicit public exceptions for bootstrap and machine
+  probes. Browser WebSockets authenticate with the first application message,
+  avoiding credential-bearing URLs, and enter the live state only after the
+  server acknowledges the authenticated connection.
 - Redrive and analyst-feedback audit identities are derived from the validated
   token; caller-authored identity fields are never persisted as operator
   evidence.
@@ -115,6 +121,11 @@ not treated as proof of detection effectiveness or operational capacity.
 - The backend container installs the exact committed `uv.lock` graph with
   `uv sync --locked`; local virtual environments, Node modules, test artifacts,
   and repository metadata are excluded from the Docker build context.
+- Every Dockerfile base/build image and the Compose PostgreSQL image use a
+  readable version tag plus an immutable SHA-256 digest. Rebuilds therefore
+  cannot silently consume a different upstream image; digest updates remain an
+  explicit, reviewable maintenance action and must still be made regularly for
+  security fixes.
 - The frontend runtime uses NGINX's maintained unprivileged image on port 8080;
   neither application container requires root at runtime.
 - Stateless application containers use read-only root filesystems, drop all

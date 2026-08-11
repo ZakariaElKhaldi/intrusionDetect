@@ -203,6 +203,66 @@ async def test_every_state_changing_api_rejects_missing_credentials(tmp_path) ->
 
 
 @pytest.mark.anyio
+async def test_sensitive_reads_deny_anonymous_access_while_bootstrap_and_probes_remain_public(
+    tmp_path,
+) -> None:
+    app = create_app(
+        authenticated_settings(tmp_path, "read-policy.db"),
+        initialize_schema_for_tests=True,
+    )
+    sensitive_paths = [
+        "/api/v1/auth/me",
+        "/api/v1/alerts",
+        "/api/v1/alerts/page",
+        "/api/v1/alerts/00000000-0000-0000-0000-000000000000",
+        "/api/v1/alerts/00000000-0000-0000-0000-000000000000/explanation",
+        "/api/v1/dashboard/summary",
+        "/api/v1/models",
+        "/api/v1/evaluation",
+        "/api/v1/replay/status",
+        "/api/v1/ingestion/events/00000000-0000-0000-0000-000000000000",
+        "/api/v1/ingestion/jobs",
+        "/api/v1/ingestion/outbox/events",
+        "/api/v1/ingestion/status",
+        "/api/v1/model-health/cohorts",
+        "/api/v1/model-health?window=fast",
+        "/api/v1/model-health/history?window=fast",
+    ]
+    public_paths = [
+        "/api/v1/auth/status",
+        "/livez",
+        "/api/v1/livez",
+        "/health",
+        "/api/v1/health",
+        "/readyz",
+        "/api/v1/readyz",
+        "/metrics",
+    ]
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            for request_path in sensitive_paths:
+                response = await client.get(request_path)
+                assert response.status_code == 401, request_path
+                assert response.json() == {"detail": "Authentication required"}
+            for request_path in public_paths:
+                response = await client.get(request_path)
+                assert response.status_code in {200, 503}, request_path
+
+    schema = app.openapi()
+    public_schema_paths = {"/auth/status", "/auth/login", "/health"}
+    for path, operations in schema["paths"].items():
+        for method, operation in operations.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            if path in public_schema_paths:
+                assert "security" not in operation, (method, path)
+            else:
+                assert operation["security"] == [{"HTTPBearer": []}], (method, path)
+
+
+@pytest.mark.anyio
 async def test_login_validation_never_reflects_passwords(tmp_path) -> None:
     app = create_app(
         authenticated_settings(tmp_path, "validation.db"),

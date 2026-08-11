@@ -82,7 +82,7 @@ function StreamStatus({ fixtureMode, health, socketState }: Pick<ApplicationShel
 function OperatorIdentity({ fixtureMode, session, authRequired }: Pick<ApplicationShellProps, "fixtureMode" | "session" | "authRequired">) {
   if (fixtureMode) return <><span className="avatar" aria-hidden="true">RO</span><span><b>Read-only preview</b><small>Mutations disabled</small></span></>;
   if (session) return <><span className="avatar" aria-hidden="true">{session.username.slice(0, 2).toUpperCase()}</span><span><b>{session.username}</b><small>Session ends {new Date(session.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small></span></>;
-  if (authRequired) return <><span className="avatar" aria-hidden="true">—</span><span><b>Signed out</b><small>Sign in to change state</small></span></>;
+  if (authRequired) return <><span className="avatar" aria-hidden="true">—</span><span><b>Signed out</b><small>Sign in for operational data</small></span></>;
   return <><span className="avatar" aria-hidden="true">LO</span><span><b>Local operator</b><small>Authentication disabled</small></span></>;
 }
 

@@ -24,8 +24,8 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue>({
   session: null,
-  authenticated: false,
-  authRequired: true,
+  authenticated: true,
+  authRequired: false,
   openLogin: () => undefined,
   logout: () => undefined,
 });
@@ -48,7 +48,12 @@ function storedSession(): AuthSession | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const fixtureMode = new URLSearchParams(window.location.search).get("fixture") === "true";
-  const [session, setSession] = useState<AuthSession | null>(() => storedSession());
+  const [session, setSession] = useState<AuthSession | null>(() => {
+    const initialSession = storedSession();
+    // Child effects may run before this provider's effects after a reload.
+    setApiAccessToken(initialSession?.access_token ?? null);
+    return initialSession;
+  });
   const [authRequired, setAuthRequired] = useState(true);
   const [loginOpen, setLoginOpen] = useState(false);
   const [error, setError] = useState("");

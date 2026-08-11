@@ -7,8 +7,11 @@ import {
   getDashboardSummary,
   getIngestionStatus,
   getModels,
+  isLiveConnectionMessage,
+  isLivePongMessage,
   liveEventFromSocketMessage,
   replayAction,
+  socketAuthenticationMessage,
   socketUrl,
   startReplay,
 } from "./api";
@@ -88,23 +91,29 @@ function App() {
     setAlertsError("");
     setModelsError("");
     setHealthError("");
-    const [healthResult, alertsResult, modelsResult] = await Promise.allSettled([checkHealth(), getAlerts(), getModels()]);
-    if (healthResult.status === "fulfilled" && healthResult.value) setHealth(healthResult.value);
+    const healthResult = await checkHealth();
+    if (healthResult) setHealth(healthResult);
     else {
       setHealth(null);
       setHealthError("The API health check failed.");
     }
     setHealthChecked(true);
+    if (!auth.authenticated) {
+      setAlertsLoading(false);
+      setModelsLoading(false);
+      return;
+    }
+    const [alertsResult, modelsResult] = await Promise.allSettled([getAlerts(), getModels()]);
     if (alertsResult.status === "fulfilled") setAlerts((current) => mergeAlerts(current, alertsResult.value));
     else setAlertsError(alertsResult.reason instanceof Error ? alertsResult.reason.message : "Alerts could not be loaded.");
     if (modelsResult.status === "fulfilled") setModels(modelsResult.value);
     else setModelsError(modelsResult.reason instanceof Error ? modelsResult.reason.message : "Model descriptors could not be loaded.");
     setAlertsLoading(false);
     setModelsLoading(false);
-  }, [fixtureMode, mergeAlerts]);
+  }, [auth.authenticated, fixtureMode, mergeAlerts]);
 
   const loadSummary = useCallback(async () => {
-    if (fixtureMode) return;
+    if (fixtureMode || !auth.authenticated) return;
     setSummaryLoading(true);
     setSummaryError("");
     try {
@@ -114,7 +123,7 @@ function App() {
     } finally {
       setSummaryLoading(false);
     }
-  }, [fixtureMode, summaryRange]);
+  }, [auth.authenticated, fixtureMode, summaryRange]);
 
   useEffect(() => {
     pageRef.current = page;
@@ -153,7 +162,7 @@ function App() {
   }, [fixtureMode, loadSummary]);
 
   const loadIngestionStatus = useCallback(async () => {
-    if (fixtureMode) return;
+    if (fixtureMode || !auth.authenticated) return;
     setIngestionError("");
     try {
       setIngestion(await getIngestionStatus());
@@ -162,7 +171,7 @@ function App() {
     } finally {
       setIngestionLoading(false);
     }
-  }, [fixtureMode]);
+  }, [auth.authenticated, fixtureMode]);
 
   useEffect(() => {
     if (fixtureMode) {
@@ -183,25 +192,50 @@ function App() {
   }, [fixtureMode, loadIngestionStatus]);
 
   const hydrateReplay = useCallback(async () => {
-    if (fixtureMode) return;
+    if (fixtureMode || !auth.authenticated) return;
     setReplayError("");
     try {
       setReplay(await getReplayStatus());
     } catch (error) {
       setReplayError(error instanceof Error ? error.message : "Replay status is unavailable.");
     }
-  }, [fixtureMode]);
+  }, [auth.authenticated, fixtureMode]);
 
   useEffect(() => {
     void hydrateReplay();
   }, [hydrateReplay]);
 
   useEffect(() => {
-    if (fixtureMode) return;
+    if (fixtureMode || !auth.authenticated) {
+      setSocketState("offline");
+      return;
+    }
     let socket: WebSocket | null = null;
     let retryTimer: number | undefined;
+    let heartbeatTimer: number | undefined;
+    let pongTimer: number | undefined;
     let disposed = false;
     let retryAttempt = 0;
+
+    const clearHeartbeat = () => {
+      if (heartbeatTimer) window.clearTimeout(heartbeatTimer);
+      if (pongTimer) window.clearTimeout(pongTimer);
+      heartbeatTimer = undefined;
+      pongTimer = undefined;
+    };
+
+    const scheduleHeartbeat = () => {
+      clearHeartbeat();
+      heartbeatTimer = window.setTimeout(() => {
+        heartbeatTimer = undefined;
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send("ping");
+        pongTimer = window.setTimeout(() => {
+          pongTimer = undefined;
+          socket?.close(4000, "heartbeat timeout");
+        }, 10_000);
+      }, 25_000);
+    };
 
     const scheduleReconnect = () => {
       if (disposed || retryTimer) return;
@@ -221,9 +255,19 @@ function App() {
         socket = new WebSocket(socketUrl());
         socket.onopen = () => {
           retryAttempt = 0;
-          setSocketState("live");
+          const authentication = socketAuthenticationMessage();
+          if (authentication) socket?.send(authentication);
         };
         socket.onmessage = (event) => {
+          if (isLiveConnectionMessage(event.data)) {
+            setSocketState("live");
+            scheduleHeartbeat();
+            return;
+          }
+          if (isLivePongMessage(event.data)) {
+            scheduleHeartbeat();
+            return;
+          }
           const incoming = liveEventFromSocketMessage(event.data);
           if (!incoming) return;
           if (incoming.type === "prediction.created") {
@@ -250,6 +294,7 @@ function App() {
         };
         socket.onerror = () => setSocketState("offline");
         socket.onclose = () => {
+          clearHeartbeat();
           setSocketState("offline");
           scheduleReconnect();
         };
@@ -263,9 +308,10 @@ function App() {
     return () => {
       disposed = true;
       if (retryTimer) window.clearTimeout(retryTimer);
+      clearHeartbeat();
       socket?.close();
     };
-  }, [fixtureMode]);
+  }, [auth.authenticated, auth.session?.access_token, fixtureMode]);
 
   useEffect(() => {
     if (fixtureMode) return;

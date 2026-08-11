@@ -8,7 +8,14 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 
 def test_backend_image_runs_unprivileged_and_has_a_liveness_probe() -> None:
     dockerfile = (REPOSITORY / "backend/Dockerfile").read_text(encoding="utf-8")
-    assert "ghcr.io/astral-sh/uv:0.11.16" in dockerfile
+    assert re.search(
+        r"^FROM python:3\.12-slim@sha256:[0-9a-f]{64}$", dockerfile, re.MULTILINE
+    )
+    assert re.search(
+        r"^COPY --from=ghcr\.io/astral-sh/uv:0\.11\.16@sha256:[0-9a-f]{64} ",
+        dockerfile,
+        re.MULTILINE,
+    )
     assert "COPY backend/uv.lock" in dockerfile
     assert "COPY --chown=10001:10001 data /app/data" in dockerfile
     assert "COPY --chown=10001:10001 models /app/models" in dockerfile
@@ -67,7 +74,16 @@ def test_long_running_services_require_migrated_schema_and_valid_settings() -> N
 
 def test_frontend_gateway_enforces_same_origin_and_browser_security_policy() -> None:
     dockerfile = (REPOSITORY / "frontend/Dockerfile").read_text(encoding="utf-8")
-    assert "nginxinc/nginx-unprivileged:1.31.3-alpine3.24" in dockerfile
+    assert re.search(
+        r"^FROM node:22-alpine@sha256:[0-9a-f]{64} AS build$",
+        dockerfile,
+        re.MULTILINE,
+    )
+    assert re.search(
+        r"^FROM nginxinc/nginx-unprivileged:1\.31\.3-alpine3\.24@sha256:[0-9a-f]{64}$",
+        dockerfile,
+        re.MULTILINE,
+    )
     assert "EXPOSE 8080" in dockerfile
     nginx = (REPOSITORY / "frontend/nginx.conf").read_text(encoding="utf-8")
     assert "listen 8080;" in nginx
@@ -86,6 +102,11 @@ def test_compose_has_no_default_database_password_or_cross_origin_browser_url() 
     compose = (REPOSITORY / "docker-compose.yml").read_text(encoding="utf-8")
     env_example = (REPOSITORY / ".env.example").read_text(encoding="utf-8")
     assert "POSTGRES_PASSWORD: iot_ids" not in compose
+    assert re.search(
+        r"^    image: postgres:17-alpine@sha256:[0-9a-f]{64}$",
+        compose,
+        re.MULTILINE,
+    )
     assert "IOT_IDS_POSTGRES_PASSWORD:?" in compose
     assert "VITE_API_URL:" not in compose
     assert "VITE_WS_URL:" not in compose

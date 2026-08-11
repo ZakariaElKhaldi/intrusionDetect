@@ -12,13 +12,31 @@ class LiveConnectionManager:
         self.max_connections = max_connections
         self.send_timeout_seconds = send_timeout_seconds
         self.connections: set[WebSocket] = set()
+        self._pending_connections = 0
         self._connect_lock = asyncio.Lock()
         self._broadcast_lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket) -> bool:
+    async def reserve(self) -> bool:
+        """Bound accepted sockets while they wait for first-message authentication."""
         async with self._connect_lock:
-            await websocket.accept()
-            if len(self.connections) >= self.max_connections:
+            if len(self.connections) + self._pending_connections >= self.max_connections:
+                return False
+            self._pending_connections += 1
+            return True
+
+    async def release_reservation(self) -> None:
+        async with self._connect_lock:
+            self._pending_connections = max(0, self._pending_connections - 1)
+
+    async def connect(
+        self, websocket: WebSocket, *, accepted: bool = False, reserved: bool = False
+    ) -> bool:
+        async with self._connect_lock:
+            if not accepted:
+                await websocket.accept()
+            if reserved:
+                self._pending_connections = max(0, self._pending_connections - 1)
+            elif len(self.connections) + self._pending_connections >= self.max_connections:
                 await websocket.close(
                     code=1013, reason="live connection capacity reached"
                 )
@@ -26,6 +44,10 @@ class LiveConnectionManager:
             self.connections.add(websocket)
         await websocket.send_json({"type": "connection", "status": "connected"})
         return True
+
+    @property
+    def pending_connections(self) -> int:
+        return self._pending_connections
 
     def disconnect(self, websocket: WebSocket) -> None:
         self.connections.discard(websocket)

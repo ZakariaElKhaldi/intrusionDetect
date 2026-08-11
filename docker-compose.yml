@@ -9,7 +9,7 @@ x-runtime-security: &runtime-security
 
 services:
   database:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
     environment:
       POSTGRES_DB: iot_ids
       POSTGRES_USER: iot_ids

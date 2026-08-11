@@ -1,15 +1,115 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
+import { AuthProvider } from "../auth";
 
 describe("dashboard", () => {
   beforeEach(() => {
     history.replaceState(null, "", "/");
+    sessionStorage.clear();
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps an acknowledged live stream and closes it when a later heartbeat is unanswered", async () => {
+    vi.useFakeTimers();
+    const sent: string[] = [];
+    const closed: [number | undefined, string | undefined][] = [];
+    let activeSocket: HeartbeatWebSocket | undefined;
+    class HeartbeatWebSocket {
+      static OPEN = 1;
+      readyState = HeartbeatWebSocket.OPEN;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      constructor(_url: string) {
+        activeSocket = this;
+        window.setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+      send(value: string) { sent.push(value); }
+      close(code?: number, reason?: string) { closed.push([code, reason]); }
+    }
+    vi.stubGlobal("WebSocket", HeartbeatWebSocket);
+
+    render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    act(() => {
+      activeSocket?.onmessage?.(new MessageEvent("message", {
+        data: JSON.stringify({ type: "connection", status: "connected" }),
+      }));
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(25_000); });
+    expect(sent).toEqual(["ping"]);
+    await act(async () => {
+      activeSocket?.onmessage?.(new MessageEvent("message", { data: JSON.stringify({ type: "pong" }) }));
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(closed).toEqual([]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(sent).toEqual(["ping", "ping"]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(closed).toContainEqual([4000, "heartbeat timeout"]);
+  });
+
+  it("installs a restored bearer session before child reads and live authentication", async () => {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    sessionStorage.setItem("iot-ids-auth-session", JSON.stringify({
+      access_token: "restored-token",
+      token_type: "bearer",
+      expires_in: 60,
+      expires_at: expiresAt,
+      username: "admin",
+    }));
+    const requests: { path: string; authorization: string | null }[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      requests.push({
+        path,
+        authorization: new Headers(init?.headers).get("Authorization"),
+      });
+      const body = path.endsWith("/auth/status") ? { enabled: true }
+        : path.endsWith("/auth/me") ? { username: "admin", role: "admin" }
+          : path.endsWith("/health") ? { status: "ok", model_version: "m1", schema_version: "v1", live_connections: 0 }
+            : path.endsWith("/models") || path.endsWith("/alerts") ? []
+              : {};
+      return Promise.resolve(new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    }));
+    const sent: string[] = [];
+    class RestoredSessionSocket {
+      static OPEN = 1;
+      readyState = RestoredSessionSocket.OPEN;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      constructor(_url: string) { setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      send(value: string) { sent.push(value); }
+      close() {}
+    }
+    vi.stubGlobal("WebSocket", RestoredSessionSocket);
+
+    render(<AuthProvider><App /></AuthProvider>);
+
+    await waitFor(() => expect(requests.some(({ path }) => path.endsWith("/alerts"))).toBe(true));
+    expect(
+      requests.filter(({ path }) => !path.endsWith("/auth/status") && !path.endsWith("/health")),
+    ).toEqual(expect.arrayContaining([
+      expect.objectContaining({ authorization: "Bearer restored-token" }),
+    ]));
+    await waitFor(() => expect(sent[0]).toBe(JSON.stringify({
+      type: "authenticate",
+      token: "restored-token",
+    })));
+  });
 
   it("navigates between the investigation pages", async () => {
     const user = userEvent.setup();

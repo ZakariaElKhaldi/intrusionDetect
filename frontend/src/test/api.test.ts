@@ -13,11 +13,14 @@ import {
   getModelHealthHistory,
   getModels,
   enqueueObservations,
+  isLiveConnectionMessage,
+  isLivePongMessage,
   liveEventFromSocketMessage,
   startCustomReplay,
   startReplay,
   submitAlertFeedback,
   setApiAccessToken,
+  socketAuthenticationMessage,
 } from "../api";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -33,6 +36,24 @@ describe("frontend API adapter", () => {
     setApiAccessToken(null);
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("recognizes only the live endpoint heartbeat response", () => {
+    expect(isLivePongMessage(JSON.stringify({ type: "pong" }))).toBe(true);
+    expect(isLivePongMessage({ type: "pong" })).toBe(true);
+    expect(isLivePongMessage(JSON.stringify({ type: "prediction.created", data: {} }))).toBe(false);
+    expect(isLivePongMessage("not-json")).toBe(false);
+  });
+
+  it("authenticates live telemetry after opening without putting tokens in the URL", () => {
+    expect(socketAuthenticationMessage()).toBeNull();
+    setApiAccessToken("signed-token");
+    expect(socketAuthenticationMessage()).toBe(JSON.stringify({
+      type: "authenticate",
+      token: "signed-token",
+    }));
+    expect(isLiveConnectionMessage({ type: "connection", status: "connected" })).toBe(true);
+    expect(isLiveConnectionMessage({ type: "connection", status: "pending" })).toBe(false);
   });
 
   it("returns structured health information and null while offline", async () => {
@@ -377,7 +398,7 @@ describe("frontend API adapter", () => {
     expect(headers.get("Authorization")).toBe("Bearer signed-token");
   });
 
-  it("does not attach tokens or entity headers to public read requests", async () => {
+  it("attaches bearer tokens to protected reads without adding entity headers", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
     vi.stubGlobal("fetch", fetchMock);
     setApiAccessToken("signed-token");
@@ -385,7 +406,7 @@ describe("frontend API adapter", () => {
     await getAlerts();
 
     const headers = fetchMock.mock.calls[0][1].headers as Headers;
-    expect(headers.get("Authorization")).toBeNull();
+    expect(headers.get("Authorization")).toBe("Bearer signed-token");
     expect(headers.get("Content-Type")).toBeNull();
     expect(headers.get("Accept")).toBe("application/json");
   });

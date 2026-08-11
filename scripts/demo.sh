@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 BACKEND_PORT="${DEMO_BACKEND_PORT:-8000}"
 FRONTEND_PORT="${DEMO_FRONTEND_PORT:-4173}"
+DEMO_SEED_RECORDS="${DEMO_SEED_RECORDS:-8}"
 DEMO_TEMP_DIR="$(mktemp -d /tmp/iot-ids-demo.XXXXXX)"
 DEMO_DATABASE_PATH="${DEMO_TEMP_DIR}/project-demo.sqlite3"
 DEMO_INSTANCE_ID="project-demo-$(date +%s)-$$-${RANDOM}"
@@ -78,6 +79,10 @@ trap cleanup EXIT INT TERM
 
 validate_port "${BACKEND_PORT}" "backend"
 validate_port "${FRONTEND_PORT}" "frontend"
+if [[ ! "${DEMO_SEED_RECORDS}" =~ ^[0-9]+$ ]] || ((DEMO_SEED_RECORDS > 100)); then
+  echo "demo failed: DEMO_SEED_RECORDS must be an integer from 0 to 100" >&2
+  exit 2
+fi
 if [[ "${BACKEND_PORT}" == "${FRONTEND_PORT}" ]]; then
   echo "demo failed: backend and frontend ports must differ" >&2
   exit 2
@@ -136,6 +141,14 @@ BACKEND_PID=$!
 wait_for_owned_health "http://127.0.0.1:${BACKEND_PORT}/health" \
   "${BACKEND_PID}" "backend" 120
 
+if ((DEMO_SEED_RECORDS > 0)); then
+  IOT_IDS_DEMO_PASSWORD="${DEMO_ADMIN_PASSWORD}" \
+    "${REPOSITORY_DIR}/backend/.venv/bin/python" "${REPOSITORY_DIR}/scripts/seed_demo.py" \
+      --base-url "http://127.0.0.1:${BACKEND_PORT}" \
+      --username "${IOT_IDS_ADMIN_USERNAME}" \
+      --records "${DEMO_SEED_RECORDS}"
+fi
+
 (
   cd frontend
   exec npm run preview -- --host 127.0.0.1 --port "${FRONTEND_PORT}" --strictPort
@@ -150,7 +163,9 @@ echo "Instance:  ${DEMO_INSTANCE_ID}"
 echo "Dashboard: http://127.0.0.1:${FRONTEND_PORT}"
 echo "API docs:  http://127.0.0.1:${BACKEND_PORT}/docs"
 echo "Operator:  admin / ${DEMO_ADMIN_PASSWORD} (valid only for this demo)"
+echo "Data:      ${DEMO_SEED_RECORDS} normal + ${DEMO_SEED_RECORDS} attack observations preloaded"
 echo "Worker:    durable ingestion/outbox processing active"
+echo "Walkthrough: docs/demo-runbook.md"
 echo "Press Ctrl-C to stop and remove the demo database."
 
 set +e

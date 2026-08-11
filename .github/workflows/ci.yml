@@ -42,10 +42,16 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+      - name: Install browser runtime
+        working-directory: frontend
+        run: npx playwright install --with-deps chrome
       - name: Lint
         run: make lint
       - name: Test
         run: make test
+      - name: Test Storybook components
+        working-directory: frontend
+        run: npm run test:storybook
       - name: Build
         run: make build
       - name: Verify promoted model bundle
