@@ -68,6 +68,9 @@ describe("dashboard", () => {
     render(<App />);
     expect(screen.getByText("Fixture data · not connected evidence")).toBeInTheDocument();
     expect(screen.getByText("Read-only preview")).toBeInTheDocument();
+    expect(screen.getByText("Fixture alert evidence")).toBeInTheDocument();
+    expect(screen.getByText(/fixture unresolved across all severities/i)).toBeInTheDocument();
+    expect(screen.queryByText(/persisted unresolved across all severities/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Operator sign in" })).not.toBeInTheDocument();
   });
 

@@ -413,6 +413,12 @@ export interface LivePrediction {
   alert_id: string | null;
 }
 
+export type ObservationPrediction = LivePrediction;
+
+export interface BatchPredictionResponse {
+  predictions: ObservationPrediction[];
+}
+
 export type LiveEvent =
   | { type: "prediction.created"; data: LivePrediction }
   | { type: "alert.created"; data: Alert };

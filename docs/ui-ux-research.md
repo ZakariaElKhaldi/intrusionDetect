@@ -181,6 +181,37 @@ inputs provide the required interaction and accessibility semantics. The full
 route mapping and explicit machine/server ownership boundaries are maintained
 in `docs/backend-ui-capability-matrix.md`.
 
+## Overview readiness iteration
+
+The overview previously placed the complete `/health` component inventory in a
+long side-column fact list. Healthy and failed components had equal visual
+weight, important readiness evidence appeared late on the page, and fixture
+alert counts were incorrectly described as persisted database evidence.
+
+Cyber-situational-awareness research distinguishes perceiving state from
+understanding what it means for action. NIST's human-centered cybersecurity
+program similarly emphasizes helping people make informed decisions, while
+USWDS summary guidance recommends selecting, splitting, and sequencing only the
+few critical facts readers should not miss before dense detail.
+
+Implementation consequences:
+
+- system readiness now follows the alert-posture summary near the top of the
+  overview instead of appearing after secondary protocol composition;
+- the default panel states the operational assessment, prioritizes degraded or
+  blocked component reasons, and shows only API, stream, model-bundle, and
+  replay-dataset state;
+- instance, schema, model versions, calibration, checksum, fallback, live-event
+  time, and every backend component reason remain available in one named native
+  disclosure with an exact table;
+- fixture mode explicitly says that no connected health request was made; and
+- metric and scope copy now distinguishes fixture, loaded-session, and
+  persisted database evidence instead of calling all values persisted.
+
+No dependency was added. The new `SystemHealthPanel` is a focused feature
+component with ready, degraded, blocked, unavailable, and fixture Storybook
+states.
+
 ## Sources
 
 - [Web Content Accessibility Guidelines (WCAG) 2.2](https://www.w3.org/TR/WCAG22/)
@@ -202,3 +233,6 @@ in `docs/backend-ui-capability-matrix.md`.
 - [Testing SOAR Tools in Use](https://arxiv.org/abs/2208.06075)
 - [W3C: Understanding Labels or Instructions](https://www.w3.org/WAI/WCAG21/Understanding/labels-or-instructions.html)
 - [U.S. Web Design System date-range accessibility tests](https://designsystem.digital.gov/components/date-range-picker/accessibility-tests/)
+- [NIST Human-Centered Cybersecurity](https://csrc.nist.gov/Projects/human-centered-cybersecurity/about)
+- [Systematic Literature Review on Cyber Situational Awareness Visualizations](https://arxiv.org/abs/2112.10354)
+- [U.S. Web Design System summary-box guidance](https://designsystem.digital.gov/components/summary-box/)

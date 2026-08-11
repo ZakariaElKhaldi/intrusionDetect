@@ -27,6 +27,8 @@ import type {
   RedriveResponse,
   AuthSession,
   IngestionBatchReceipt,
+  ObservationPrediction,
+  BatchPredictionResponse,
 } from "./types";
 
 const configuredApi = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
@@ -695,9 +697,11 @@ function observationsFromRows(rows: Record<string, string | number>[]) {
   });
 }
 
-export async function predict(rows: Record<string, string | number>[]) {
+export async function predict(
+  rows: Record<string, string | number>[],
+): Promise<ObservationPrediction | BatchPredictionResponse> {
   const observations = observationsFromRows(rows);
-  return request<unknown>(rows.length === 1 ? "/predict" : "/predict/batch", {
+  return request<ObservationPrediction | BatchPredictionResponse>(rows.length === 1 ? "/predict" : "/predict/batch", {
     method: "POST",
     body: JSON.stringify(rows.length === 1 ? observations[0] : { observations }),
   });

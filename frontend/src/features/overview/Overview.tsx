@@ -17,6 +17,7 @@ import { SeverityLabel } from "../../components/SeverityLabel";
 import type { Alert, DashboardSummary, HealthInfo, IngestionPipelineState, IngestionStatus } from "../../types";
 import { formatTime } from "../../utils";
 import { IngestionOperations } from "./IngestionOperations";
+import { SystemHealthPanel } from "./SystemHealthPanel";
 
 function median(values: number[]) {
   if (!values.length) return 0;
@@ -161,7 +162,7 @@ export function Overview({
 
   return (
     <div className="overview-grid">
-      <div className="summary-scope"><span>Persisted database evidence</span><label>Evidence window <select value={summaryRange ?? "24h"} onChange={(event)=>onSummaryRange?.(event.target.value as DashboardSummary["range"])}><option value="15m">15 minutes</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="all">All persisted</option></select></label>{summary ? <small>Generated {new Date(summary.generated_at).toLocaleString()} · {summary.scope.bucket_minutes}-minute buckets · time field {summary.scope.time_field}</small> : null}</div>
+      <div className={`summary-scope ${fixtureMode ? "summary-scope--fixture" : ""}`}><span>{fixtureMode ? "Fixture alert evidence" : "Persisted database evidence"}</span>{fixtureMode ? <small>Generated preview records · not a time-bounded database query</small> : <><label>Evidence window <select value={summaryRange ?? "24h"} onChange={(event)=>onSummaryRange?.(event.target.value as DashboardSummary["range"])}><option value="15m">15 minutes</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="all">All persisted</option></select></label>{summary ? <small>Generated {new Date(summary.generated_at).toLocaleString()} · {summary.scope.bucket_minutes}-minute buckets · time field {summary.scope.time_field}</small> : null}</>}</div>
       <section className="metrics-grid" aria-label="Current alert posture">
         <Metric
           label={summary ? "Persisted predictions" : "Live predictions"}
@@ -172,7 +173,7 @@ export function Overview({
         <Metric
           label="Open critical"
           value={String(summary?.alerts.critical_open ?? critical.length)}
-          detail={`${summary?.alerts.unresolved ?? openAlerts.length} persisted unresolved across all severities`}
+          detail={`${summary?.alerts.unresolved ?? openAlerts.length} ${summary ? "persisted" : fixtureMode ? "fixture" : "loaded"} unresolved across all severities`}
           icon={CircleAlert}
           attention={critical.length > 0}
         />
@@ -185,10 +186,12 @@ export function Overview({
         <Metric
           label="Median detector score"
           value={summary?.median_detection_score == null ? `${(medianConfidence * 100).toFixed(1)}%` : `${(summary.median_detection_score * 100).toFixed(1)}%`}
-          detail="Persisted detector values; probability semantics follow each prediction's serving artifact"
+          detail={`${summary ? "Persisted" : fixtureMode ? "Fixture" : "Loaded"} detector values; probability semantics follow each prediction's serving artifact`}
           icon={Crosshair}
         />
       </section>
+
+      <SystemHealthPanel health={health} socketState={socketState} lastUpdate={lastUpdate} fixtureMode={fixtureMode} />
 
       <IngestionStatusPanel status={ingestion} loading={ingestionLoading} error={ingestionError} fixtureMode={fixtureMode} onRetry={onRetryIngestion}/>
       <IngestionOperations fixtureMode={fixtureMode} refreshKey={ingestion?.generated_at}/>
@@ -243,30 +246,6 @@ export function Overview({
             description="Distribution within alert records, not all network traffic."
           />
           {summary ? <CountBars values={summary.protocol_counts} label="Persisted alert protocols"/> : alerts.length ? <ProtocolDistributionChart alerts={alerts} height={225} /> : <div className="chart-empty">No alert protocols recorded.</div>}
-        </section>
-        <section className="panel">
-          <PanelHeading
-            eyebrow="Pipeline facts"
-            title="Current serving path"
-            description="Values reported by the active API."
-          />
-          <div className="pipeline-facts">
-            <div><span>API</span><b>{health ? health.status : "Unavailable"}</b></div>
-            <div><span>Readiness</span><b>{health?.readiness ?? "Not reported"}</b></div>
-            <div><span>Instance</span><b className="mono">{health?.instance_id ?? "Not reported"}</b></div>
-            <div><span>Stream</span><b>{socketState}</b></div>
-            <div><span>Schema</span><b className="mono">{health?.schema_version ?? "Not reported"}</b></div>
-            <div><span>Detector</span><b className="mono">{health?.detector_model_version ?? health?.model_version ?? "Not reported"}</b></div>
-            <div><span>Detector probability</span><b>{health?.detector_probability_calibrated === undefined ? "Not reported" : health.detector_probability_calibrated ? "Calibrated" : "Model score only"}</b></div>
-            <div><span>Classifier</span><b className="mono">{health?.classifier_model_version ?? "Not reported"}</b></div>
-            <div><span>Classifier probability</span><b>{health?.classifier_probability_calibrated === undefined ? "Not reported" : health.classifier_probability_calibrated ? "Calibrated" : "Model score only"}</b></div>
-            <div><span>Dataset</span><b>{health?.dataset_ready === undefined ? "Not reported" : health.dataset_ready ? "Ready" : "Unavailable"}</b></div>
-            <div><span>Dataset SHA-256</span><b className="mono checksum">{health?.dataset_checksum ?? "Not reported"}</b></div>
-            <div><span>Production bundle</span><b>{health?.production_bundle_valid === undefined ? "Not reported" : health.production_bundle_valid ? "Verified" : "Invalid"}</b></div>
-            <div><span>Fallback</span><b>{(health?.fallback_active ?? health?.fallback) === undefined ? "Not reported" : (health?.fallback_active ?? health?.fallback) ? "Active" : "Inactive"}</b></div>
-            {Object.entries(health?.components ?? {}).map(([name,component])=><div key={name}><span>{name}</span><b title={component.reason}>{component.status}{component.reason ? ` · ${component.reason}` : ""}</b></div>)}
-            <div><span>Last live event</span><b>{lastUpdate ? formatTime(lastUpdate.toISOString()) : "Not received"}</b></div>
-          </div>
         </section>
       </div>
     </div>
