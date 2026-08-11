@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import getpass
 import logging
 import secrets
 import threading
 from collections import OrderedDict, deque
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import uuid4
@@ -22,6 +24,7 @@ TOKEN_ISSUER = "iot-intrusion-detection"
 TOKEN_AUDIENCE = "iot-ids-api"
 PASSWORD_HASH = PasswordHash.recommended()
 SECURITY_LOGGER = logging.getLogger("iot_ids.security")
+PASSWORD_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="password-verify")
 security = HTTPBearer(auto_error=False)
 BearerCredentials = Annotated[HTTPAuthorizationCredentials | None, Security(security)]
 
@@ -140,12 +143,12 @@ def _throttle_keys(request: Request, username: str) -> tuple[str, str]:
 
 
 @router.get("/status")
-def authentication_status(request: Request) -> dict[str, bool]:
+async def authentication_status(request: Request) -> dict[str, bool]:
     return {"enabled": bool(request.app.state.settings.auth_enabled)}
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, request: Request) -> TokenResponse:
+async def login(body: LoginRequest, request: Request) -> TokenResponse:
     settings = request.app.state.settings
     limiter: LoginRateLimiter = request.app.state.login_rate_limiter
     now = datetime.now(UTC)
@@ -171,7 +174,9 @@ def login(body: LoginRequest, request: Request) -> TokenResponse:
         )
 
     username_matches = secrets.compare_digest(body.username, settings.admin_username)
-    password_matches = verify_password(body.password, settings.admin_password_hash)
+    password_matches = await asyncio.get_running_loop().run_in_executor(
+        PASSWORD_EXECUTOR, verify_password, body.password, settings.admin_password_hash
+    )
     if not username_matches or not password_matches:
         for key in keys:
             limiter.failed(key, now.timestamp())
@@ -210,7 +215,7 @@ def login(body: LoginRequest, request: Request) -> TokenResponse:
     )
 
 
-def get_current_admin(
+async def get_current_admin(
     request: Request,
     credentials: BearerCredentials = None,
 ) -> str:
@@ -235,8 +240,8 @@ def get_current_admin(
 
 
 @router.get("/me")
-def me(request: Request, credentials: BearerCredentials = None) -> dict[str, Any]:
-    username = get_current_admin(request, credentials)
+async def me(request: Request, credentials: BearerCredentials = None) -> dict[str, Any]:
+    username = await get_current_admin(request, credentials)
     return {"username": username, "role": "admin"}
 
 

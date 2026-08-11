@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -16,6 +17,7 @@ from app.config import Settings
 from app.main import create_app
 
 SECRET = "test-secret-key-that-is-at-least-32-bytes"
+ADMIN_PASSWORD_HASH = hash_password("password123")
 
 
 def authenticated_settings(tmp_path, name: str = "auth.db") -> Settings:
@@ -23,7 +25,7 @@ def authenticated_settings(tmp_path, name: str = "auth.db") -> Settings:
         database_url=f"sqlite:///{tmp_path / name}",
         auth_enabled=True,
         admin_username="admin",
-        admin_password_hash=hash_password("password123"),
+        admin_password_hash=ADMIN_PASSWORD_HASH,
         secret_key=SECRET,
         allow_fallback=True,
     )
@@ -243,11 +245,17 @@ async def test_sensitive_reads_deny_anonymous_access_while_bootstrap_and_probes_
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             for request_path in sensitive_paths:
-                response = await client.get(request_path)
+                try:
+                    response = await asyncio.wait_for(client.get(request_path), timeout=2)
+                except TimeoutError as exc:
+                    raise AssertionError(f"request timed out: {request_path}") from exc
                 assert response.status_code == 401, request_path
                 assert response.json() == {"detail": "Authentication required"}
             for request_path in public_paths:
-                response = await client.get(request_path)
+                try:
+                    response = await asyncio.wait_for(client.get(request_path), timeout=2)
+                except TimeoutError as exc:
+                    raise AssertionError(f"request timed out: {request_path}") from exc
                 assert response.status_code in {200, 503}, request_path
 
     schema = app.openapi()
