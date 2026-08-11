@@ -57,11 +57,24 @@ export function isElevated(severity: Severity): boolean {
   return severity === "high" || severity === "critical";
 }
 
+function isNetworkAddress(value: string): boolean {
+  const ipv4Parts = value.split(".");
+  if (ipv4Parts.length === 4 && ipv4Parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) {
+    return true;
+  }
+  if (!value.includes(":")) return false;
+  try {
+    return new URL(`http://[${value}]/`).hostname.length > 2;
+  } catch {
+    return false;
+  }
+}
+
 export function identityQuality(endpoint: string): IdentityQuality {
   const value = endpoint.trim();
   if (!value || value === "-" || /^unknown$/i.test(value) || /^n\/a$/i.test(value)) return "unknown";
   if (/^(?:port[:\s-]*)?\d{1,5}$/i.test(value)) return "port-only";
-  return "address";
+  return isNetworkAddress(value) ? "address" : "unknown";
 }
 
 function nodeId(endpoint: string): string {

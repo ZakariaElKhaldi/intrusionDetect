@@ -22,7 +22,7 @@ import {
   startReplay,
 } from "./api";
 import { sampleAlerts, sampleModels } from "./data";
-import { ReplayPanel } from "./features/overview/ReplayPanel";
+import { ReplayPanel, type ReplayPendingAction } from "./features/overview/ReplayPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import type { Alert, AlertStatus, DashboardSummary, HealthInfo, IngestionStatus, ModelInfo, Page, ReplayScenario, ReplayStatus } from "./types";
 import { pageTitles } from "./utils";
@@ -30,8 +30,9 @@ import { useAuth } from "./auth";
 
 type SocketState = "connecting" | "live" | "offline";
 const Overview = lazy(() => import("./features/overview/Overview").then((module) => ({ default: module.Overview })));
+const OverviewOperations = lazy(() => import("./features/overview/OverviewOperations").then((module) => ({ default: module.OverviewOperations })));
 const AlertWorkspace = lazy(() => import("./features/alerts/AlertWorkspace").then((module) => ({ default: module.AlertWorkspace })));
-const AlertDrawer = lazy(() => import("./features/alerts/AlertWorkspace").then((module) => ({ default: module.AlertDrawer })));
+const AlertDrawer = lazy(() => import("./features/alerts/AlertInvestigationDrawer").then((module) => ({ default: module.AlertDrawer })));
 const ModelAnalysis = lazy(() => import("./features/models/ModelAnalysis").then((module) => ({ default: module.ModelAnalysis })));
 const ObservationLab = lazy(() => import("./features/testing/ObservationLab").then((module) => ({ default: module.ObservationLab })));
 const TopologyWorkspace = lazy(() => import("./features/topology").then((module) => ({ default: module.TopologyWorkspace })));
@@ -75,6 +76,7 @@ function App() {
   const [models, setModels] = useState<ModelInfo[]>(fixtureMode ? sampleModels : []);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryRange, setSummaryRange] = useState<DashboardSummary["range"]>("24h");
+  const [summaryLoading, setSummaryLoading] = useState(!fixtureMode);
   const [summaryError, setSummaryError] = useState("");
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [healthChecked, setHealthChecked] = useState(false);
@@ -95,6 +97,7 @@ function App() {
   const [replayOffset, setReplayOffset] = useState(0);
   const [replayLimit, setReplayLimit] = useState(40);
   const [replayScenario, setReplayScenario] = useState<ReplayScenario>("attack");
+  const [replayPendingAction, setReplayPendingAction] = useState<ReplayPendingAction | null>(null);
   const pageRef = useRef(page);
   const mobileMore = useRef<HTMLDetailsElement>(null);
   const seenPredictions = useRef(new Set<string>());
@@ -113,7 +116,7 @@ function App() {
     setAlertsError("");
     setModelsError("");
     setHealthError("");
-    const [healthResult, alertsResult, modelsResult, summaryResult] = await Promise.allSettled([checkHealth(), getAlerts(), getModels(), getDashboardSummary(summaryRange)]);
+    const [healthResult, alertsResult, modelsResult] = await Promise.allSettled([checkHealth(), getAlerts(), getModels()]);
     if (healthResult.status === "fulfilled" && healthResult.value) setHealth(healthResult.value);
     else {
       setHealth(null);
@@ -126,9 +129,20 @@ function App() {
     else setModelsError(modelsResult.reason instanceof Error ? modelsResult.reason.message : "Model descriptors could not be loaded.");
     setAlertsLoading(false);
     setModelsLoading(false);
-    if (summaryResult.status === "fulfilled") { setSummary(summaryResult.value); setSummaryError(""); }
-    else setSummaryError(summaryResult.reason instanceof Error ? summaryResult.reason.message : "Dashboard summary could not be loaded.");
-  }, [fixtureMode, mergeAlerts, summaryRange]);
+  }, [fixtureMode, mergeAlerts]);
+
+  const loadSummary = useCallback(async () => {
+    if (fixtureMode) return;
+    setSummaryLoading(true);
+    setSummaryError("");
+    try {
+      setSummary(await getDashboardSummary(summaryRange));
+    } catch (error) {
+      setSummaryError(error instanceof Error ? error.message : "Dashboard summary could not be loaded.");
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [fixtureMode, summaryRange]);
 
   useEffect(() => {
     pageRef.current = page;
@@ -157,6 +171,14 @@ function App() {
     }
     void loadConnectedData();
   }, [fixtureMode, loadConnectedData]);
+
+  useEffect(() => {
+    if (fixtureMode) {
+      setSummaryLoading(false);
+      return;
+    }
+    void loadSummary();
+  }, [fixtureMode, loadSummary]);
 
   const loadIngestionStatus = useCallback(async () => {
     if (fixtureMode) return;
@@ -282,6 +304,7 @@ function App() {
         const next = await getReplayStatus();
         if (disposed) return;
         setReplay(next);
+        setReplayError("");
         if (["running", "paused"].includes(next.status)) {
           timer = window.setTimeout(poll, 500);
         }
@@ -299,10 +322,10 @@ function App() {
   useEffect(() => {
     if (replay?.status === "completed" && lastReplayStatus.current !== "completed") {
       void getAlerts().then((incoming) => setAlerts((current) => mergeAlerts(current, incoming))).catch(() => undefined);
-      void getDashboardSummary(summaryRange).then(setSummary).catch(() => undefined);
+      void loadSummary();
     }
     lastReplayStatus.current = replay?.status ?? null;
-  }, [mergeAlerts, replay?.status, summaryRange]);
+  }, [loadSummary, mergeAlerts, replay?.status]);
 
   const navigate = useCallback((nextPage: Page, params?: Record<string, string>) => {
     if (mobileMore.current) mobileMore.current.open = false;
@@ -356,6 +379,10 @@ function App() {
     if (fixtureMode) return;
     if (!auth.authenticated) { auth.openLogin(); return; }
     setReplayError("");
+    const action: ReplayPendingAction = !replay || ["idle", "completed", "stopped", "failed"].includes(replay.status)
+      ? "starting"
+      : replay.status === "running" ? "pausing" : "resuming";
+    setReplayPendingAction(action);
     try {
       if (!replay || ["idle", "completed", "stopped", "failed"].includes(replay.status)) {
         setReplay(await startReplay({
@@ -370,16 +397,21 @@ function App() {
       setReplay(await replayAction(action, replaySpeed));
     } catch (error) {
       setReplayError(error instanceof Error ? error.message : "Replay request failed.");
+    } finally {
+      setReplayPendingAction(null);
     }
   }, [auth, fixtureMode, replay, replayLimit, replayOffset, replayScenario, replaySpeed]);
 
   const stopReplay = useCallback(async () => {
     if (!auth.authenticated) { auth.openLogin(); return; }
     setReplayError("");
+    setReplayPendingAction("stopping");
     try {
       setReplay(await replayAction("stop", replaySpeed));
     } catch (error) {
       setReplayError(error instanceof Error ? error.message : "Could not stop replay.");
+    } finally {
+      setReplayPendingAction(null);
     }
   }, [auth, replaySpeed]);
 
@@ -397,6 +429,21 @@ function App() {
     && (health.components?.dataset?.status === undefined || health.components.dataset.status === "ready")
     && (health.components?.database?.status === undefined || health.components.database.status === "ready")
     && (health.components?.bundle?.status === undefined || health.components.bundle.status === "ready"));
+  const replayUnavailableReasons = fixtureMode
+    ? ["Fixture preview is read-only and does not send replay mutations."]
+    : !healthChecked
+      ? ["API readiness is still being checked."]
+      : !health
+        ? ["The API health endpoint is unavailable."]
+        : [
+          health.readiness && health.readiness !== "ready" ? `API readiness is ${health.readiness}.` : "",
+          ...(["dataset", "database", "bundle"] as const).map((name) => {
+            const component = health.components?.[name];
+            return component && component.status !== "ready"
+              ? `${name[0].toUpperCase()}${name.slice(1)} is ${component.status}${component.reason ? `: ${component.reason}` : "."}`
+              : "";
+          }),
+        ].filter(Boolean);
   const [title, subtitle] = pageTitles[page];
 
   return (
@@ -496,8 +543,10 @@ function App() {
                 speed={replaySpeed}
                 offset={replayOffset}
                 limit={replayLimit}
-                error={replayError || replay?.error || ""}
+                error={replayError}
                 disabled={fixtureMode || !replayReady}
+                unavailableReasons={replayUnavailableReasons}
+                pendingAction={replayPendingAction}
                 onScenario={setReplayScenario}
                 onSpeed={setReplaySpeed}
                 onOffset={setReplayOffset}
@@ -508,24 +557,32 @@ function App() {
               />
               <Overview
                 alerts={alerts}
-                health={health}
-                ingestion={ingestion}
-                ingestionLoading={ingestionLoading}
-                ingestionError={ingestionError}
                 fixtureMode={fixtureMode}
-                onRetryIngestion={() => void loadIngestionStatus()}
                 socketState={socketState}
                 lastUpdate={lastUpdate}
                 livePredictionCount={livePredictionCount}
                 summary={summary}
+                summaryLoading={summaryLoading}
                 summaryError={summaryError}
                 summaryRange={summaryRange}
                 onSummaryRange={setSummaryRange}
+                onRetrySummary={() => void loadSummary()}
                 alertsLoading={alertsLoading}
                 alertsError={alertsError}
                 onRetry={() => void loadConnectedData()}
                 onOpenAlert={openAlert}
                 onTimeBucket={openTimeBucket}
+                onViewAlertQueue={() => navigate("alerts")}
+              />
+              <OverviewOperations
+                health={health}
+                ingestion={ingestion}
+                ingestionLoading={ingestionLoading}
+                ingestionError={ingestionError}
+                fixtureMode={fixtureMode}
+                socketState={socketState}
+                lastUpdate={lastUpdate}
+                onRetryIngestion={() => void loadIngestionStatus()}
               />
             </div>
           ) : null}
@@ -547,6 +604,10 @@ function App() {
           {page === "topology" ? (
             <TopologyWorkspace
               alerts={alerts}
+              loading={alertsLoading}
+              error={alertsError}
+              onRetry={() => void loadConnectedData()}
+              fixtureMode={fixtureMode}
               onViewAlerts={(endpoint) => navigate("alerts", { q: endpoint })}
             />
           ) : null}

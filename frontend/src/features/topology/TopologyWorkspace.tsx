@@ -17,6 +17,10 @@ cytoscape.use(fcose);
 export interface TopologyWorkspaceProps {
   alerts: Alert[];
   onViewAlerts: (endpoint: string) => void;
+  loading?: boolean;
+  error?: string;
+  onRetry?: () => void;
+  fixtureMode?: boolean;
   reducedMotion?: boolean;
 }
 
@@ -102,7 +106,15 @@ function countLabel(count: number, singular: string, plural = `${singular}s`): s
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false }: TopologyWorkspaceProps) {
+export function TopologyWorkspace({
+  alerts,
+  onViewAlerts,
+  loading = false,
+  error = "",
+  onRetry,
+  fixtureMode = false,
+  reducedMotion = false,
+}: TopologyWorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const membershipRef = useRef("");
@@ -134,6 +146,9 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
     (current, node) => current === null || node.alertCount > current.alertCount ? node : current,
     null,
   );
+  const hasActiveFilters = Boolean(query.trim()) || protocol !== "all" || windowFilter !== "all" || elevatedOnly;
+  const sourceUnavailable = Boolean(error) && alerts.length === 0;
+  const initialLoading = loading && alerts.length === 0;
   nodeLookupRef.current = nodeById;
   edgeLookupRef.current = edgeById;
 
@@ -330,15 +345,51 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
     cy.layout(layoutOptions as cytoscape.LayoutOptions).run();
   };
 
+  const clearFilters = () => {
+    setQuery("");
+    setProtocol("all");
+    setWindowFilter("all");
+    setElevatedOnly(false);
+  };
+
+  const emptyMessage = initialLoading
+    ? "Loading relationship evidence…"
+    : sourceUnavailable
+      ? "Relationship evidence is unavailable."
+      : hasActiveFilters
+        ? "No routes match the current filters."
+        : "No relationship evidence is currently loaded.";
+
   return <section className="topology-workspace" aria-labelledby="topology-workspace-heading">
     <header className="topology-overview">
       <div><span className="eyebrow">Relationship evidence</span><h2 id="topology-workspace-heading">Communication paths</h2><p>Explore where alerts were observed, which direction traffic moved, and where unresolved high-risk activity remains.</p></div>
       <p className="topology-narrative" aria-live="polite">
-        {mostActiveEndpoint
+        {initialLoading
+          ? "Loading the current relationship evidence source."
+          : sourceUnavailable
+            ? "The relationship evidence source could not be reached."
+            : mostActiveEndpoint
           ? `${mostActiveEndpoint.endpoint} is the most active visible endpoint with ${mostActiveEndpoint.alertCount} alert${mostActiveEndpoint.alertCount === 1 ? "" : "s"}.`
           : "No endpoint relationships match the current filters."}
       </p>
     </header>
+    <div className="topology-scope" role="note">
+      <div>
+        <span className="eyebrow">Evidence scope</span>
+        <strong>{fixtureMode ? "Demonstration alert sample" : "Currently loaded alert cache"}</strong>
+      </div>
+      <p>
+        This map derives relationships from {countLabel(alerts.length, "loaded alert record")}, not the complete persisted corpus.
+        {fixtureMode ? " Values are illustrative and are not connected operational evidence." : " Use the alert queue for complete paged search."}
+      </p>
+    </div>
+    {loading && alerts.length > 0 ? <div className="topology-status topology-status--progress" role="status">
+      <div><strong>Refreshing relationship evidence</strong><span>The currently loaded cache remains available while the source updates.</span></div>
+    </div> : null}
+    {error && alerts.length > 0 ? <div className="topology-status topology-status--warning" role="alert">
+      <div><strong>Refresh failed — showing cached evidence</strong><span>{error}</span></div>
+      {onRetry ? <button type="button" className="secondary-button" onClick={onRetry}>Try again</button> : null}
+    </div> : null}
     <div className="topology-metrics" aria-label="Visible topology summary">
       <div><span>Visible evidence</span><b>{visibleAlerts.length}</b><small>{countLabel(visibleAlerts.length, "alert")} across {countLabel(graph.nodes.length, "endpoint")}</small></div>
       <div className={elevatedRoutes ? "topology-metric--risk" : ""}><span>Open elevated risk</span><b>{elevatedRoutes}</b><small>{countLabel(elevatedRoutes, "route")} · {countLabel(elevatedEndpoints, "endpoint")}</small></div>
@@ -368,6 +419,12 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
           {elevatedOnly ? "Elevated only" : "All activity"}
         </button>
       </div>
+      <button
+        type="button"
+        className="topology-clear-filters"
+        onClick={clearFilters}
+        disabled={!hasActiveFilters}
+      >Clear filters</button>
       <span className="topology-summary" aria-live="polite">
         {countLabel(graph.nodes.length, "endpoint")} · {countLabel(graph.edges.length, "directed route")} · {countLabel(visibleAlerts.length, "alert")}
       </span>
@@ -377,29 +434,34 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
       Some records identify endpoints by port or do not include an address. These nodes are limited observations, not confirmed devices.
     </p>}
 
-    <div className="topology-main">
+    {sourceUnavailable ? <div className="topology-status topology-status--error" role="alert">
+      <div><strong>Relationship evidence unavailable</strong><span>{error}</span></div>
+      {onRetry ? <button type="button" className="primary-button" onClick={onRetry}>Try again</button> : null}
+    </div> : null}
+
+    <div className="topology-main" aria-busy={loading || undefined}>
       <div className="topology-graph-panel">
-        <div className="topology-actions" aria-label="Map controls">
+        {graph.nodes.length > 0 ? <div className="topology-actions" aria-label="Map controls">
           <button type="button" onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 1.2)} aria-label="Zoom in">+</button>
           <button type="button" onClick={() => cyRef.current?.zoom(cyRef.current.zoom() / 1.2)} aria-label="Zoom out">−</button>
           <button type="button" onClick={() => cyRef.current?.fit(undefined, 40)} aria-label="Fit graph">Fit</button>
           <button type="button" onClick={resetLayout} aria-label="Reset graph layout">↻</button>
-        </div>
+        </div> : null}
         <div
           ref={containerRef}
           className="topology-graph"
           role="img"
           aria-label={`Directed network map with ${countLabel(graph.nodes.length, "endpoint")} and ${countLabel(graph.edges.length, "route")}. Use the adjacent structured explorer for keyboard access.`}
         />
-        <div className="topology-legend" aria-hidden="true">
+        {graph.nodes.length > 0 ? <div className="topology-legend" aria-hidden="true">
           <span><i className="topology-legend-risk" />Open high or critical risk</span>
           <span><i className="topology-legend-volume" />Size and width reflect alert volume</span>
-        </div>
-        {!graph.nodes.length && <p className="topology-empty">No routes match the current filters.</p>}
+        </div> : null}
+        {!graph.nodes.length && <p className="topology-empty" role={sourceUnavailable ? undefined : "status"}>{emptyMessage}</p>}
       </div>
 
       <aside className="topology-side" aria-label="Structured topology explorer">
-        <div className="topology-side-header"><div><span className="eyebrow">Non-visual map</span><h2>Explore relationships</h2></div></div>
+        <div className="topology-side-header"><div><span className="eyebrow">Structured evidence</span><h2>Explore exact relationships</h2><p>Ordered by open severity, unresolved count, then alert volume.</p></div></div>
         <TabList
           baseId="topology-inventory"
           label="Topology inventory"
@@ -413,7 +475,10 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
           className="topology-tabs"
         />
         {selection && <div className="topology-detail" aria-live="polite" aria-label="Selected relationship details">
-          <h3>{selection.kind === "node" ? selection.item.endpoint : `${selection.item.sourceEndpoint} → ${selection.item.targetEndpoint}`}</h3>
+          <div className="topology-detail-heading">
+            <h3>{selection.kind === "node" ? selection.item.endpoint : `${selection.item.sourceEndpoint} → ${selection.item.targetEndpoint}`}</h3>
+            <button type="button" className="topology-clear-selection" onClick={() => setSelection(null)}>Clear selection</button>
+          </div>
           <dl>
             <dt>Open risk</dt><dd>{selection.item.highestUnresolvedSeverity ?? "No unresolved alerts"}</dd>
             <dt>Highest observed</dt><dd>{selection.item.highestSeverity}</dd>
@@ -421,7 +486,7 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
             <dt>Unresolved</dt><dd>{selection.item.unresolvedCount}</dd>
             <dt>Protocols</dt><dd>{selection.item.protocols.join(", ") || "Unknown"}</dd>
             <dt>Last observed</dt><dd>{formatSeen(selection.item.lastSeen)}</dd>
-            {selection.kind === "node" && <><dt>Identity</dt><dd>{selection.item.identityQuality === "address" ? "Address observed" : "Limited endpoint identity"}</dd></>}
+            {selection.kind === "node" && <><dt>Identity</dt><dd>{selection.item.identityQuality === "address" ? "Network address observed" : "Limited endpoint identity"}</dd></>}
           </dl>
           <button
             type="button"

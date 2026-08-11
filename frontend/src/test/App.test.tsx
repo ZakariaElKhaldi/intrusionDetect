@@ -46,7 +46,7 @@ describe("dashboard", () => {
     }));
     render(<App />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Start replay" })).toBeEnabled());
-    expect(screen.getByRole("combobox", { name: "Replay speed" })).toHaveValue("1");
+    expect(screen.getByRole("spinbutton", { name: "Replay speed" })).toHaveValue(1);
     expect(screen.getByRole("combobox", { name: "Replay scenario" })).toHaveValue("attack");
     expect(screen.getByRole("spinbutton", { name: "Replay offset" })).toHaveValue(0);
     expect(screen.getByRole("spinbutton", { name: "Replay limit" })).toHaveValue(40);
@@ -68,9 +68,9 @@ describe("dashboard", () => {
     render(<App />);
     expect(screen.getByText("Fixture data · not connected evidence")).toBeInTheDocument();
     expect(screen.getByText("Read-only preview")).toBeInTheDocument();
-    expect(screen.getByText("Fixture alert evidence")).toBeInTheDocument();
-    expect(screen.getByText(/fixture unresolved across all severities/i)).toBeInTheDocument();
-    expect(screen.queryByText(/persisted unresolved across all severities/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Illustrative evidence")).toBeInTheDocument();
+    expect(screen.getByText(/fixture alerts remain unresolved/i)).toBeInTheDocument();
+    expect(screen.queryByText(/persisted workload summary/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Operator sign in" })).not.toBeInTheDocument();
   });
 

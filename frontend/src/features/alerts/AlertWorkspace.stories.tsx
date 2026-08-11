@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { sampleAlerts } from "../../data";
-import { AlertDrawer, AlertWorkspace } from "./AlertWorkspace";
+import { AlertWorkspace } from "./AlertWorkspace";
 
 const meta = {
   title: "Workspaces/Alerts/Alert queue",
@@ -18,7 +18,3 @@ export const PopulatedQueue: Story = {};
 export const IncomingAlerts: Story = { args: { pending: 3 } };
 export const EmptyQueue: Story = { args: { alerts: [] } };
 export const FailedLoad: Story = { args: { alerts: [], error: "The alert service did not respond." } };
-
-export const InvestigationDrawer: Story = {
-  render: () => <AlertDrawer alert={sampleAlerts[0]} onClose={() => undefined} onStatusChange={() => undefined} loadExplanation={false} readOnly />,
-};

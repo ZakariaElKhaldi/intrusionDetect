@@ -24,8 +24,11 @@ export interface AlertEvidence {
 
 export interface Alert {
   id: string;
+  event_id?: string;
   timestamp: string;
   attack_type: string;
+  binary_prediction?: "normal" | "attack";
+  attack_class?: string | null;
   confidence: number;
   severity: Severity;
   source_ip: string;
@@ -45,6 +48,16 @@ export interface Alert {
   reasons?: string[];
   evidence_type?: EvidenceType;
   identity_quality?: IdentityQuality;
+  network_context?: {
+    source_ip?: string | null;
+    destination_ip?: string | null;
+    source_port?: number | null;
+    destination_port?: number | null;
+    protocol?: string | null;
+    interface?: string | null;
+    capture_id?: string | null;
+    extractor_fingerprint?: string | null;
+  } | null;
   feedback?: AnalystFeedback[];
 }
 
@@ -131,7 +144,7 @@ export interface IngestionJob {
   state: IngestionJobState;
   attempts: number;
   error_code: string | null;
-  retryable: boolean;
+  retryable: boolean | null;
   redrive_count: number;
   source: string;
   schema_version: string;
@@ -139,6 +152,7 @@ export interface IngestionJob {
   created_at: string;
   updated_at: string;
   available_at: string;
+  lease_expires_at: string | null;
   completed_at: string | null;
   last_error: string | null;
 }
@@ -147,15 +161,25 @@ export interface IngestionTransition {
   transition_id: string;
   from_state: IngestionJobState | null;
   to_state: IngestionJobState;
+  reason_code: string;
   action: string;
-  attempt: number;
+  attempt: number | null;
   error_code: string | null;
-  actor: string;
+  retryable: boolean | null;
+  worker_id: string | null;
+  operator: string | null;
+  actor: string | null;
   reason: string | null;
+  details: Record<string, unknown>;
+  occurred_at: string;
   created_at: string;
 }
 
 export interface IngestionJobDetail extends IngestionJob {
+  last_redriven_at: string | null;
+  last_redriven_by: string | null;
+  last_redrive_reason: string | null;
+  model_version: string | null;
   transitions: IngestionTransition[];
 }
 
@@ -249,7 +273,7 @@ export interface DashboardSummary {
   checked_at: string;
   generated_at: string;
   window: { from: string | null; to: string };
-  scope: { source: string; time_field: string; range: string; from: string | null; to: string; bucket_minutes: number; includes: string[] };
+  scope: { source: string; time_field: string; range: string; from: string | null; to: string; bucket_minutes: number; includes: string[]; aggregation: string };
   persisted_totals: { predictions: number; alerts: number; unresolved_alerts: number };
   predictions: { total: number; attack: number; normal: number };
   alerts: { total: number; open: number; unresolved: number; critical_open: number; resolved: number; false_positive: number };
@@ -346,6 +370,8 @@ export interface EvaluationCandidate extends ModelInfo {
   selection_metric?: string;
   selection_value?: number;
   test_metrics?: Record<string, number>;
+  validation_metrics?: Record<string, number>;
+  operational_metrics?: Record<string, number>;
   seed_metrics?: Record<string, number>[];
   selection_summary?: Record<string, number>;
   support?: Record<string, number>;
@@ -356,6 +382,9 @@ export interface EvaluationReport {
   probability_calibrated?: boolean;
   candidates: EvaluationCandidate[];
   selected_champion?: string;
+  selected_champion_details?: Record<string, unknown>;
+  evaluation_seeds?: number[];
+  split_definition?: Record<string, unknown>;
   measurement_notes: string[];
   split_notes?: string;
   threshold_analysis?: ThresholdAnalysis;
@@ -391,6 +420,8 @@ export interface ModelInfo {
   evaluation_scope?: string;
   role?: "detector" | "classifier" | "candidate";
   probability_calibrated?: boolean;
+  schema_version?: string;
+  artifact_registered?: boolean;
 }
 
 export interface LivePrediction {

@@ -4,20 +4,20 @@ import {
   CircleAlert,
   Clock3,
   Crosshair,
-  DatabaseZap,
+  Database,
   Radio,
+  ShieldCheck,
 } from "lucide-react";
-import { useMemo } from "react";
-import {
-  DetectionRankingChart,
-  ProtocolDistributionChart,
-} from "../../components/charts";
+import { useId, useMemo } from "react";
 import { PanelHeading } from "../../components/PanelHeading";
 import { SeverityLabel } from "../../components/SeverityLabel";
-import type { Alert, DashboardSummary, HealthInfo, IngestionPipelineState, IngestionStatus } from "../../types";
+import type { Alert, DashboardSummary } from "../../types";
 import { formatTime } from "../../utils";
-import { IngestionOperations } from "./IngestionOperations";
-import { SystemHealthPanel } from "./SystemHealthPanel";
+
+const terminalStatuses = new Set(["resolved", "false_positive"]);
+const rangeLabels: Record<DashboardSummary["range"], string> = {
+  "15m": "Last 15 minutes", "1h": "Last hour", "24h": "Last 24 hours", "7d": "Last 7 days", all: "All persisted records",
+};
 
 function median(values: number[]) {
   if (!values.length) return 0;
@@ -26,115 +26,68 @@ function median(values: number[]) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function Metric({
-  label,
-  value,
-  detail,
-  icon: Icon,
-  attention = false,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: typeof CircleAlert;
-  attention?: boolean;
-}) {
-  return (
-    <article className={`metric ${attention ? "metric--attention" : ""}`}>
-      <span className="metric-label">{label}<Icon aria-hidden="true" /></span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
-    </article>
-  );
+function countBy(alerts: Alert[], value: (alert: Alert) => string) {
+  return alerts.reduce<Record<string, number>>((counts, alert) => {
+    const key = value(alert) || "unknown";
+    counts[key] = (counts[key] ?? 0) + 1;
+    return counts;
+  }, {});
 }
 
-function CountBars({ values, label }: { values: Record<string, number>; label: string }) {
-  const rows=Object.entries(values).sort((a,b)=>b[1]-a[1]); const max=Math.max(...rows.map(([,value])=>value),1);
-  return <div className="count-bars" aria-label={label}>{rows.length?rows.map(([name,value])=><div key={name}><span>{name}</span><i style={{width:`${value/max*100}%`}} aria-hidden="true"/><b>{value}</b></div>):<div className="chart-empty">No persisted records in this range.</div>}</div>;
+function humanize(value: string) {
+  return value.replaceAll("_", " ");
 }
 
-function PersistedTimeline({ summary, onSelect }: { summary: DashboardSummary; onSelect: (start:string, bucketMinutes?:number)=>void }) {
-  const max=Math.max(...summary.severity_timeline.map((row)=>row.total),1);
-  return <div className="summary-timeline" aria-label="Persisted alerts by severity and time"><div className="timeline-bars">{summary.severity_timeline.map((row)=><button key={row.bucket_start} onClick={()=>onSelect(row.bucket_start,summary.scope.bucket_minutes)} aria-label={`${row.total} alerts at ${new Date(row.bucket_start).toLocaleString()}`} style={{height:`${Math.max(2,row.total/max*100)}%`}}><span className="sr-only">{row.total}</span></button>)}</div><div className="preview-scroll"><table><caption>Exact persisted alert buckets · {summary.scope.bucket_minutes}-minute intervals</caption><thead><tr><th>Bucket</th><th>Total</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th></tr></thead><tbody>{summary.severity_timeline.map((row)=><tr key={row.bucket_start}><td><button className="text-button" onClick={()=>onSelect(row.bucket_start,summary.scope.bucket_minutes)}>{new Date(row.bucket_start).toLocaleString()}</button></td><td>{row.total}</td><td>{row.critical}</td><td>{row.high}</td><td>{row.medium}</td><td>{row.low}</td></tr>)}</tbody></table></div></div>;
+function OverviewMetric({ label, value, detail, icon: Icon, attention = false }: { label: string; value: string; detail: string; icon: typeof CircleAlert; attention?: boolean }) {
+  return <article className={`briefing-metric ${attention ? "briefing-metric--attention" : ""}`}><span>{label}<Icon aria-hidden="true" /></span><strong>{value}</strong><small>{detail}</small></article>;
 }
 
-function formatDuration(seconds: number | null) {
-  if (seconds == null) return "None pending";
-  if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-  return `${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
+function DistributionList({ values, label, order = [] }: { values: Record<string, number>; label: string; order?: string[] }) {
+  const entries = Object.entries(values).sort((left, right) => {
+    const leftOrder = order.indexOf(left[0]);
+    const rightOrder = order.indexOf(right[0]);
+    if (leftOrder >= 0 || rightOrder >= 0) return (leftOrder < 0 ? order.length : leftOrder) - (rightOrder < 0 ? order.length : rightOrder);
+    return right[1] - left[1] || left[0].localeCompare(right[0]);
+  });
+  const max = Math.max(...entries.map(([, value]) => value), 1);
+  if (!entries.length) return <div className="overview-empty-inline">No records in this evidence window.</div>;
+  return <ol className="overview-distribution" aria-label={label}>{entries.map(([name, value]) => <li key={name}><span>{humanize(name)}</span><i aria-hidden="true"><b className={`distribution-fill distribution-fill--${name}`} style={{ width: `${value / max * 100}%` }} /></i><strong>{value.toLocaleString()}</strong></li>)}</ol>;
 }
 
-function ingestionState(status: IngestionStatus): IngestionPipelineState {
-  if (status.dead_letter > 0) return "dead_letter";
-  if (status.worker.status === "blocked") return "offline";
-  if (status.retrying > 0) return "retrying";
-  if (status.queue_depth > 0 || status.worker.status === "degraded" || status.outbox.status === "degraded") return "backlogged";
-  return status.processing > 0 ? "healthy" : "idle";
+function DistributionPanel({ eyebrow, title, description, values, order }: { eyebrow: string; title: string; description: string; values: Record<string, number>; order?: string[] }) {
+  return <section className="panel overview-distribution-panel"><PanelHeading eyebrow={eyebrow} title={title} description={description}/><DistributionList values={values} label={`${title} exact counts`} order={order}/></section>;
 }
 
-function stateLabel(state: IngestionPipelineState) {
-  return state === "dead_letter" ? "Dead-letter jobs need attention" : state === "backlogged" ? "Queue backlog" : state === "retrying" ? "Jobs retrying" : state === "offline" ? "Worker offline" : state === "idle" ? "Idle and ready" : "Processing normally";
+function PersistedTimeline({ summary, onSelect }: { summary: DashboardSummary; onSelect: (start: string, bucketMinutes?: number) => void }) {
+  const detailsId = useId();
+  const rows = summary.severity_timeline;
+  const max = Math.max(...rows.map((row) => row.total), 1);
+  const peak = rows.reduce<(typeof rows)[number] | null>((current, row) => !current || row.total > current.total ? row : current, null);
+  const criticalTotal = rows.reduce((total, row) => total + row.critical, 0);
+  const plotLabel = rows.length
+    ? `${rows.length} alert intervals. Peak ${peak?.total ?? 0} alerts at ${peak ? new Date(peak.bucket_start).toLocaleString() : "none"}. ${criticalTotal} critical alerts. Exact interval table follows.`
+    : "No persisted alert intervals in this evidence window. Exact interval table follows.";
+  return <figure className="overview-timeline" aria-labelledby={detailsId}>
+    <figcaption id={detailsId}><strong>Window pattern</strong><span>{peak?.total ? `Peak ${peak.total.toLocaleString()} at ${new Date(peak.bucket_start).toLocaleString()} · ${criticalTotal.toLocaleString()} critical across the window` : "No alert activity in this window"}</span></figcaption>
+    <div className="overview-timeline-legend" aria-hidden="true"><span className="critical">Critical</span><span className="high">High</span><span className="medium">Medium</span><span className="low">Low</span></div>
+    <div className="overview-timeline-plot" role="img" aria-label={plotLabel}>{rows.map((row) => <span className="overview-timeline-column" key={row.bucket_start} style={{ height: row.total ? `${Math.max(3, row.total / max * 100)}%` : 0 }} aria-hidden="true">{(["critical", "high", "medium", "low"] as const).map((severity) => row[severity] ? <i className={`timeline-segment timeline-segment--${severity}`} style={{ height: `${row[severity] / row.total * 100}%` }} key={severity}/> : null)}</span>)}</div>
+    <details className="overview-timeline-details"><summary>Inspect and open exact intervals <small>{rows.length.toLocaleString()} buckets · {summary.scope.bucket_minutes}-minute resolution</small></summary><div className="overview-table-scroll" role="region" aria-label="Exact persisted alert intervals" tabIndex={0}><table><caption>Persisted alert counts by {summary.scope.bucket_minutes}-minute interval</caption><thead><tr><th scope="col">Interval start</th><th scope="col">Total</th><th scope="col">Critical</th><th scope="col">High</th><th scope="col">Medium</th><th scope="col">Low</th></tr></thead><tbody>{rows.map((row) => <tr key={row.bucket_start}><th scope="row">{row.total ? <button className="text-button" type="button" onClick={() => onSelect(row.bucket_start, summary.scope.bucket_minutes)}>Open {new Date(row.bucket_start).toLocaleString()}</button> : new Date(row.bucket_start).toLocaleString()}</th><td>{row.total}</td><td>{row.critical}</td><td>{row.high}</td><td>{row.medium}</td><td>{row.low}</td></tr>)}</tbody></table></div></details>
+  </figure>;
 }
 
-export function IngestionStatusPanel({ status, loading, error, fixtureMode, onRetry }: { status: IngestionStatus | null; loading: boolean; error: string; fixtureMode: boolean; onRetry: () => void }) {
-  if (fixtureMode) {
-    return <section className="panel ingestion-panel" aria-label="Ingestion pipeline"><PanelHeading eyebrow="Live input" title="Ingestion pipeline" description="Queue and worker evidence is available only from a connected API."/><div className="data-state" role="note">Fixture preview is read-only. No ingestion request was made.</div></section>;
-  }
-  if (loading && !status) {
-    return <section className="panel ingestion-panel" aria-label="Ingestion pipeline"><PanelHeading eyebrow="Live input" title="Ingestion pipeline" description="Durable queue and worker activity."/><div className="data-state" role="status">Loading ingestion status…</div></section>;
-  }
-  if (error && !status) {
-    return <section className="panel ingestion-panel ingestion-panel--offline" aria-label="Ingestion pipeline"><PanelHeading eyebrow="Live input" title="Ingestion pipeline" description="Durable queue and worker activity."/><div className="data-state data-state--error" role="alert"><span>Ingestion status is offline. {error}</span><button className="secondary-button" type="button" onClick={onRetry}>Retry ingestion status</button></div></section>;
-  }
-  if (!status) return null;
-  const state = ingestionState(status);
-  const heartbeat = status.worker.last_heartbeat_at ? new Date(status.worker.last_heartbeat_at).toLocaleString() : "Not reported";
-  return (
-    <section className={`panel ingestion-panel ingestion-panel--${state}`} aria-label="Ingestion pipeline" data-ingestion-state={state}>
-      <PanelHeading eyebrow="Live input" title="Ingestion pipeline" description="Durable intake, worker progress, and delivery pressure." action={<span className="ingestion-state"><i aria-hidden="true"/>{stateLabel(state)}</span>}/>
-      {error ? <div className="ingestion-stale" role="alert">The latest refresh failed; showing the last successful snapshot. <button className="text-button" type="button" onClick={onRetry}>Retry</button></div> : null}
-      <dl className="ingestion-metrics">
-        <div><dt>Queued</dt><dd><span>{status.queue_depth.toLocaleString()}</span><small>events waiting</small></dd></div>
-        <div><dt>Oldest pending</dt><dd><span>{formatDuration(status.oldest_pending_age_seconds)}</span><small>queue wait age</small></dd></div>
-        <div><dt>Throughput</dt><dd><span>{status.throughput_per_minute.toLocaleString(undefined, { maximumFractionDigits: 1 })}/min</span><small>processed events</small></dd></div>
-        <div><dt>Retrying</dt><dd><span>{status.retrying.toLocaleString()}</span><small>{status.retries.toLocaleString()} total retries</small></dd></div>
-        <div><dt>Dead letter</dt><dd><span>{status.dead_letter.toLocaleString()}</span><small>{status.failures.toLocaleString()} failures</small></dd></div>
-        <div><dt>Worker</dt><dd><span>{status.worker.status}</span><small title={heartbeat}>Heartbeat {heartbeat}</small></dd></div>
-      </dl>
-      <p className="ingestion-outbox"><DatabaseZap aria-hidden="true"/> {status.outbox.pending.toLocaleString()} committed events await publication; {status.outbox.published.toLocaleString()} published.</p>
-    </section>
-  );
+function EvidenceScope({ summary, requestedRange, loading, error, fixtureMode, onRange, onRetry }: { summary: DashboardSummary | null; requestedRange: DashboardSummary["range"]; loading: boolean; error: string; fixtureMode: boolean; onRange?: (range: DashboardSummary["range"]) => void; onRetry?: () => void }) {
+  const showingPrevious = Boolean(summary && summary.range !== requestedRange);
+  return <section className={`panel monitoring-scope ${fixtureMode ? "monitoring-scope--fixture" : ""}`} aria-labelledby="situation-briefing-title">
+    <div className="monitoring-scope-heading"><div><span className="eyebrow">{fixtureMode ? "Illustrative evidence" : "Persisted situation evidence"}</span><h2 id="situation-briefing-title">Situation briefing</h2><p>{fixtureMode ? "Generated alert records demonstrate layout and interaction only; they are not a database query." : "Understand the persisted detection workload first, then move into exact alert and operations evidence."}</p></div>{!fixtureMode ? <label>Evidence window<select value={requestedRange} onChange={(event) => onRange?.(event.target.value as DashboardSummary["range"])}><option value="15m">Last 15 minutes</option><option value="1h">Last hour</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="all">All persisted records</option></select></label> : null}</div>
+    {loading ? <div className="monitoring-refresh" role="status">{showingPrevious ? `Loading ${rangeLabels[requestedRange]}; the previous ${rangeLabels[summary!.range].toLocaleLowerCase()} snapshot remains visible.` : "Loading persisted summary…"}</div> : null}
+    {error ? <div className="monitoring-refresh monitoring-refresh--error" role="alert"><span><strong>{summary ? "Showing the last successful summary" : "Persisted summary is unavailable"}</strong>{error}</span>{onRetry ? <button type="button" className="secondary-button" onClick={onRetry}>Retry summary</button> : null}</div> : null}
+    {summary ? <><dl className="monitoring-scope-facts"><div><dt>Displayed window</dt><dd>{rangeLabels[summary.range]}<small>{new Date(summary.window.from ?? summary.window.to).toLocaleString()} to {new Date(summary.window.to).toLocaleString()}</small></dd></div><div><dt>Persisted totals</dt><dd>{summary.persisted_totals.predictions.toLocaleString()} predictions · {summary.persisted_totals.alerts.toLocaleString()} alerts<small>{summary.persisted_totals.unresolved_alerts.toLocaleString()} unresolved alert records</small></dd></div><div><dt>Aggregation</dt><dd>{humanize(summary.scope.aggregation)}<small>{summary.scope.bucket_minutes}-minute buckets on {summary.scope.time_field}</small></dd></div></dl><details className="monitoring-scope-details"><summary>Exact summary provenance</summary><dl><div><dt>Source</dt><dd className="mono">{summary.scope.source}</dd></div><div><dt>Includes</dt><dd>{summary.scope.includes.join(" · ")}</dd></div><div><dt>Requested range</dt><dd>{summary.scope.range}</dd></div><div><dt>Scope from</dt><dd>{summary.scope.from ? new Date(summary.scope.from).toLocaleString() : "Beginning of persisted records"}</dd></div><div><dt>Scope to</dt><dd>{new Date(summary.scope.to).toLocaleString()}</dd></div><div><dt>Checked</dt><dd>{new Date(summary.checked_at).toLocaleString()}</dd></div><div><dt>Generated</dt><dd>{new Date(summary.generated_at).toLocaleString()}</dd></div></dl></details></> : !loading && !error && !fixtureMode ? <div className="monitoring-refresh" role="status">No persisted summary has been loaded.</div> : null}
+  </section>;
 }
 
-export function Overview({
-  alerts,
-  health,
-  ingestion,
-  ingestionLoading,
-  ingestionError,
-  fixtureMode,
-  onRetryIngestion,
-  socketState,
-  lastUpdate,
-  livePredictionCount,
-  alertsLoading,
-  alertsError,
-  onRetry,
-  summary,
-  summaryError,
-  summaryRange,
-  onSummaryRange,
-  onOpenAlert,
-  onTimeBucket,
-}: {
+export interface OverviewProps {
   alerts: Alert[];
-  health: HealthInfo | null;
-  ingestion: IngestionStatus | null;
-  ingestionLoading: boolean;
-  ingestionError: string;
   fixtureMode: boolean;
-  onRetryIngestion: () => void;
   socketState: "connecting" | "live" | "offline";
   lastUpdate: Date | null;
   livePredictionCount: number;
@@ -142,112 +95,42 @@ export function Overview({
   alertsError?: string;
   onRetry?: () => void;
   summary?: DashboardSummary | null;
+  summaryLoading?: boolean;
   summaryError?: string;
   summaryRange?: DashboardSummary["range"];
   onSummaryRange?: (range: DashboardSummary["range"]) => void;
+  onRetrySummary?: () => void;
   onOpenAlert: (alert: Alert) => void;
   onTimeBucket: (start: string, bucketMinutes?: number) => void;
-}) {
-  const openAlerts = alerts.filter((alert) => !["resolved", "false_positive"].includes(alert.status));
+  onViewAlertQueue?: () => void;
+}
+
+export function Overview({ alerts, fixtureMode, socketState, lastUpdate, livePredictionCount, alertsLoading = false, alertsError = "", onRetry, summary = null, summaryLoading = false, summaryError = "", summaryRange = "24h", onSummaryRange, onRetrySummary, onOpenAlert, onTimeBucket, onViewAlertQueue }: OverviewProps) {
+  const openAlerts = alerts.filter((alert) => !terminalStatuses.has(alert.status));
   const critical = openAlerts.filter((alert) => alert.severity === "critical");
-  const endpoints = new Set(alerts.flatMap((alert) => [alert.source_ip, alert.destination_ip]));
-  const medianConfidence = median(alerts.map((alert) => alert.confidence));
-  const recent = useMemo(
-    () => openAlerts
-      .filter((alert) => alert.severity !== "normal")
-      .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))
-      .slice(0, 6),
-    [openAlerts],
-  );
+  const endpoints = new Set(alerts.flatMap((alert) => [alert.source_ip, alert.destination_ip]).filter(Boolean));
+  const fixtureMedian = median(alerts.map((alert) => alert.confidence));
+  const recent = useMemo(() => [...openAlerts].filter((alert) => alert.severity !== "normal").sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp)).slice(0, 6), [openAlerts]);
+  const fixtureSeverity = useMemo(() => countBy(alerts, (alert) => alert.severity), [alerts]);
+  const fixtureStatus = useMemo(() => countBy(alerts, (alert) => alert.status), [alerts]);
+  const fixtureFamilies = useMemo(() => countBy(alerts, (alert) => alert.attack_type), [alerts]);
+  const fixtureProtocols = useMemo(() => countBy(alerts, (alert) => alert.protocol), [alerts]);
+  const topFamily = Object.entries(summary?.family_counts ?? fixtureFamilies).sort((left, right) => right[1] - left[1])[0];
 
-  return (
-    <div className="overview-grid">
-      <div className={`summary-scope ${fixtureMode ? "summary-scope--fixture" : ""}`}><span>{fixtureMode ? "Fixture alert evidence" : "Persisted database evidence"}</span>{fixtureMode ? <small>Generated preview records · not a time-bounded database query</small> : <><label>Evidence window <select value={summaryRange ?? "24h"} onChange={(event)=>onSummaryRange?.(event.target.value as DashboardSummary["range"])}><option value="15m">15 minutes</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="all">All persisted</option></select></label>{summary ? <small>Generated {new Date(summary.generated_at).toLocaleString()} · {summary.scope.bucket_minutes}-minute buckets · time field {summary.scope.time_field}</small> : null}</>}</div>
-      <section className="metrics-grid" aria-label="Current alert posture">
-        <Metric
-          label={summary ? "Persisted predictions" : "Live predictions"}
-          value={String(summary?.predictions.total ?? livePredictionCount)}
-          detail={summary ? `${summary.range} window: ${summary.predictions.attack} attack / ${summary.predictions.normal} normal · ${livePredictionCount} live this session` : "Live events received since this page opened"}
-          icon={Radio}
-        />
-        <Metric
-          label="Open critical"
-          value={String(summary?.alerts.critical_open ?? critical.length)}
-          detail={`${summary?.alerts.unresolved ?? openAlerts.length} ${summary ? "persisted" : fixtureMode ? "fixture" : "loaded"} unresolved across all severities`}
-          icon={CircleAlert}
-          attention={critical.length > 0}
-        />
-        <Metric
-          label="Observed endpoints"
-          value={String(endpoints.size)}
-          detail="Distinct route labels present in alerts"
-          icon={Boxes}
-        />
-        <Metric
-          label="Median detector score"
-          value={summary?.median_detection_score == null ? `${(medianConfidence * 100).toFixed(1)}%` : `${(summary.median_detection_score * 100).toFixed(1)}%`}
-          detail={`${summary ? "Persisted" : fixtureMode ? "Fixture" : "Loaded"} detector values; probability semantics follow each prediction's serving artifact`}
-          icon={Crosshair}
-        />
-      </section>
+  return <div className="overview-workspace">
+    <EvidenceScope summary={summary} requestedRange={summaryRange} loading={summaryLoading} error={summaryError} fixtureMode={fixtureMode} onRange={onSummaryRange} onRetry={onRetrySummary}/>
 
-      <SystemHealthPanel health={health} socketState={socketState} lastUpdate={lastUpdate} fixtureMode={fixtureMode} />
+    {summary ? <section className="briefing-metrics" aria-label="Persisted workload summary"><OverviewMetric label="Predictions" value={summary.predictions.total.toLocaleString()} detail={`${summary.predictions.attack.toLocaleString()} attack · ${summary.predictions.normal.toLocaleString()} normal`} icon={Radio}/><OverviewMetric label="Alert records" value={summary.alerts.total.toLocaleString()} detail={`${summary.alerts.resolved.toLocaleString()} resolved · ${summary.alerts.false_positive.toLocaleString()} false positive`} icon={ShieldCheck}/><OverviewMetric label="Unresolved work" value={summary.alerts.unresolved.toLocaleString()} detail={`${summary.alerts.open.toLocaleString()} open under the backend terminal-state contract`} icon={CircleAlert} attention={summary.alerts.unresolved > 0}/><OverviewMetric label="Open critical" value={summary.alerts.critical_open.toLocaleString()} detail="Critical alerts not resolved or false positive" icon={CircleAlert} attention={summary.alerts.critical_open > 0}/><OverviewMetric label="Median detector score" value={summary.median_detection_score == null ? "Not reported" : `${(summary.median_detection_score * 100).toFixed(1)}%`} detail="Persisted model output; probability meaning follows each artifact" icon={Crosshair}/></section> : fixtureMode ? <section className="briefing-metrics briefing-metrics--fixture" aria-label="Fixture workload summary"><OverviewMetric label="Fixture alerts" value={alerts.length.toLocaleString()} detail="Generated records, not persisted totals" icon={ShieldCheck}/><OverviewMetric label="Fixture unresolved" value={openAlerts.length.toLocaleString()} detail="Illustrative open workload" icon={CircleAlert}/><OverviewMetric label="Fixture critical" value={critical.length.toLocaleString()} detail="Illustrative high-attention records" icon={CircleAlert}/><OverviewMetric label="Median fixture score" value={`${(fixtureMedian * 100).toFixed(1)}%`} detail="Generated model scores, not measured performance" icon={Crosshair}/></section> : null}
 
-      <IngestionStatusPanel status={ingestion} loading={ingestionLoading} error={ingestionError} fixtureMode={fixtureMode} onRetry={onRetryIngestion}/>
-      <IngestionOperations fixtureMode={fixtureMode} refreshKey={ingestion?.generated_at}/>
+    <section className="panel overview-attention" aria-label="Situation interpretation"><div><span className="eyebrow">Attention brief</span><strong>{summary ? summary.alerts.critical_open ? `${summary.alerts.critical_open.toLocaleString()} critical alerts remain open` : summary.alerts.unresolved ? `${summary.alerts.unresolved.toLocaleString()} alerts remain unresolved` : "No unresolved alerts in this persisted window" : fixtureMode ? `${openAlerts.length.toLocaleString()} fixture alerts remain unresolved` : "Persisted workload not available"}</strong><p>{topFamily ? `${humanize(topFamily[0])} is the most represented family with ${topFamily[1].toLocaleString()} alert${topFamily[1] === 1 ? "" : "s"}.` : "No detection family is represented in the available evidence."}</p></div><dl aria-label="Browser session and loaded-cache context"><div><dt>Live predictions</dt><dd>{livePredictionCount.toLocaleString()}<small>this browser session</small></dd></div><div><dt>Loaded alerts</dt><dd>{alerts.length.toLocaleString()}<small>cache, not full corpus</small></dd></div><div><dt>Route labels</dt><dd>{endpoints.size.toLocaleString()}<small>within loaded alerts</small></dd></div><div><dt>Live stream</dt><dd>{fixtureMode ? "Fixture" : humanize(socketState)}<small>{lastUpdate ? `Last event ${formatTime(lastUpdate.toISOString())}` : "No event received"}</small></dd></div></dl></section>
 
-      <div className="overview-primary">
-        <section className="panel timeline-panel">
-          <PanelHeading
-            eyebrow="Investigation timeline"
-            title="Alerts by severity"
-            description={`${summary?.scope.bucket_minutes ?? 5}-minute buckets. Select a bar to inspect alerts from that interval.`}
-            action={<span className="panel-heading-meta">{summary?.alerts.total ?? alerts.length} alerts</span>}
-          />
-          {summary ? <PersistedTimeline summary={summary} onSelect={onTimeBucket}/> : alertsLoading ? <div className="data-state" role="status">Loading persisted timeline…</div> : (summaryError || alertsError) ? <div className="data-state data-state--error" role="alert"><span>{summaryError || alertsError}</span>{onRetry ? <button className="secondary-button" onClick={onRetry}>Retry summary</button> : null}</div> : <div className="chart-empty">Persisted timeline unavailable in fixture preview. Connect the API to inspect time-bucket evidence.</div>}
-        </section>
+    <div className="overview-decision-grid">
+      <section className="panel overview-timeline-panel"><PanelHeading eyebrow="Persisted chronology" title="Alert activity by severity" description={summary ? `${summary.scope.bucket_minutes}-minute database buckets. Open the exact table to investigate an interval.` : "A connected persisted summary is required for a time-window chronology."} action={summary ? <span className="panel-heading-meta">{summary.alerts.total.toLocaleString()} alerts</span> : undefined}/>{summary ? <PersistedTimeline summary={summary} onSelect={onTimeBucket}/> : summaryLoading ? <div className="data-state" role="status">Loading persisted chronology…</div> : summaryError ? <div className="data-state data-state--error" role="alert"><span>{summaryError}</span>{onRetrySummary ? <button type="button" className="secondary-button" onClick={onRetrySummary}>Retry summary</button> : null}</div> : <div className="data-state" role={fixtureMode ? "note" : "status"}>{fixtureMode ? "Fixture alerts are not projected onto a fabricated persisted timeline." : "No persisted chronology is available."}</div>}</section>
 
-        <section className="panel">
-          <PanelHeading
-            eyebrow="Detection workload"
-            title="Detection families"
-            description="Total alerts split into resolved and unresolved work."
-          />
-          {summary ? <CountBars values={summary.family_counts} label="Persisted detection families"/> : alerts.length ? <DetectionRankingChart alerts={alerts} height={340} /> : <div className="chart-empty">No detection families recorded.</div>}
-        </section>
-
-        <section className="panel">
-          <PanelHeading
-            eyebrow="Investigation queue"
-            title="Recent unresolved alerts"
-            description="Ordered by observation time; selecting a row preserves the surrounding list."
-            action={<Clock3 aria-hidden="true" size={15} />}
-          />
-          <div className="recent-list">
-            {recent.map((alert) => (
-              <button key={alert.id} className="recent-alert" onClick={() => onOpenAlert(alert)}>
-                <span className={`recent-icon recent-icon--${alert.severity}`} aria-hidden="true">!</span>
-                <span><b>{alert.attack_type}</b><small>{alert.source_ip} to {alert.destination_ip}</small></span>
-                <SeverityLabel severity={alert.severity} />
-                <time dateTime={alert.timestamp}>{formatTime(alert.timestamp)}</time>
-                <ArrowRight aria-hidden="true" size={13} />
-              </button>
-            ))}
-            {!recent.length && <div className="chart-empty">No unresolved alerts in the current dataset.</div>}
-          </div>
-        </section>
-      </div>
-
-      <div className="overview-side">
-        <section className="panel">
-          <PanelHeading
-            eyebrow="Composition"
-            title="Protocols among alerts"
-            description="Distribution within alert records, not all network traffic."
-          />
-          {summary ? <CountBars values={summary.protocol_counts} label="Persisted alert protocols"/> : alerts.length ? <ProtocolDistributionChart alerts={alerts} height={225} /> : <div className="chart-empty">No alert protocols recorded.</div>}
-        </section>
-      </div>
+      <section className="panel overview-queue-preview"><PanelHeading eyebrow="Loaded-cache handoff" title="Recent unresolved alerts" description="The complete persisted search and ordering contract lives in the alert queue." action={onViewAlertQueue ? <button className="text-button" type="button" onClick={onViewAlertQueue}>Open full queue <ArrowRight aria-hidden="true"/></button> : <Clock3 aria-hidden="true" size={15}/>}/>{alertsError ? <div className="overview-inline-error" role="alert"><span>Loaded alert cache may be stale. {alertsError}</span>{onRetry ? <button type="button" className="text-button" onClick={onRetry}>Retry alerts</button> : null}</div> : null}{alertsLoading && !alerts.length ? <div className="data-state" role="status">Loading recent alerts…</div> : <div className="recent-list">{recent.map((alert) => <button key={alert.id} className="recent-alert" type="button" aria-label={`Open ${alert.severity} ${alert.attack_type} alert ${alert.id}`} onClick={() => onOpenAlert(alert)}><span className={`recent-icon recent-icon--${alert.severity}`} aria-hidden="true">!</span><span><b>{humanize(alert.attack_type)}</b><small>{alert.source_ip} to {alert.destination_ip}</small><small className="mono">{alert.id}</small></span><span className="recent-alert-state"><SeverityLabel severity={alert.severity}/><small>{humanize(alert.status)}</small></span><time dateTime={alert.timestamp}>{formatTime(alert.timestamp)}</time><ArrowRight aria-hidden="true" size={13}/></button>)}{!recent.length ? <div className="data-state">No unresolved alerts in the loaded cache.</div> : null}</div>}</section>
     </div>
-  );
+
+    <section className="overview-composition" aria-labelledby="overview-composition-title"><div className="overview-composition-heading"><span className="eyebrow">Exact workload composition</span><h2 id="overview-composition-title">What makes up this alert set</h2><p>{summary ? `Every count comes from the ${rangeLabels[summary.range].toLocaleLowerCase()} persisted summary.` : "Fixture counts are derived only from the visible generated records."}</p></div><div className="overview-composition-grid"><DistributionPanel eyebrow="Urgency" title="Severity" description="Alert records by assigned severity." values={summary?.severity_counts ?? fixtureSeverity} order={["critical", "high", "medium", "low", "normal"]}/><DistributionPanel eyebrow="Workflow" title="Disposition" description="Alert records by investigation state." values={summary?.status_counts ?? fixtureStatus} order={["new", "in_review", "escalated", "resolved", "false_positive"]}/><DistributionPanel eyebrow="Detection" title="Families" description="Alert records by predicted attack family." values={summary?.family_counts ?? fixtureFamilies}/><DistributionPanel eyebrow="Network context" title="Protocols" description="Protocols represented among alert records, not all traffic." values={summary?.protocol_counts ?? fixtureProtocols}/></div></section>
+
+  </div>;
 }

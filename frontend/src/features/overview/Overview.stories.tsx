@@ -1,37 +1,33 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { sampleAlerts } from "../../data";
-import type { IngestionStatus } from "../../types";
-import { IngestionStatusPanel, Overview } from "./Overview";
+import { Overview } from "./Overview";
+import { connectedDashboardSummary, emptyDashboardSummary } from "./overviewFixtures";
 
-const ingestion: IngestionStatus = {
-  queue_depth: 12, queued: 12, processing: 2, succeeded: 4812, oldest_pending_age_seconds: 38,
-  retries: 4, retrying: 1, failures: 0, dead_letter: 0, throughput_per_minute: 86.4,
-  worker: { status: "ready", last_heartbeat_at: "2026-08-11T12:58:00Z" },
-  outbox: { status: "ready", pending: 3, published: 4790, oldest_pending_age_seconds: 5 },
-  generated_at: "2026-08-11T12:58:03Z",
-};
-
+const noop = () => undefined;
 const meta = {
   title: "Workspaces/Overview/Monitoring overview",
   component: Overview,
   tags: ["autodocs"],
   parameters: { layout: "fullscreen" },
-  decorators: [(Story) => <main style={{ padding: 20, background: "#eceeeb", minHeight: "100vh" }}><Story /></main>],
-  args: { alerts: sampleAlerts.slice(0, 40), health: null, ingestion: null, ingestionLoading: false, ingestionError: "", fixtureMode: true, onRetryIngestion: () => undefined, socketState: "offline", lastUpdate: null, livePredictionCount: 0, onOpenAlert: () => undefined, onTimeBucket: () => undefined },
+  decorators: [(Story) => <main style={{ padding: 20, background: "#eceeeb", minHeight: "100vh" }}><h1 className="sr-only">Monitoring overview</h1><Story /></main>],
+  args: {
+    alerts: sampleAlerts.slice(0, 18), fixtureMode: false, socketState: "live", lastUpdate: new Date("2026-08-11T13:58:00Z"), livePredictionCount: 17,
+    summary: connectedDashboardSummary, summaryRange: "24h", onSummaryRange: noop, onRetrySummary: noop, onRetry: noop,
+    onOpenAlert: noop, onTimeBucket: noop, onViewAlertQueue: noop,
+  },
 } satisfies Meta<typeof Overview>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const FixtureOverview: Story = {};
-export const NoAlerts: Story = { args: { alerts: [] } };
-
-export const IngestionHealthy: Story = {
-  render: () => <IngestionStatusPanel status={ingestion} loading={false} error="" fixtureMode={false} onRetry={() => undefined} />,
-};
-export const IngestionBacklogged: Story = {
-  render: () => <IngestionStatusPanel status={{ ...ingestion, queue_depth: 842, queued: 842, oldest_pending_age_seconds: 322 }} loading={false} error="" fixtureMode={false} onRetry={() => undefined} />,
-};
-export const IngestionUnavailable: Story = {
-  render: () => <IngestionStatusPanel status={null} loading={false} error="Connection refused." fixtureMode={false} onRetry={() => undefined} />,
-};
+export const ConnectedOperational: Story = {};
+export const CriticalWorkload: Story = { args: { summary: { ...connectedDashboardSummary, alerts: { ...connectedDashboardSummary.alerts, critical_open: 12, unresolved: 31, open: 31 }, persisted_totals: { ...connectedDashboardSummary.persisted_totals, unresolved_alerts: 31 } } } };
+export const EmptyPersistedWindow: Story = { args: { alerts: [], livePredictionCount: 0, summary: emptyDashboardSummary } };
+export const InitialSummaryLoading: Story = { args: { summary: null, summaryLoading: true, alerts: [] } };
+export const SummaryUnavailable: Story = { args: { summary: null, summaryError: "The dashboard summary request exceeded the response deadline.", alerts: [] } };
+export const StaleSummarySnapshot: Story = { args: { summaryError: "The latest dashboard summary request exceeded the response deadline." } };
+export const SwitchingEvidenceWindow: Story = { args: { summaryRange: "7d", summaryLoading: true } };
+export const LoadedAlertCacheStale: Story = { args: { alertsError: "The latest alert-cache refresh failed." } };
+export const AllPersistedRecords: Story = { args: { summaryRange: "all", summary: { ...connectedDashboardSummary, range: "all", window: { from: "2026-05-01T00:00:00Z", to: connectedDashboardSummary.window.to }, scope: { ...connectedDashboardSummary.scope, range: "all", from: "2026-05-01T00:00:00Z", bucket_minutes: 1440 } } } };
+export const FixtureOverview: Story = { args: { fixtureMode: true, summary: null, summaryRange: "24h", socketState: "offline", livePredictionCount: 0 } };
+export const EmptyFixture: Story = { args: { fixtureMode: true, summary: null, alerts: [], socketState: "offline", livePredictionCount: 0 } };

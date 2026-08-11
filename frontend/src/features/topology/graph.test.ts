@@ -61,7 +61,10 @@ describe("aggregateTopology", () => {
     expect(graph.hasLimitedIdentity).toBe(true);
     expect(graph.nodes.map((node) => node.identityQuality).sort()).toEqual(["port-only", "unknown"]);
     expect(identityQuality("8080")).toBe("port-only");
-    expect(identityQuality("host-a")).toBe("address");
+    expect(identityQuality("host-a")).toBe("unknown");
+    expect(identityQuality("192.168.1.4")).toBe("address");
+    expect(identityQuality("2001:db8::4")).toBe("address");
+    expect(identityQuality("999.168.1.4")).toBe("unknown");
   });
 
   it("keeps membership stable when only aggregate values change", () => {

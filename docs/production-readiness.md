@@ -20,6 +20,10 @@ not treated as proof of detection effectiveness or operational capacity.
 - Operator dialogs contain keyboard focus, close with Escape, and return focus
   to their invoking control. Automated tests cover WCAG 2.1 A/AA Axe findings,
   keyboard operation, mobile reflow, and the authentication dialog behavior.
+- Alert investigation separates triage, model evidence, and record provenance;
+  terminal dispositions require recorded reasoning and explicit confirmation,
+  while the authenticated backend remains the source of operator identity and
+  immutable feedback time.
 - Alert investigation uses native 44-pixel buttons instead of pretending table
   rows are controls, operational companion text has a tested 12-pixel floor,
   and the mobile overflow navigation closes after selection while retaining a
@@ -59,6 +63,21 @@ not treated as proof of detection effectiveness or operational capacity.
   preflight. Prediction responses label detector and family values with the
   exact serving artifact's calibration declaration rather than relying on
   global UI copy.
+- Observation upload preflight mirrors the canonical 83-feature order and
+  finite/non-blank value constraints, identifies corrective row-and-feature
+  errors, and enforces the distinct immediate, durable, and custom-replay row
+  limits before authentication. This is usability validation, not acceptance
+  evidence: the server remains authoritative and its exact failure is retained.
+- Dataset replay separates local configuration from the server-owned accepted
+  run, validates the complete speed/offset/limit contract, prevents duplicate
+  lifecycle commands, preserves stale status evidence, and requires a focused
+  consequence review before stopping. Completed observations remain persisted;
+  the UI does not imply that stopping rolls them back.
+- Monitoring keeps persisted-window summaries, loaded alert-cache evidence, and
+  browser-session live counts in separately labelled regions. Range transitions
+  retain the prior snapshot with its original scope until replacement succeeds,
+  and all backend distribution dimensions plus exact timeline buckets remain
+  inspectable without relying on visual bars.
 - GitHub Actions are configured with full-commit action pins and read-only
   repository permissions. The normal gate is hermetic over the tracked sample
   and model bundle; a separate PostgreSQL 17 job is configured to verify

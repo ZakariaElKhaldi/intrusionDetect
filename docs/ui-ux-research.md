@@ -141,7 +141,7 @@ project's TypeScript version. The catalogue documents every currently exported
 operator-facing React surface: shared headings, severity labels, keyboard tabs,
 error containment, all chart families, alert queue and drawer, replay and
 ingestion states, overview, topology, model analysis and health, and observation
-testing. Its 65 stories cover meaningful ready, loading, empty, unavailable,
+testing. Its 80 stories cover meaningful ready, loading, empty, unavailable,
 partial, active, and failed states. Stories live next to their components and
 use Component Story Format, following Storybook's recommended structure.
 
@@ -287,6 +287,350 @@ Implementation consequences:
 
 No dependency was added. Model health now has nine dedicated Storybook states.
 
+## Ingestion investigation and recovery iteration
+
+The ingestion-operations screen previously treated durable jobs and outbox
+records as two wide tables and described the entire surface as read-only even
+though dead-letter detail contained an authenticated mutation. A backend/UI
+contract audit also found that processing leases, model route, last-redrive
+audit data, and most immutable-transition fields were discarded by frontend
+types. Operators therefore could not see all of the evidence used to explain
+or safely recover a failed job.
+
+AWS transactional-outbox guidance warns that delivery can occur more than once
+and recommends idempotent consumers; the interface must therefore show exact
+publication attempts and retry/claim timing rather than imply simple exactly-
+once delivery. AWS dead-letter guidance treats the queue as a diagnostic space
+before redrive and recommends controlled recovery that does not overwhelm the
+source. W3C table guidance requires native header/data relationships and says a
+responsive presentation must preserve those relationships when the format
+changes.
+
+Implementation consequences:
+
+- job and outbox results now begin with explicitly scoped current-page counts,
+  while separately reporting the backend's total matching result count;
+- each job shows state-specific queue timing, including processing lease expiry,
+  retry availability, completion, or dead-letter hold state;
+- outbox rows preserve publication attempts, active claim leases, scheduled
+  retries, publication time, and last error so at-least-once delivery evidence
+  is visible;
+- selecting a job moves focus to an investigation placed before the queue, and
+  closing it restores focus to the exact originating control;
+- detail now exposes source, schema, extractor, model route, attempts,
+  retryability, redrive count, and the last operator/time/reason recovery audit;
+- immutable transitions now include occurrence and record time, reason code,
+  worker/operator identity, retryability, and structured backend details;
+- dead-letter recovery requires a meaningful audit reason, a read-only
+  eligibility preview, and a second focused confirmation before execution; and
+- semantic wide-screen tables have keyboard-focusable named scroll regions,
+  while narrow/zoomed views use equivalent structured cards instead of forcing
+  a nine-column viewport.
+
+No dependency was added. The API controller remains responsible for fetching
+and authentication; pure job, outbox, and investigation views provide nine
+independent Storybook states without inventing connected evidence.
+
+## Model-evaluation evidence iteration
+
+The model workspace correctly separated serving state from offline evaluation
+in its navigation, but fixture mode silently rebuilt an “evaluation” from
+serving descriptors. That substituted runtime metadata for benchmark evidence.
+The frontend adapter also discarded evaluation seeds, the structured split
+definition, validation metrics, operational p95 latency and model size, while
+coercing absent measurements to zero. These behaviors weakened the evidence
+boundary the page claimed to enforce.
+
+NIST AI RMF Measure guidance requires test sets, metrics, and evaluation tools
+to be documented, measurements to be interpreted in deployment context, and
+limitations on generalization to be explicit. Model Cards likewise recommend
+reporting performance characteristics with their intended context and limits.
+Scikit-learn's evaluation guidance distinguishes validation used during model
+selection from a test set retained for final evaluation. W3C guidance calls for
+textual context and semantic tables as alternatives to complex charts.
+
+Implementation consequences:
+
+- fixture mode now states that connected evaluation evidence is absent and
+  never converts serving descriptors into benchmark candidates;
+- the evaluation view begins with an explicit offline-only boundary and then
+  identifies the selected artifact, split strategy, stratification, declared
+  seeds, and calibration meaning before any headline score;
+- structured split fields remain available in a native disclosure instead of
+  being collapsed into an opaque JSON sentence;
+- validation selection score and multi-seed aggregates are separated from
+  held-out test macro F1, weighted F1, false-positive rate, and confusion data;
+- exact candidate evidence adds backend p95 inference latency and preserves
+  missing measurements as “not reported” instead of zero;
+- the serving bundle now exposes schema identity and whether an artifact is
+  registered without leaking its server filesystem path;
+- seed aggregates use a semantic table rather than a grid of generic elements,
+  and every chart retains a named, keyboard-focusable exact table; and
+- pure `ModelEvaluationView` presentation supports detector, classifier,
+  loading, empty, unavailable, and fixture-boundary Storybook states without
+  network mocking.
+
+No dependency was added. Model analysis now has nine dedicated Storybook states
+and the complete catalogue contains 80 stories.
+
+## Topology evidence iteration
+
+The topology workspace already offered a useful force-directed map and a
+structured endpoint/route list, but it represented every zero-result state as
+“no matching routes.” It also omitted the most important provenance boundary:
+the relationships are aggregated from the frontend's currently loaded alert
+cache, not the complete persisted alert corpus. A refresh failure with cached
+records was therefore indistinguishable from a healthy view, and a source
+failure before any records loaded looked like genuine absence.
+
+W3C guidance for complex images recommends a concise visual summary plus a
+complete, structured description of the values and relationships represented.
+Its keyboard guidance also separates focus from selection and requires every
+interaction to remain operable without pointer input. The cyber situational
+awareness visualization review already used in this project emphasizes that
+visual encodings should support investigation and sensemaking rather than act
+as decorative network diagrams.
+
+Implementation consequences:
+
+- an evidence-scope strip identifies connected cache data versus an
+  illustrative fixture sample and directs operators to the paged alert queue
+  for complete persisted search;
+- loading, genuine empty, unavailable, refreshing, and cached-refresh-failure
+  states are distinct, with recovery available wherever retry is meaningful;
+- the visual map retains a concise accessible summary while the adjacent
+  endpoint and directed-route explorer exposes the exact same relationships as
+  native keyboard-operable buttons and definition lists;
+- explorer ordering is stated explicitly: open severity, unresolved count,
+  then alert volume, matching the aggregation contract;
+- filter and selection reset actions are explicit and keyboard reachable, and
+  selecting evidence remains an activation rather than silently following
+  focus;
+- identity classification validates IPv4 and IPv6 values before calling them
+  network addresses; hostnames, port-only fallbacks, and missing identifiers
+  remain clearly labelled as limited observations rather than confirmed
+  devices; and
+- mobile reading order places exact structured evidence before the canvas map,
+  while preserving the same actions and details.
+
+No dependency was added. Cytoscape and fCoSE remain appropriate for the visual
+layout, while native HTML supplies the complete interaction and evidence
+alternative. Topology now has eight dedicated Storybook states and the complete
+catalogue contains 86 stories.
+
+## Alert-investigation decision workspace iteration
+
+The alert queue exposed the correct paged search contract, but its investigation
+drawer mixed every task into one long document. The frontend adapter discarded
+the alert's event identity and structured network provenance, the explanation
+failure state had no recovery action, and the “Other features” waterfall value
+was summed from the backend order rather than the absolute-impact order used by
+the visible chart. Storybook documented only one read-only drawer without
+on-demand model evidence.
+
+The SOC user study of SHAP and LIME found that explanations can help analysts by
+highlighting relevant alert information, but explanation utility depends on the
+analyst task and context. NIST's human-centered cybersecurity program frames
+security controls as systems that must account for human capabilities and
+operational behavior. W3C's modal-dialog pattern requires contained focus,
+Escape dismissal, an accessible name, and focus return; its complex-image
+guidance requires the complete values and relationships behind a visualization
+to remain available as structured content.
+
+Implementation consequences:
+
+- the queue and investigation drawer are separate React modules, and a pure
+  investigation view makes backend states independently documentable without
+  Storybook network requests;
+- investigation is organized into Triage, Model evidence, and Record data tabs,
+  while alert severity, current disposition, detector verdict, and score remain
+  visible at the top of the default decision task;
+- every backend disposition state is available through one labelled form;
+  terminal decisions require meaningful reasoning and a review/confirmation
+  step before the authenticated mutation is sent;
+- immutable feedback history displays operator, time, state, and reasoning, and
+  never asks the browser to supply the audit identity;
+- event ID, binary detector verdict, attack class, ports, capture ID, interface,
+  extractor fingerprint, exact model versions, and per-stage latency now cross
+  the API boundary and appear in the appropriate evidence section;
+- model scores are labelled as model outputs rather than probabilities because
+  the alert response does not declare their calibration state;
+- the SHAP view begins with a non-causal decision-support boundary, exposes the
+  strongest positive and negative drivers and an additive reconstruction check,
+  and retains every transformed/raw value and signed impact in a semantic table;
+- the summarized waterfall and its “Other features” value now derive from the
+  same absolute-impact ordering, with a direct regression test; and
+- explanation loading, empty, historical-artifact failure, retry, complete
+  evidence, limited route identity, provenance, existing history, and fixture
+  boundaries are independently represented in Storybook.
+
+No dependency was added. Native tabs, form controls, disclosures, tables, and
+the existing focus-management approach cover the interaction contract. Alert
+investigation has eight dedicated Storybook states and the complete catalogue
+contains 93 stories.
+
+## Observation Lab preflight iteration
+
+The Observation Lab previously made a custom-styled drop target its only file
+control, showed no row preview, and checked only the presence and order of CSV
+headers. Blank categorical values and non-finite numeric values could therefore
+reach an all-or-nothing backend request without identifying the row to correct.
+The custom replay API accepted speeds above 0 through 100×, but the browser
+silently submitted every uploaded replay at 1×. One global 10,000-row browser
+limit also hid the distinct 1,000-row durable-ingestion and 100,000-row replay
+contracts.
+
+The U.S. Web Design System file-input guidance keeps a labelled native file
+input as the accessible source of truth and treats drag-and-drop as progressive
+enhancement; it also warns that combining “drag” and “choose” into one announced
+action can confuse screen-reader users. WCAG 2.2 Input Assistance and Error
+Suggestion require errors to be identified in text and, when known, provide
+correction guidance. Its error-prevention guidance supports a review step before
+a persistent or consequential submission.
+
+Implementation consequences:
+
+- a real labelled CSV input is now the primary control, with file type, count,
+  and 10 MB limits stated before selection; the adjacent drop target is an
+  optional visual enhancement rather than a second ambiguous accessible action;
+- source provenance includes the exact RT-IoT2022 extract checksum and source
+  lines for the two verified examples;
+- local preflight checks the canonical 83-feature order, non-blank categorical
+  values, and finite numeric values across every row, then reports the exact row
+  and feature with a correction while retaining a focused five-row preview;
+- immediate prediction, durable ingestion, and custom replay are presented as
+  explicit radio choices with their persistence, recovery, timing, follow-up,
+  and distinct backend row limits visible before submission;
+- custom replay now exposes the backend's 0.01–100× speed range and translates
+  the selection into an approximate event cadence;
+- selection, validation, and review remain local until the authenticated action,
+  while fixture mode permanently states that no mutation can occur;
+- submission failures preserve the validated file and provide retry guidance;
+  completed prediction, queue, and replay responses retain their exact evidence;
+  and
+- presentation is separated from network orchestration so awaiting, valid,
+  invalid-header, invalid-value, configured, submitting, failed, completed, and
+  fixture states can be reviewed independently in Storybook.
+
+No dependency was added. Native file, radio, number, table, disclosure, and
+status semantics cover the workflow. Observation Lab now has fourteen dedicated
+Storybook states and the complete catalogue contains 106 stories.
+
+## Dataset-replay control iteration
+
+The overview replay control previously combined configuration and active-run
+state in one compact row. It exposed only four speeds even though the backend
+accepts values above 0 through 100×, capped dataset runs at 1,000 observations
+despite the backend's 1,000,000 limit, described the source offset ambiguously,
+and disabled the whole control with only a generic connection message. An
+active run showed one progress sentence but did not distinguish the server's
+accepted scenario, speed, offset, and limit from the browser's next-run values.
+Stopping immediately abandoned the remainder without a consequence review.
+
+The validated Microsoft Research human-AI interaction guidelines recommend
+making capabilities clear, showing contextually relevant information,
+supporting efficient correction, conveying the consequences of actions, and
+providing global controls. NIST Human-Centered Cybersecurity frames operators as
+active, informed security partners rather than passive recipients. WCAG 2.2
+requires descriptive textual input errors and programmatically determinable
+status/progress messages, while warning against overly chatty live regions. Its
+error-prevention guidance recommends reversible, checked, or confirmed actions.
+
+Implementation consequences:
+
+- the console now separates local run configuration from a server-owned
+  lifecycle snapshot, so planned values cannot be mistaken for accepted state;
+- the scenario selector states that exact families use exact dataset labels,
+  the offset is identified as a zero-based source row applied before scenario
+  filtering, and the server may match fewer rows than the requested bound;
+- numeric inputs expose the full 0.01–100× speed and 1–1,000,000 observation
+  contracts without silently clamping mistakes; invalid fields retain their
+  values, identify themselves with `aria-invalid`, give textual correction, and
+  block only the affected Start or Resume action;
+- the 250 ms base cadence, approximate selected cadence, upper duration bound,
+  persistence effect, alert effect, and live-publication effect are visible
+  before a run starts;
+- running, paused, completed, stopped, failed, unavailable, and stale-snapshot
+  states have distinct text and styling, while the native progress element
+  exposes exact processed, remaining, total, and percentage evidence without an
+  announcement for every polling tick;
+- paused runs allow a valid speed change before Resume, while source selection,
+  offset, and limit stay locked to the accepted run;
+- stopping opens an inline, focus-managed review stating that processed records
+  remain persisted, how many observations will not be emitted, and that the run
+  cannot resume; cancellation returns focus to the invoking control;
+- readiness failures name the API, dataset, database, or model-bundle reason,
+  and a failed status refresh keeps the last successful server snapshot visible
+  with an explicit retry; and
+- pending mutations prevent duplicate commands and label the exact operation in
+  progress.
+
+No dependency was added. Native fieldsets, labels, inputs, select, progress,
+status, and focused confirmation controls cover the interaction contract.
+Dataset replay now has seventeen dedicated Storybook states and the complete
+catalogue contains 117 stories.
+
+## Monitoring situation-briefing iteration
+
+The monitoring overview mixed three evidence scopes inside the same metric row:
+persisted database-window totals, the browser's loaded alert cache, and live
+events received only during the current session. It discarded the dashboard
+API's complete severity and disposition distributions, while fixture-only
+ECharts visualizations had no visible exact-value alternative. Runtime health,
+ingestion, and the full operations ledger appeared before the alert workload.
+Changing the summary range also reloaded unrelated health, model, and alert
+requests; the selector could show the newly requested range while the old
+summary remained on screen without being labelled stale.
+
+The systematic review of cyber situational-awareness visualization research
+emphasizes that heterogeneous, multidimensional security evidence must support
+analyst sensemaking rather than become an ornamental dashboard. NIST
+Human-Centered Cybersecurity treats practitioners as active, informed partners.
+W3C complex-image guidance requires a concise description of a chart's main
+relationship plus a structured long description containing exact values, and
+its table guidance recommends semantic row/column headers and captions that
+identify purpose and aid navigation.
+
+Implementation consequences:
+
+- the page begins with a situation briefing and explicit persisted/fixture
+  boundary, followed by workload, chronology, queue handoff, composition, and
+  only then serving/delivery operations;
+- persisted-window prediction, alert, unresolved, critical-open, and median
+  model-output metrics are separate from a labelled browser-session/cache strip
+  containing live-session predictions, loaded alerts, route labels, stream
+  state, and last event time;
+- the summary exposes source, included record types, aggregation strategy,
+  time field, selected range, exact window boundaries, bucket resolution,
+  checked/generated times, and the backend's persisted-total reconciliation;
+- summary loading, empty, unavailable, stale, and requested-range-transition
+  states remain distinct; a stale snapshot retains its actual backend range and
+  generation evidence while the requested range loads or fails;
+- summary retrieval is now independent of health, model, and alert-cache
+  hydration, and successful status refreshes clear prior errors;
+- timeline bars summarize severity composition visually without making narrow
+  data marks into pointer-only controls; a labelled, keyboard-scrollable table
+  provides every interval and a native button for opening each non-empty bucket;
+- peak activity and critical volume form the chart's short description, while
+  the exact table caption and row/column headers form its structured long
+  description;
+- all backend `severity_counts`, `status_counts`, `family_counts`, and
+  `protocol_counts` are visible as exact semantic lists, including empty states;
+- recent alerts permanently identify their loaded-cache scope and hand off to
+  the complete persisted queue, while cache-refresh failure does not invalidate
+  the independent persisted summary;
+- fixture records never receive a fabricated database timeline or persisted
+  totals; and
+- `IngestionStatusPanel`, `OverviewOperations`, and the situation-focused
+  `Overview` now have separate modules and Storybook documentation instead of a
+  network-coupled overview monolith.
+
+No dependency was added. Native sections, definition lists, lists, figure/
+figcaption, details, progress-free CSS bars, and semantic tables cover the
+evidence contract. Monitoring overview has eleven dedicated states, ingestion
+status has nine, and the operations composition has one; the complete Storybook
+catalogue contains 133 stories.
+
 ## Sources
 
 - [Web Content Accessibility Guidelines (WCAG) 2.2](https://www.w3.org/TR/WCAG22/)
@@ -319,3 +663,29 @@ No dependency was added. Model health now has nine dedicated Storybook states.
 - [NIST: Challenges to the Monitoring of Deployed AI Systems](https://www.nist.gov/news-events/news/2026/03/new-report-challenges-monitoring-deployed-ai-systems)
 - [Diagnosing Concept Drift with Visual Analytics](https://arxiv.org/abs/2007.14372)
 - [W3C accessible data-table guidance](https://www.w3.org/WAI/tutorials/tables/)
+- [AWS Prescriptive Guidance: transactional outbox pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html)
+- [AWS: using dead-letter queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html)
+- [AWS: configuring dead-letter queue redrive](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html)
+- [W3C responsive data-table tips](https://www.w3.org/WAI/tutorials/tables/tips/)
+- [NIST AI RMF Core: Measure](https://airc.nist.gov/airmf-resources/airmf/5-sec-core/)
+- [Model Cards for Model Reporting](https://research.google/pubs/model-cards-for-model-reporting/)
+- [Scikit-learn: cross-validation and held-out evaluation](https://scikit-learn.org/stable/modules/cross_validation.html)
+- [W3C accessibility principles for complex visual content](https://www.w3.org/WAI/fundamentals/accessibility-principles/)
+- [W3C: Complex images](https://www.w3.org/WAI/tutorials/images/complex/)
+- [WAI-ARIA APG: Developing a keyboard interface](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/)
+- [WAI-ARIA APG: Modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/)
+- [NIST Human-Centered Cybersecurity](https://csrc.nist.gov/Projects/human-centered-cybersecurity/about)
+- [Towards XAI in the SOC — user study of explainable alerts](https://www.ffi.no/en/publications-archive/towards-xai-in-the-soc-a-user-centric-study-of-explainable-alerts-with-shap-and-lime)
+- [U.S. Web Design System file input](https://designsystem.digital.gov/components/file-input/)
+- [W3C: Understanding Input Assistance](https://www.w3.org/WAI/WCAG22/Understanding/input-assistance.html)
+- [W3C: Understanding Error Suggestion](https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html)
+- [W3C: Understanding Error Prevention](https://www.w3.org/WAI/WCAG22/Understanding/error-prevention-legal-financial-data.html)
+- [Microsoft Research: Guidelines for Human-AI Interaction](https://www.microsoft.com/en-us/research/project/guidelines-for-human-ai-interaction/)
+- [NIST Human-Centered Cybersecurity](https://csrc.nist.gov/Projects/human-centered-cybersecurity/about)
+- [W3C: Understanding Status Messages](https://www.w3.org/WAI/WCAG22/Understanding/status-messages)
+- [W3C: Understanding Error Identification](https://www.w3.org/WAI/WCAG22/Understanding/error-identification)
+- [W3C: Understanding Error Prevention (All)](https://www.w3.org/WAI/WCAG22/Understanding/error-prevention-all)
+- [Systematic Literature Review on Cyber Situational Awareness Visualizations](https://doi.org/10.1109/ACCESS.2022.3178195)
+- [W3C: Complex images](https://www.w3.org/WAI/tutorials/images/complex/)
+- [W3C: Accessible tables](https://www.w3.org/WAI/tutorials/tables/)
+- [W3C: Table captions and summaries](https://www.w3.org/WAI/tutorials/tables/caption-summary/)

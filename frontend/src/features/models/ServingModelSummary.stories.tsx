@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ServingModelSummary } from "./ServingModelSummary";
 
 const models = [
-  { name: "Calibrated forest", version: "detector-2026.08.4", role: "detector" as const, status: "active", probability_calibrated: true },
-  { name: "Attack family forest", version: "classifier-2026.08.2", role: "classifier" as const, status: "active", probability_calibrated: false },
+  { name: "Calibrated forest", version: "detector-2026.08.4", role: "detector" as const, status: "active", probability_calibrated: true, schema_version: "rt-iot2022-v1", artifact_registered: true },
+  { name: "Attack family forest", version: "classifier-2026.08.2", role: "classifier" as const, status: "active", probability_calibrated: false, schema_version: "rt-iot2022-v1", artifact_registered: true },
 ];
 
 const meta = {

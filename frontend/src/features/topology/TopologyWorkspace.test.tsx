@@ -57,7 +57,9 @@ describe("TopologyWorkspace", () => {
   it("provides an accessible endpoint and directed-route investigation surface", () => {
     render(<TopologyWorkspace alerts={alerts} onViewAlerts={vi.fn()} />);
 
-    expect(screen.getByRole("note")).toHaveTextContent("limited observations");
+    expect(screen.getByText(/These nodes are limited observations/)).toBeInTheDocument();
+    expect(screen.getByText("Currently loaded alert cache")).toBeInTheDocument();
+    expect(screen.getByText(/not the complete persisted corpus/)).toBeInTheDocument();
     expect(screen.getByText(/most active visible endpoint/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Routes (1)" }));
     expect(screen.getByText("port:443 → 10.0.0.3")).toBeInTheDocument();
@@ -70,8 +72,12 @@ describe("TopologyWorkspace", () => {
     render(<TopologyWorkspace alerts={alerts} onViewAlerts={onViewAlerts} />);
 
     fireEvent.click(screen.getByRole("button", { name: /port:443 critical/i }));
+    expect(screen.getByText("Limited endpoint identity")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "View endpoint alerts" }));
     expect(onViewAlerts).toHaveBeenCalledWith("port:443");
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+    expect(screen.queryByLabelText("Selected relationship details")).not.toBeInTheDocument();
   });
 
   it("filters by protocol and elevated unresolved activity", () => {
@@ -84,6 +90,31 @@ describe("TopologyWorkspace", () => {
     expect(screen.getByText("2 endpoints · 1 directed route · 1 alert")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "All activity" }));
     expect(screen.getByText("0 endpoints · 0 directed routes · 0 alerts")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByText("4 endpoints · 2 directed routes · 2 alerts")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear filters" })).toBeDisabled();
+  });
+
+  it("distinguishes loading, unavailable, and genuine empty evidence", () => {
+    const onRetry = vi.fn();
+    const { rerender } = render(<TopologyWorkspace alerts={[]} loading onViewAlerts={vi.fn()} />);
+    expect(screen.getByText("Loading relationship evidence…")).toBeInTheDocument();
+
+    rerender(<TopologyWorkspace alerts={[]} error="Alert service timed out" onRetry={onRetry} onViewAlerts={vi.fn()} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Relationship evidence unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(onRetry).toHaveBeenCalledOnce();
+
+    rerender(<TopologyWorkspace alerts={[]} onViewAlerts={vi.fn()} />);
+    expect(screen.getByText("No relationship evidence is currently loaded.")).toBeInTheDocument();
+  });
+
+  it("keeps cached evidence available when a refresh fails", () => {
+    render(<TopologyWorkspace alerts={alerts} error="Temporary source failure" onRetry={vi.fn()} onViewAlerts={vi.fn()} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("showing cached evidence");
+    expect(screen.getByText(/most active visible endpoint/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /port:443 critical/i })).toBeInTheDocument();
   });
 
   it("does not rerun fCoSE when a live update only changes aggregate values", () => {

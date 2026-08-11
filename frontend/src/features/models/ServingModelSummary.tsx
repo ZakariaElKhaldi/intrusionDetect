@@ -36,7 +36,9 @@ export function ServingModelSummary({ models, loading, error }: { models: ModelI
               <p>{purpose}</p>
               <dl>
                 <div><dt>Version</dt><dd className="mono">{model?.version ?? "Unavailable"}</dd></div>
+                <div><dt>Input schema</dt><dd className="mono">{model?.schema_version ?? "Not reported"}</dd></div>
                 <div><dt>Score meaning</dt><dd>{model?.probability_calibrated ? "Calibrated probability" : "Model score"}</dd></div>
+                <div><dt>Artifact</dt><dd>{model?.artifact_registered ? "Registered" : "Not reported"}</dd></div>
               </dl>
             </article>
           ))}

@@ -11,6 +11,7 @@ import {
   getOutboxEvents,
   getModelHealth,
   getModelHealthHistory,
+  getModels,
   enqueueObservations,
   liveEventFromSocketMessage,
   startCustomReplay,
@@ -245,6 +246,9 @@ describe("frontend API adapter", () => {
         source_port: 41000,
         destination_port: 1883,
         protocol: "mqtt",
+        interface: "sensor-edge-1",
+        capture_id: "capture-42",
+        extractor_fingerprint: "nfstream-sha256:abc",
       },
     }])));
 
@@ -254,6 +258,12 @@ describe("frontend API adapter", () => {
       destination_ip: "10.0.0.20",
       protocol: "mqtt",
       identity_quality: "explicit",
+      event_id: "event-context",
+      network_context: expect.objectContaining({
+        interface: "sensor-edge-1",
+        capture_id: "capture-42",
+        extractor_fingerprint: "nfstream-sha256:abc",
+      }),
     });
   });
 
@@ -384,10 +394,14 @@ describe("frontend API adapter", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
       stage: "binary",
       probability_calibrated: true,
+      evaluation_seeds: [42, 1337, 2026],
+      split_definition: { strategy: "shared repeated stratified random" },
       selected_champion: { model_name: "hist_gradient_boosting" },
       candidates: [{
         model_name: "hist_gradient_boosting",
         selected: true,
+        validation_metrics: { macro_f1: 0.97 },
+        operational: { median_inference_latency_ms: 3.1, p95_inference_latency_ms: 4.5 },
         test_metrics: { macro_f1: 0.98, weighted_f1: 0.99, false_positive_rate: 0.01 },
         confusion_matrix: [[80, 1], [2, 90]],
         classes: ["normal", "attack"],
@@ -399,12 +413,29 @@ describe("frontend API adapter", () => {
     const report = await getEvaluation("binary");
     expect(report.selected_champion).toBe("hist_gradient_boosting");
     expect(report.probability_calibrated).toBe(true);
+    expect(report.evaluation_seeds).toEqual([42, 1337, 2026]);
+    expect(report.split_definition).toEqual({ strategy: "shared repeated stratified random" });
     expect(report.candidates[0]).toMatchObject({
       name: "hist_gradient_boosting",
       selected: true,
       macro_f1: 0.98,
       support: { normal: 81, attack: 92 },
+      validation_metrics: { macro_f1: 0.97 },
+      operational_metrics: { median_inference_latency_ms: 3.1, p95_inference_latency_ms: 4.5 },
     });
+  });
+
+  it("preserves serving schema and artifact registration without inventing missing metrics", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([{
+      model_version: "binary-model-4", model_type: "hist_gradient_boosting",
+      artifact_path: "/runtime/models/binary.joblib", schema_version: "rt-iot2022-v1", active: true,
+      metadata_json: { target: "binary", probability_calibrated: true },
+    }])));
+
+    await expect(getModels()).resolves.toEqual([expect.objectContaining({
+      version: "binary-model-4", role: "detector", schema_version: "rt-iot2022-v1",
+      artifact_registered: true, probability_calibrated: true, macro_f1: undefined,
+    })]);
   });
 
   it("preserves transformed and raw feature names in signed explanations", async () => {

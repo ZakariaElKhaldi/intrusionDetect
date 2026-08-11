@@ -72,6 +72,7 @@ interface AlertWire {
   classifier_latency_ms?: number | null;
   total_latency_ms?: number;
   attack_class?: string | null;
+  binary_prediction?: "normal" | "attack";
   confidence?: number;
   raw_features?: Record<string, string | number>;
   network_context?: {
@@ -96,6 +97,8 @@ interface AlertWire {
 interface ModelWire {
   model_version: string;
   model_type: string;
+  artifact_path?: string | null;
+  schema_version?: string;
   active: boolean;
   metadata_json?: Record<string, unknown>;
   role?: string;
@@ -189,8 +192,11 @@ function alertFromWire(value: AlertWire): Alert {
   const alertEvidenceType = evidenceTypeForAlert(value);
   return {
     id: value.alert_id,
+    event_id: value.event_id,
     timestamp: value.created_at,
     attack_type: value.attack_class ?? value.reasons?.[0] ?? "Suspicious activity",
+    binary_prediction: value.binary_prediction,
+    attack_class: value.attack_class,
     confidence: value.detection_score ?? value.confidence ?? 0,
     severity: asSeverity(value.severity),
     source_ip: String(context.source_ip ?? features.source_ip ?? features.src_ip ?? (context.source_port !== undefined && context.source_port !== null ? `port ${context.source_port}` : features["id.orig_p"] !== undefined ? `port ${features["id.orig_p"]}` : "Source in details")),
@@ -209,6 +215,7 @@ function alertFromWire(value: AlertWire): Alert {
     reasons: value.reasons ?? [],
     evidence_type: alertEvidenceType,
     identity_quality: identityQuality(identityFeatures),
+    network_context: value.network_context,
     explanations: value.top_features?.map((feature) => ({
       feature: String(feature.feature ?? feature.name ?? "feature"),
       impact: Number(
@@ -509,16 +516,18 @@ export async function getModels(): Promise<ModelInfo[]> {
       name: model.model_type,
       version: model.model_version,
       status: model.active ? "active" : "candidate",
-      macro_f1: Number(metrics.macro_f1 ?? 0),
-      weighted_f1: Number(metrics.weighted_f1 ?? 0),
+      macro_f1: optionalNumber(metrics.macro_f1),
+      weighted_f1: optionalNumber(metrics.weighted_f1),
       false_positive_rate: optionalNumber(metrics.false_positive_rate),
-      inference_ms: Number(metrics.inference_ms ?? 0),
+      inference_ms: optionalNumber(metrics.inference_ms),
       trained_at: typeof model.metadata_json?.trained_at === "string" ? model.metadata_json.trained_at : undefined,
       classes: Array.isArray(metrics.classes) ? metrics.classes.map(String) : undefined,
       confusion_matrix: Array.isArray(metrics.confusion_matrix) ? metrics.confusion_matrix as number[][] : undefined,
       evaluation_scope: typeof metrics.evaluation_scope === "string" ? metrics.evaluation_scope : undefined,
       role,
       probability_calibrated: model.metadata_json?.probability_calibrated === true,
+      schema_version: model.schema_version,
+      artifact_registered: Boolean(model.artifact_path),
     };
   });
 }
@@ -551,16 +560,18 @@ function evaluationCandidate(value: unknown, champion?: string): EvaluationCandi
     role: "candidate",
     probability_calibrated: row.probability_calibrated === true,
     selected: Boolean(row.selected) || champion === name,
-    macro_f1: Number(test.macro_f1 ?? row.macro_f1 ?? 0),
-    weighted_f1: Number(test.weighted_f1 ?? row.weighted_f1 ?? 0),
+    macro_f1: optionalNumber(test.macro_f1 ?? row.macro_f1),
+    weighted_f1: optionalNumber(test.weighted_f1 ?? row.weighted_f1),
     false_positive_rate: optionalNumber(test.false_positive_rate ?? test.fpr ?? row.false_positive_rate),
-    inference_ms: Number(operational.median_inference_latency_ms ?? operational.p50_latency_ms ?? operational.inference_ms ?? row.inference_ms ?? 0),
+    inference_ms: optionalNumber(operational.median_inference_latency_ms ?? operational.p50_latency_ms ?? operational.inference_ms ?? row.inference_ms),
     classes: Array.isArray(classes) ? classes.map(String) : undefined,
     confusion_matrix: Array.isArray(matrix) ? matrix as number[][] : undefined,
     evaluation_scope: typeof row.evaluation_scope === "string" ? row.evaluation_scope : "shared random test split",
     selection_metric: typeof row.selection_metric === "string" ? row.selection_metric : undefined,
     selection_value: typeof row.selection_value === "number" ? row.selection_value : undefined,
     test_metrics: numericRecord(test),
+    validation_metrics: numericRecord(row.validation_metrics ?? row.validation),
+    operational_metrics: numericRecord(operational),
     seed_metrics: Array.isArray(seedValues)
       ? seedValues.map(numericRecord).filter((item): item is Record<string, number> => Boolean(item))
       : undefined,
@@ -592,6 +603,12 @@ export async function getEvaluation(stage: "binary" | "multiclass"): Promise<Eva
       .map((candidate) => evaluationCandidate(candidate, champion))
       .filter((candidate): candidate is EvaluationCandidate => candidate !== null),
     selected_champion: champion,
+    selected_champion_details: championValue && typeof championValue === "object"
+      ? championValue as Record<string, unknown> : undefined,
+    evaluation_seeds: Array.isArray(body.evaluation_seeds)
+      ? body.evaluation_seeds.filter((seed): seed is number => typeof seed === "number") : undefined,
+    split_definition: body.split_definition && typeof body.split_definition === "object"
+      ? body.split_definition as Record<string, unknown> : undefined,
     measurement_notes: Array.isArray(notes) ? notes.map(String) : [],
     split_notes: typeof body.split_notes === "string"
       ? body.split_notes
