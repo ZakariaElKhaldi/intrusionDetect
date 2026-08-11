@@ -31,15 +31,18 @@ describe("ModelHealth", () => {
     await userEvent.click(screen.getByText("Recent health records"));
     expect(screen.getByRole("table", { name: "Recent model-health history" })).toBeInTheDocument();
     expect(screen.getAllByText("250").length).toBeGreaterThan(0);
-    expect(screen.getByText("flow_duration")).toBeInTheDocument();
-    expect(screen.getByText("Enabled")).toBeInTheDocument();
+    expect(screen.getAllByText("flow_duration")).toHaveLength(2);
+    expect(screen.getByText("Shadow · no automation")).toBeInTheDocument();
+    expect(screen.getByText("What changed")).toBeInTheDocument();
+    expect(screen.getByText("threshold 0.15 · not probability")).toBeInTheDocument();
+    expect(document.querySelector(".health-threshold")?.tagName.toLowerCase()).toBe("polyline");
     expect(screen.queryByRole("button", { name: /retrain|promote|threshold/i })).not.toBeInTheDocument();
   });
 
   it("changes monitoring windows without changing model state", async () => {
     render(<ModelHealth fixtureMode={false}/>);
     await screen.findByText("Feature shift exceeds the warning threshold.");
-    await userEvent.click(screen.getByRole("tab", { name: "Slow window" }));
+    await userEvent.click(screen.getByRole("tab", { name: /Slow/ }));
     expect(getModelHealth).toHaveBeenLastCalledWith(expect.objectContaining({ window: "slow" }));
   });
 

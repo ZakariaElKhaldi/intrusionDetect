@@ -141,7 +141,7 @@ project's TypeScript version. The catalogue documents every currently exported
 operator-facing React surface: shared headings, severity labels, keyboard tabs,
 error containment, all chart families, alert queue and drawer, replay and
 ingestion states, overview, topology, model analysis and health, and observation
-testing. Its 57 stories cover meaningful ready, loading, empty, unavailable,
+testing. Its 65 stories cover meaningful ready, loading, empty, unavailable,
 partial, active, and failed states. Stories live next to their components and
 use Component Story Format, following Storybook's recommended structure.
 
@@ -249,6 +249,44 @@ Implementation consequences:
 No dependency was added. The backend prediction response now has a shared
 frontend type instead of crossing the API boundary as `unknown`.
 
+## Model-health decision-support iteration
+
+The model-health backend exposes cohort identity, fast and slow monitoring
+windows, calibrated feature and output signals, unseen categories, input
+quality, labelled outcomes, analyst review, and historical checks. The prior UI
+showed the overall state and a generic chart but hid the alarm drivers in dense
+disclosures. Storybook documented only the fixture boundary, so collecting,
+healthy, warning, critical, blocked, loading, empty, and failed states could not
+be reviewed independently.
+
+NIST's AI RMF treats production monitoring as a continuous, contextual risk
+activity and explicitly separates quantitative measurements from human and
+domain-expert input. NIST's 2026 monitoring report also identifies reducing
+human monitoring burden and combining automation with human validation as open
+challenges. DriftVis research found that a single drift number cannot explain
+why change occurred and recommends highlighting the distributions or features
+that drive it. W3C guidance requires the exact tabular relationships behind a
+visualization to remain programmatically available.
+
+Implementation consequences:
+
+- the API controller and pure `ModelHealthView` are separated, so every backend
+  state can be represented without Storybook network calls;
+- the default hierarchy now presents assessment, exact cohort/window scope,
+  observations, feature alarms, output alarms, aggregate signal and threshold,
+  labelled rows, and analyst-reviewed alerts before the trend;
+- warning and critical states surface their strongest feature drivers, output
+  alarms, and unseen categories instead of asking the operator to search six
+  evidence tables;
+- copy states that aggregate drift signals are not probabilities and that
+  distribution change is not proof of accuracy loss;
+- the trend has a visible and programmatic summary, and now plots each backend-
+  reported threshold instead of the previous hard-coded `1.0` line; and
+- exact cohort, reference, quality, output, performance, feature, unseen-value,
+  and history tables remain keyboard-focusable native evidence regions.
+
+No dependency was added. Model health now has nine dedicated Storybook states.
+
 ## Sources
 
 - [Web Content Accessibility Guidelines (WCAG) 2.2](https://www.w3.org/TR/WCAG22/)
@@ -277,3 +315,7 @@ frontend type instead of crossing the API boundary as `unknown`.
 - [NIST AI Risk Management Framework Playbook](https://airc.nist.gov/docs/AI_RMF_Playbook.pdf)
 - [W3C data-table tips and responsive guidance](https://www.w3.org/WAI/tutorials/tables/tips/)
 - [W3C table captions and summaries](https://www.w3.org/WAI/tutorials/tables/caption-summary/)
+- [NIST AI Risk Management Framework Core](https://airc.nist.gov/airmf-resources/airmf/5-sec-core/)
+- [NIST: Challenges to the Monitoring of Deployed AI Systems](https://www.nist.gov/news-events/news/2026/03/new-report-challenges-monitoring-deployed-ai-systems)
+- [Diagnosing Concept Drift with Visual Analytics](https://arxiv.org/abs/2007.14372)
+- [W3C accessible data-table guidance](https://www.w3.org/WAI/tutorials/tables/)
