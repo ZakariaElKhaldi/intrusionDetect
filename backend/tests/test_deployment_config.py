@@ -10,6 +10,8 @@ def test_backend_image_runs_unprivileged_and_has_a_liveness_probe() -> None:
     dockerfile = (REPOSITORY / "backend/Dockerfile").read_text(encoding="utf-8")
     assert "ghcr.io/astral-sh/uv:0.11.16" in dockerfile
     assert "COPY backend/uv.lock" in dockerfile
+    assert "COPY --chown=10001:10001 data /app/data" in dockerfile
+    assert "COPY --chown=10001:10001 models /app/models" in dockerfile
     assert "uv sync --locked --no-dev" in dockerfile
     assert 'pip install --no-cache-dir ".[postgres,pcap]"' not in dockerfile
     assert "USER 10001:10001" in dockerfile
@@ -82,6 +84,7 @@ def test_frontend_gateway_enforces_same_origin_and_browser_security_policy() -> 
 
 def test_compose_has_no_default_database_password_or_cross_origin_browser_url() -> None:
     compose = (REPOSITORY / "docker-compose.yml").read_text(encoding="utf-8")
+    env_example = (REPOSITORY / ".env.example").read_text(encoding="utf-8")
     assert "POSTGRES_PASSWORD: iot_ids" not in compose
     assert "IOT_IDS_POSTGRES_PASSWORD:?" in compose
     assert "VITE_API_URL:" not in compose
@@ -94,6 +97,9 @@ def test_compose_has_no_default_database_password_or_cross_origin_browser_url() 
     assert "read_only: true" in compose
     assert "no-new-privileges:true" in compose
     assert "cap_drop:\n    - ALL" in compose
+    assert 'command: ["python", "-m", "app.ingestion.worker"]\n    healthcheck:\n      disable: true' in compose
+    assert "IOT_IDS_ADMIN_PASSWORD_HASH=''" in env_example
+    assert "single-quoted" in env_example
 
 
 def test_ci_actions_are_immutable_and_least_privilege() -> None:

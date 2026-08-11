@@ -76,6 +76,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     command: ["python", "-m", "app.ingestion.worker"]
+    healthcheck:
+      disable: true
     environment: *backend-environment
     restart: unless-stopped
     depends_on:

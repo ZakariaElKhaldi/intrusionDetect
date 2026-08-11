@@ -9,8 +9,8 @@ RUN uv sync --locked --no-dev --extra postgres --extra pcap \
 COPY backend/app ./app
 COPY backend/alembic.ini ./alembic.ini
 COPY backend/alembic ./alembic
-COPY data /app/data
-COPY models /app/models
+COPY --chown=10001:10001 data /app/data
+COPY --chown=10001:10001 models /app/models
 RUN uv sync --locked --no-dev --extra postgres --extra pcap --no-editable --no-cache
 
 RUN groupadd --gid 10001 iotids \

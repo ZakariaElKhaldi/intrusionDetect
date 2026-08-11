@@ -204,7 +204,7 @@ Generate credentials without putting a plaintext password in configuration:
 ```bash
 cd backend
 .venv/bin/python -m app.api.auth
-# copy the Argon2id output to IOT_IDS_ADMIN_PASSWORD_HASH
+# copy the Argon2id output to IOT_IDS_ADMIN_PASSWORD_HASH in single quotes
 # set IOT_IDS_SECRET_KEY to at least 32 random bytes
 ```
 
