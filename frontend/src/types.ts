@@ -45,6 +45,7 @@ export interface Alert {
   reasons?: string[];
   evidence_type?: EvidenceType;
   identity_quality?: IdentityQuality;
+  feedback?: AnalystFeedback[];
 }
 
 export interface HealthInfo {
@@ -109,6 +110,17 @@ export interface IngestionStatus {
     oldest_pending_age_seconds: number | null;
   };
   generated_at: string;
+}
+
+export interface EnqueuedEvent {
+  event_id: string;
+  state: IngestionJobState;
+  disposition: "accepted" | "duplicate";
+}
+
+export interface IngestionBatchReceipt {
+  batch_id: string;
+  events: EnqueuedEvent[];
 }
 
 export type IngestionJobState = "queued" | "processing" | "retrying" | "succeeded" | "dead_letter";

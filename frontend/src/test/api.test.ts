@@ -3,6 +3,7 @@ import {
   ApiError,
   checkHealth,
   getAlerts,
+  getAlert,
   getAlertExplanation,
   getEvaluation,
   getIngestionStatus,
@@ -10,7 +11,9 @@ import {
   getOutboxEvents,
   getModelHealth,
   getModelHealthHistory,
+  enqueueObservations,
   liveEventFromSocketMessage,
+  startCustomReplay,
   startReplay,
   submitAlertFeedback,
   setApiAccessToken,
@@ -112,6 +115,34 @@ describe("frontend API adapter", () => {
     ]);
   });
 
+  it("submits validated rows to durable ingestion and custom replay contracts", async () => {
+    const ingestion = { batch_id: "batch-1", events: [{ event_id: "event-1", state: "queued", disposition: "accepted" }] };
+    const replay = { status: "running", processed: 0, total: 1, error: null, speed: 1, scenario: "custom-upload", mode: "custom", offset: 0, limit: null };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(ingestion))
+      .mockResolvedValueOnce(jsonResponse(replay));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("crypto", { randomUUID: () => "event-1" });
+    const rows = [{ flow_duration: 1.5, source: "lab" }];
+
+    await expect(enqueueObservations(rows)).resolves.toEqual(ingestion);
+    await expect(startCustomReplay(rows)).resolves.toEqual(replay);
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/v1/ingestion/events",
+      "/api/v1/replay/start",
+    ]);
+    const ingestionBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    const replayBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(ingestionBody.observations[0]).toMatchObject({
+      event_id: "event-1", schema_version: "rt-iot2022-v1", source: "lab",
+    });
+    expect(replayBody).toMatchObject({
+      mode: "custom", scenario: "custom-upload", speed: 1,
+    });
+    expect(replayBody.observations).toHaveLength(1);
+  });
+
   it("maps raw top feature values without calling them contributions", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([{
       alert_id: "alert-1",
@@ -141,6 +172,36 @@ describe("frontend API adapter", () => {
       value: 14.5,
       evidence_type: "highlighted_value",
     });
+  });
+
+  it("preserves the authoritative analyst disposition history on alert detail", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      alert_id: "alert-history",
+      event_id: "event-history",
+      severity: "high",
+      reasons: ["detector threshold exceeded"],
+      top_features: [],
+      status: "investigating",
+      created_at: "2026-08-10T20:00:00Z",
+      attack_class: "Port Scan",
+      detection_score: 0.92,
+      raw_features: {},
+      feedback: [{
+        feedback_id: "feedback-1",
+        alert_id: "alert-history",
+        analyst: "admin",
+        status: "investigating",
+        notes: "Correlated with maintenance window.",
+        created_at: "2026-08-10T20:05:00Z",
+      }],
+    })));
+
+    const detail = await getAlert("alert-history");
+    expect(detail.feedback).toEqual([expect.objectContaining({
+      analyst: "admin",
+      status: "investigating",
+      notes: "Correlated with maintenance window.",
+    })]);
   });
 
   it("recognizes explicit signed model contributions", async () => {

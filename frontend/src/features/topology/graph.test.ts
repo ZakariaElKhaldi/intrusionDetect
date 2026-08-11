@@ -70,6 +70,24 @@ describe("aggregateTopology", () => {
     expect(topologyMembership(updated)).toBe(topologyMembership(first));
   });
 
+  it("keeps resolved severity separate from current unresolved risk", () => {
+    const graph = aggregateTopology([
+      alert({ id: "resolved-critical", severity: "critical", status: "resolved" }),
+      alert({ id: "open-low", severity: "low", status: "new" }),
+    ]);
+
+    expect(graph.edges[0]).toMatchObject({
+      highestSeverity: "critical",
+      highestUnresolvedSeverity: "low",
+      unresolvedCount: 1,
+    });
+    expect(graph.nodes[0]).toMatchObject({
+      highestSeverity: "critical",
+      highestUnresolvedSeverity: "low",
+      unresolvedCount: 1,
+    });
+  });
+
   it("handles malformed dates and empty data", () => {
     const graph = aggregateTopology([
       alert({ timestamp: "not-a-date" }),
@@ -79,4 +97,3 @@ describe("aggregateTopology", () => {
     expect(aggregateTopology([])).toEqual({ nodes: [], edges: [], hasLimitedIdentity: false });
   });
 });
-

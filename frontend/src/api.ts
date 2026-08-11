@@ -26,6 +26,7 @@ import type {
   ModelHealthCohort,
   RedriveResponse,
   AuthSession,
+  IngestionBatchReceipt,
 } from "./types";
 
 const configuredApi = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
@@ -87,6 +88,7 @@ interface AlertWire {
     evidence_type?: string;
     explanation_type?: string;
   };
+  feedback?: AnalystFeedback[];
 }
 
 interface ModelWire {
@@ -222,6 +224,7 @@ function alertFromWire(value: AlertWire): Alert {
           : alertEvidenceType
       ),
     })),
+    feedback: value.feedback ?? [],
   };
 }
 
@@ -697,6 +700,31 @@ export async function predict(rows: Record<string, string | number>[]) {
   return request<unknown>(rows.length === 1 ? "/predict" : "/predict/batch", {
     method: "POST",
     body: JSON.stringify(rows.length === 1 ? observations[0] : { observations }),
+  });
+}
+
+export async function enqueueObservations(
+  rows: Record<string, string | number>[],
+): Promise<IngestionBatchReceipt> {
+  return request<IngestionBatchReceipt>("/ingestion/events", {
+    method: "POST",
+    body: JSON.stringify({ observations: observationsFromRows(rows) }),
+  });
+}
+
+export async function startCustomReplay(
+  rows: Record<string, string | number>[],
+  speed = 1,
+): Promise<ReplayStatus> {
+  return request<ReplayStatus>("/replay/start", {
+    method: "POST",
+    body: JSON.stringify({
+      mode: "custom",
+      observations: observationsFromRows(rows),
+      interval_ms: 250,
+      speed,
+      scenario: "custom-upload",
+    }),
   });
 }
 

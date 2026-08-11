@@ -86,17 +86,38 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
   const hasFilters = query || severity !== "all" || status !== "all" || family !== "all" || range !== "all" || from || to;
   const visibleError = pageError || error;
   const retry = () => pageError ? setPageRefresh((value) => value + 1) : onRetry?.();
+  const quickView = severity === "critical" && status === "all" ? "critical"
+    : severity === "all" && status === "new" ? "new"
+      : severity === "all" && status === "investigating" ? "investigating"
+        : severity === "all" && status === "all" ? "all" : "custom";
+  const resultTotal = fixtureMode || pageItems === null ? filtered.length : pageTotal;
+  const setQuickView = (view: "all" | "new" | "critical" | "investigating") => {
+    setSeverity(view === "critical" ? "critical" : "all");
+    setStatus(view === "new" ? "new" : view === "investigating" ? "investigating" : "all");
+  };
 
   return <section className="panel alerts-panel" aria-labelledby="alerts-heading" aria-busy={pageLoading || loading}>
-    <h2 className="sr-only" id="alerts-heading">Security alerts</h2>
+    <header className="queue-header">
+      <div><span className="eyebrow">Analyst work queue</span><h2 id="alerts-heading">Security alerts</h2><p>Open an alert to inspect its route, model evidence, and disposition history.</p></div>
+      <div className="queue-order"><b>{resultTotal.toLocaleString()}</b><span>matching {resultTotal === 1 ? "alert" : "alerts"} · newest first</span></div>
+    </header>
+    <nav className="queue-views" aria-label="Alert queue views">
+      <span>Quick views</span>
+      {([
+        ["all", "All alerts"],
+        ["new", "Needs review"],
+        ["critical", "Critical"],
+        ["investigating", "In progress"],
+      ] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={quickView === value} onClick={() => setQuickView(value)}>{label}</button>)}
+      {quickView === "custom" ? <span className="queue-view-custom">Custom filters</span> : null}
+    </nav>
     <div className="filters">
-      <label className="search-field"><Search aria-hidden="true"/><span className="sr-only">Search alerts</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Endpoint, detection, ID, protocol…" /></label>
-      <label><span className="sr-only">Time range</span><select value={range} onChange={(e) => { setRange(e.target.value); setFrom(""); setTo(""); }}><option value="all">All time</option><option value="15m">Last 15 minutes</option><option value="1h">Last hour</option><option value="24h">Last 24 hours</option></select></label>
-      <label><span className="sr-only">Detection family</span><select value={family} onChange={(e) => setFamily(e.target.value)}><option value="all">All detections</option>{families.map((value) => <option key={value}>{value}</option>)}</select></label>
-      <label><span className="sr-only">Severity</span><select value={severity} onChange={(e) => setSeverity(e.target.value)}><option value="all">All severities</option>{["critical","high","medium","low","normal"].map((v)=><option key={v}>{v[0].toUpperCase()+v.slice(1)}</option>)}</select></label>
-      <label><span className="sr-only">Status</span><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">All statuses</option>{["new","investigating","confirmed","false_positive","resolved"].map((v)=><option key={v} value={v}>{v.replace("_"," ")}</option>)}</select></label>
+      <label className="filter-field filter-field--search"><span className="filter-label">Search</span><span className="search-field"><Search aria-hidden="true"/><input aria-label="Search alerts" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Endpoint, detection, ID, protocol…" /></span></label>
+      <label className="filter-field"><span className="filter-label">Time</span><select value={range} onChange={(e) => { setRange(e.target.value); setFrom(""); setTo(""); }}><option value="all">All time</option><option value="15m">Last 15 minutes</option><option value="1h">Last hour</option><option value="24h">Last 24 hours</option></select></label>
+      <label className="filter-field"><span className="filter-label">Detection</span><select value={family} onChange={(e) => setFamily(e.target.value)}><option value="all">All detections</option>{families.map((value) => <option key={value}>{value}</option>)}</select></label>
+      <label className="filter-field"><span className="filter-label">Severity</span><select value={severity} onChange={(e) => setSeverity(e.target.value)}><option value="all">All severities</option>{["critical","high","medium","low","normal"].map((v)=><option key={v}>{v[0].toUpperCase()+v.slice(1)}</option>)}</select></label>
+      <label className="filter-field"><span className="filter-label">Status</span><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">All statuses</option>{["new","investigating","confirmed","false_positive","resolved"].map((v)=><option key={v} value={v}>{v.replace("_"," ")}</option>)}</select></label>
       {hasFilters ? <button type="button" className="secondary-button filter-reset" onClick={reset}>Reset filters</button> : null}
-      <span className="result-count">{fixtureMode ? filtered.length : pageTotal} results</span>
     </div>
     {(from || to) ? <div className="active-filter">Timeline interval: {from ? new Date(from).toLocaleString() : "start"} – {to ? new Date(to).toLocaleString() : "now"}<button type="button" onClick={() => { setFrom(""); setTo(""); }}>Clear interval</button></div> : null}
     {pending > 0 ? <button type="button" className="pending-banner" onClick={applyPending}>{pending} new alert{pending === 1 ? "" : "s"} received — show updates</button> : null}
@@ -118,21 +139,29 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+  const restoreFrameRef = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const [feedbackState, setFeedbackState] = useState("");
+  const [feedbackNotes, setFeedbackNotes] = useState("");
+  const [feedbackHistory, setFeedbackHistory] = useState(alert.feedback ?? []);
   const [submitting, setSubmitting] = useState(false);
   const [explanations, setExplanations] = useState<AlertExplanationStage[]>([]);
   const [explanationState, setExplanationState] = useState<"loading"|"ready"|"empty"|"error">("loading");
   const [activeStage, setActiveStage] = useState(0);
 
   useEffect(() => {
-    restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (restoreFrameRef.current !== null) {
+      window.cancelAnimationFrame(restoreFrameRef.current);
+      restoreFrameRef.current = null;
+    }
+    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!dialogRef.current?.contains(activeElement)) restoreRef.current = activeElement;
     closeRef.current?.focus();
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); return; }
       if (event.key !== "Tab" || !dialogRef.current) return;
-      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), summary, [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
       if (!focusable.length) return;
       const first = focusable[0], last = focusable[focusable.length - 1];
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
@@ -142,7 +171,8 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
     return () => {
       removeEventListener("keydown", keydown);
       const original = restoreRef.current;
-      window.requestAnimationFrame(() => {
+      restoreFrameRef.current = window.requestAnimationFrame(() => {
+        restoreFrameRef.current = null;
         if (original?.isConnected) {
           original.focus();
           return;
@@ -155,6 +185,10 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
   }, []);
 
   useEffect(() => {
+    setFeedbackHistory(alert.feedback ?? []);
+  }, [alert.feedback]);
+
+  useEffect(() => {
     if (!loadExplanation) { setExplanationState("empty"); setExplanations([]); return; }
     let cancelled=false; setExplanationState("loading"); setExplanations([]);
     void getAlertExplanation(alert.id).then((items)=>{ if(!cancelled){setExplanations(items);setExplanationState(items.length?"ready":"empty");setActiveStage(0);}}).catch(()=>{if(!cancelled)setExplanationState("error")});
@@ -164,7 +198,7 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
   const updateStatus = async (status: AlertStatus) => {
     if (!auth.authenticated) { auth.openLogin(); return; }
     if (readOnly) return; setSubmitting(true); setFeedbackState("");
-    try { await submitAlertFeedback(alert.id,{status,notes:`Status changed to ${status.replace("_"," ")} from the dashboard.`}); onStatusChange(alert.id,status); setFeedbackState(`Saved as ${status.replace("_"," ")}.`); }
+    try { const saved = await submitAlertFeedback(alert.id,{status,notes:feedbackNotes.trim() || `Status changed to ${status.replace("_"," ")} from the dashboard.`}); onStatusChange(alert.id,status); setFeedbackHistory((current)=>[...current,saved]); setFeedbackState(`Saved as ${status.replace("_"," ")}.`); setFeedbackNotes(""); }
     catch(error){setFeedbackState(error instanceof Error?error.message:"Could not save analyst feedback.");} finally{setSubmitting(false);}
   };
   const current = explanations[activeStage];
@@ -175,6 +209,8 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
   return <div className="drawer-layer" role="presentation" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><aside ref={dialogRef} className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
     <div className="drawer-header"><div><SeverityLabel severity={alert.severity}/><h2 id="drawer-title">{alert.attack_type}</h2><small>{alert.id} · {new Date(alert.timestamp).toLocaleString()}</small></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close alert details"><X/></button></div>
     <section className="drawer-section"><h3>Detection summary</h3><div className="summary-grid"><div><span>Detector score</span><b>{(alert.confidence*100).toFixed(1)}%</b></div><div><span>Status</span><b>{alert.status.replace("_"," ")}</b></div><div><span>Detector</span><b className="mono">{alert.detector_model_version??alert.model_version??"Not reported"}</b></div>{alert.classifier_model_version?<div><span>Classifier</span><b className="mono">{alert.classifier_model_version}</b></div>:null}{alert.attack_class_score!=null?<div><span>Class score</span><b>{(alert.attack_class_score*100).toFixed(1)}%</b></div>:null}<div><span>Detector latency</span><b>{alert.detector_latency_ms == null ? "Not reported" : `${alert.detector_latency_ms.toFixed(2)} ms`}</b></div>{alert.classifier_latency_ms!=null?<div><span>Classifier latency</span><b>{alert.classifier_latency_ms.toFixed(2)} ms</b></div>:null}<div><span>Total inference latency</span><b>{alert.total_latency_ms == null ? "Not reported" : `${alert.total_latency_ms.toFixed(2)} ms`}</b></div></div></section>
+    <section className="drawer-section decision-panel"><div className="decision-heading"><div><span className="eyebrow">Human decision</span><h3>Disposition this alert</h3></div><span className={`status-text status-text--${alert.status}`}>Current: {alert.status.replace("_"," ")}</span></div>{readOnly?<p className="readonly-note">Fixture data is read-only. Connect the API to persist analyst feedback.</p>:null}<label className="decision-notes"><span>Investigation note <small>optional</small></span><textarea value={feedbackNotes} onChange={(event)=>setFeedbackNotes(event.target.value)} disabled={submitting||readOnly} maxLength={10_000} rows={3} placeholder="Record the evidence or reasoning behind this decision…" /></label><div className="drawer-actions"><button className="primary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("investigating")}>Start investigation</button><button className="secondary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("confirmed")}>Confirm alert</button><button className="secondary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("false_positive")}>Mark false positive</button><button className="secondary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("resolved")}><CheckCircle2/>Resolve</button></div>{feedbackState?<div className="feedback-state" role="status">{feedbackState}</div>:null}</section>
+    {feedbackHistory.length ? <section className="drawer-section"><h3>Disposition history</h3><ol className="feedback-timeline">{[...feedbackHistory].reverse().map((item)=><li key={item.feedback_id}><span className={`status-text status-text--${item.status}`}>{item.status.replace("_"," ")}</span><p>{item.notes || "No investigation note recorded."}</p><small>{item.analyst} · <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time></small></li>)}</ol></section> : null}
     <section className="drawer-section"><h3>Observed route</h3><div className="route-card"><span><small>Source</small><b>{alert.source_ip}</b></span><ArrowRight/><span><small>Destination</small><b>{alert.destination_ip}</b></span></div>{alert.identity_quality==="port_only"?<p>Only transport ports are available; they are not persistent device identities.</p>:null}</section>
     <section className="drawer-section"><h3>Model explanation</h3><p>Signed SHAP impacts explain this model output relative to its base value. They are associations inside the model, not causal proof.</p>
       {explanationState==="loading"?<div className="explanation-state" role="status">Computing explanation…</div>:null}{explanationState==="error"?<div className="explanation-state" role="alert">On-demand explanation is unavailable.</div>:null}
@@ -183,7 +219,6 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
       {explanationState==="empty"?<div className="explanation-state">No SHAP explanation was returned for this alert.</div>:null}
     </section>
     {!!alert.reasons?.length?<section className="drawer-section"><h3>Severity reasons</h3>{alert.reasons.map(reason=><p key={reason}>{reason}</p>)}</section>:null}
-    <section className="drawer-section"><h3>Raw flow features</h3><dl className="feature-grid">{Object.entries(alert.features??{}).map(([key,value])=><div key={key}><dt>{key.replaceAll("_"," ")}</dt><dd>{value}</dd></div>)}</dl></section>
-    <section className="drawer-section"><h3>Analyst action</h3>{readOnly?<p className="readonly-note">Fixture data is read-only. Connect the API to persist analyst feedback.</p>:null}<div className="drawer-actions"><button className="primary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("investigating")}>Start investigation</button><button className="secondary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("confirmed")}>Confirm alert</button><button className="secondary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("false_positive")}>Mark false positive</button><button className="secondary-button" disabled={submitting||readOnly} onClick={()=>void updateStatus("resolved")}><CheckCircle2/>Resolve</button></div>{feedbackState?<div className="feedback-state" role="status">{feedbackState}</div>:null}</section>
+    <details className="drawer-disclosure"><summary><span>Raw flow features</span><small>{Object.keys(alert.features??{}).length} observed values</small></summary><div className="drawer-disclosure-body"><dl className="feature-grid">{Object.entries(alert.features??{}).map(([key,value])=><div key={key}><dt>{key.replaceAll("_"," ")}</dt><dd>{value}</dd></div>)}</dl></div></details>
   </aside></div>;
 }

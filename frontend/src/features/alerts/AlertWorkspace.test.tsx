@@ -86,4 +86,28 @@ describe("AlertWorkspace", () => {
     act(() => vi.advanceTimersByTime(250));
     expect(api.getAlertsPage).toHaveBeenCalledTimes(2);
   });
+
+  it("offers understandable quick views without hiding the detailed filters", () => {
+    render(
+      <AlertWorkspace
+        alerts={[alert]}
+        pending={0}
+        onSelect={vi.fn()}
+        applyPending={vi.fn()}
+        fixtureMode
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "All alerts" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Search alerts")).toBeInTheDocument();
+    expect(screen.getByText("matching alert · newest first")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Critical" }));
+    expect(screen.getByRole("button", { name: "Critical" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("No alerts match these filters")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Needs review" }));
+    expect(screen.getByRole("button", { name: "Needs review" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getAllByRole("button", { name: /Open NMAP_UDP_SCAN alert alert-1/ })).not.toHaveLength(0);
+  });
 });

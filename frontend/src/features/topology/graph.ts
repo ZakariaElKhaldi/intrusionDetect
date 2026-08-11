@@ -9,6 +9,7 @@ export interface TopologyNode {
   alertCount: number;
   unresolvedCount: number;
   highestSeverity: Severity;
+  highestUnresolvedSeverity: Severity | null;
   protocols: string[];
   lastSeen: string;
   identityQuality: IdentityQuality;
@@ -24,6 +25,7 @@ export interface TopologyEdge {
   alertCount: number;
   unresolvedCount: number;
   highestSeverity: Severity;
+  highestUnresolvedSeverity: Severity | null;
   protocols: string[];
   lastSeen: string;
   alertIds: string[];
@@ -42,6 +44,10 @@ const severityRank: Record<Severity, number> = {
   high: 3,
   critical: 4,
 };
+
+function openSeverityRank(value: Severity | null): number {
+  return value === null ? -1 : severityRank[value];
+}
 
 export function highestSeverity(left: Severity, right: Severity): Severity {
   return severityRank[right] > severityRank[left] ? right : left;
@@ -91,6 +97,7 @@ export function aggregateTopology(alerts: Alert[]): TopologyGraph {
         alertCount: 1,
         unresolvedCount: unresolved,
         highestSeverity: alert.severity,
+        highestUnresolvedSeverity: unresolved ? alert.severity : null,
         protocols: [alert.protocol],
         lastSeen: alert.timestamp,
         identityQuality: identityQuality(endpoint),
@@ -101,6 +108,11 @@ export function aggregateTopology(alerts: Alert[]): TopologyGraph {
     current.alertCount += 1;
     current.unresolvedCount += unresolved;
     current.highestSeverity = highestSeverity(current.highestSeverity, alert.severity);
+    if (unresolved) {
+      current.highestUnresolvedSeverity = current.highestUnresolvedSeverity === null
+        ? alert.severity
+        : highestSeverity(current.highestUnresolvedSeverity, alert.severity);
+    }
     current.lastSeen = moreRecent(current.lastSeen, alert.timestamp);
     if (!current.protocols.includes(alert.protocol)) current.protocols.push(alert.protocol);
     if (!current.alertIds.includes(alert.id)) current.alertIds.push(alert.id);
@@ -125,6 +137,7 @@ export function aggregateTopology(alerts: Alert[]): TopologyGraph {
         alertCount: 1,
         unresolvedCount: unresolved,
         highestSeverity: alert.severity,
+        highestUnresolvedSeverity: unresolved ? alert.severity : null,
         protocols: [alert.protocol],
         lastSeen: alert.timestamp,
         alertIds: [alert.id],
@@ -134,6 +147,11 @@ export function aggregateTopology(alerts: Alert[]): TopologyGraph {
     current.alertCount += 1;
     current.unresolvedCount += unresolved;
     current.highestSeverity = highestSeverity(current.highestSeverity, alert.severity);
+    if (unresolved) {
+      current.highestUnresolvedSeverity = current.highestUnresolvedSeverity === null
+        ? alert.severity
+        : highestSeverity(current.highestUnresolvedSeverity, alert.severity);
+    }
     current.lastSeen = moreRecent(current.lastSeen, alert.timestamp);
     if (!current.protocols.includes(alert.protocol)) current.protocols.push(alert.protocol);
     if (!current.alertIds.includes(alert.id)) current.alertIds.push(alert.id);
@@ -142,11 +160,19 @@ export function aggregateTopology(alerts: Alert[]): TopologyGraph {
   const sortedNodes = [...nodes.values()].map((node) => ({
     ...node,
     protocols: node.protocols.sort(),
-  })).sort((a, b) => b.alertCount - a.alertCount || a.endpoint.localeCompare(b.endpoint));
+  })).sort((a, b) =>
+    openSeverityRank(b.highestUnresolvedSeverity) - openSeverityRank(a.highestUnresolvedSeverity)
+    || b.unresolvedCount - a.unresolvedCount
+    || b.alertCount - a.alertCount
+    || a.endpoint.localeCompare(b.endpoint));
   const sortedEdges = [...edges.values()].map((edge) => ({
     ...edge,
     protocols: edge.protocols.sort(),
-  })).sort((a, b) => b.alertCount - a.alertCount || a.id.localeCompare(b.id));
+  })).sort((a, b) =>
+    openSeverityRank(b.highestUnresolvedSeverity) - openSeverityRank(a.highestUnresolvedSeverity)
+    || b.unresolvedCount - a.unresolvedCount
+    || b.alertCount - a.alertCount
+    || a.id.localeCompare(b.id));
 
   return {
     nodes: sortedNodes,

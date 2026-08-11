@@ -6,16 +6,19 @@ const severity = ["critical", "high", "medium", "low", "normal"] as const;
 
 export const sampleAlerts: Alert[] = Array.from({ length: 180 }, (_, index) => {
   const type = attacks[index % attacks.length];
+  const id = `ALT-${String(3048 - index).padStart(5, "0")}`;
+  const timestamp = new Date(Date.now() - index * 97_000).toISOString();
+  const status = index % 11 === 0 ? "resolved" : index % 5 === 0 ? "investigating" : "new";
   return {
-    id: `ALT-${String(3048 - index).padStart(5, "0")}`,
-    timestamp: new Date(Date.now() - index * 97_000).toISOString(),
+    id,
+    timestamp,
     attack_type: type,
     confidence: type === "Normal" ? 0.94 - (index % 5) / 100 : 0.99 - (index % 19) / 100,
     severity: type === "Normal" ? "normal" : severity[index % 4],
     source_ip: `192.168.${10 + (index % 4)}.${20 + (index % 17)}`,
     destination_ip: `10.0.0.${2 + (index % 8)}`,
     protocol: protocols[index % protocols.length],
-    status: index % 11 === 0 ? "resolved" : index % 5 === 0 ? "investigating" : "new",
+    status,
     features: {
       flow_duration: 1200 + index * 17,
       packet_rate: 84 + (index % 30),
@@ -27,6 +30,14 @@ export const sampleAlerts: Alert[] = Array.from({ length: 180 }, (_, index) => {
       { feature: "flow_duration", impact: 0.18 },
       { feature: "total_bwd_packets", impact: -0.08 },
     ],
+    feedback: status === "resolved" ? [{
+      feedback_id: `FB-${index}`,
+      alert_id: id,
+      analyst: "fixture-analyst",
+      status: "resolved",
+      notes: "Fixture example: route reviewed and closed after validation.",
+      created_at: new Date(Date.parse(timestamp) + 60_000).toISOString(),
+    }] : [],
   };
 });
 

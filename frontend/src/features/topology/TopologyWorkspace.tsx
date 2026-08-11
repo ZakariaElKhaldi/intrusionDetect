@@ -1,6 +1,7 @@
 import cytoscape, { type Core, type ElementDefinition, type EventObject } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TabList, tabId } from "../../components/TabList";
 import type { Alert } from "../../types";
 import {
   aggregateTopology,
@@ -25,6 +26,7 @@ type Selection =
   | null;
 
 type WindowFilter = "all" | "15m" | "1h" | "24h";
+type InventoryView = "endpoints" | "routes";
 
 const layoutOptions = {
   name: "fcose",
@@ -76,7 +78,7 @@ function elementDefinitions(nodes: TopologyNode[], edges: TopologyEdge[]): Eleme
       group: "nodes" as const,
       data: {
         ...node,
-        elevated: isElevated(node.highestSeverity) && node.unresolvedCount > 0 ? 1 : 0,
+        elevated: node.highestUnresolvedSeverity && isElevated(node.highestUnresolvedSeverity) ? 1 : 0,
         size: Math.min(58, 28 + Math.sqrt(node.alertCount) * 7),
       },
     })),
@@ -84,7 +86,7 @@ function elementDefinitions(nodes: TopologyNode[], edges: TopologyEdge[]): Eleme
       group: "edges" as const,
       data: {
         ...edge,
-        elevated: isElevated(edge.highestSeverity) && edge.unresolvedCount > 0 ? 1 : 0,
+        elevated: edge.highestUnresolvedSeverity && isElevated(edge.highestUnresolvedSeverity) ? 1 : 0,
         width: Math.min(7, 1 + Math.log2(edge.alertCount + 1)),
       },
     })),
@@ -94,6 +96,10 @@ function elementDefinitions(nodes: TopologyNode[], edges: TopologyEdge[]): Eleme
 function formatSeen(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? "Unknown" : date.toLocaleString();
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false }: TopologyWorkspaceProps) {
@@ -107,6 +113,7 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
   const [windowFilter, setWindowFilter] = useState<WindowFilter>("all");
   const [elevatedOnly, setElevatedOnly] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
+  const [inventoryView, setInventoryView] = useState<InventoryView>("endpoints");
 
   const protocols = useMemo(
     () => [...new Set(alerts.map((alert) => alert.protocol))].sort(),
@@ -120,6 +127,13 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
   const membership = useMemo(() => topologyMembership(graph), [graph]);
   const nodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
   const edgeById = useMemo(() => new Map(graph.edges.map((edge) => [edge.id, edge])), [graph.edges]);
+  const elevatedEndpoints = graph.nodes.filter((node) => node.highestUnresolvedSeverity && isElevated(node.highestUnresolvedSeverity)).length;
+  const elevatedRoutes = graph.edges.filter((edge) => edge.highestUnresolvedSeverity && isElevated(edge.highestUnresolvedSeverity)).length;
+  const limitedEndpoints = graph.nodes.filter((node) => node.identityQuality !== "address").length;
+  const mostActiveEndpoint = graph.nodes.reduce<TopologyNode | null>(
+    (current, node) => current === null || node.alertCount > current.alertCount ? node : current,
+    null,
+  );
   nodeLookupRef.current = nodeById;
   edgeLookupRef.current = edgeById;
 
@@ -141,7 +155,7 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
             label: "data(label)",
             width: "data(size)",
             height: "data(size)",
-            "font-size": 10,
+            "font-size": 11,
             "text-valign": "bottom",
             "text-margin-y": 8,
             "text-wrap": "ellipsis",
@@ -200,11 +214,17 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
 
     const selectNode = (event: EventObject) => {
       const node = nodeLookupRef.current.get(event.target.id());
-      if (node) setSelection({ kind: "node", item: node });
+      if (node) {
+        setInventoryView("endpoints");
+        setSelection({ kind: "node", item: node });
+      }
     };
     const selectEdge = (event: EventObject) => {
       const edge = edgeLookupRef.current.get(event.target.id());
-      if (edge) setSelection({ kind: "edge", item: edge });
+      if (edge) {
+        setInventoryView("routes");
+        setSelection({ kind: "edge", item: edge });
+      }
     };
     const clearSelection = (event: EventObject) => {
       if (event.target === cy) setSelection(null);
@@ -283,19 +303,22 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
 
   useEffect(() => {
     if (!selection) return;
-    const exists = selection.kind === "node"
-      ? nodeById.has(selection.item.id)
-      : edgeById.has(selection.item.id);
-    if (!exists) setSelection(null);
+    const current = selection.kind === "node"
+      ? nodeById.get(selection.item.id)
+      : edgeById.get(selection.item.id);
+    if (!current) setSelection(null);
+    else if (current !== selection.item) setSelection({ kind: selection.kind, item: current } as Selection);
   }, [edgeById, nodeById, selection]);
 
   const selectNodeFromList = (node: TopologyNode) => {
+    setInventoryView("endpoints");
     setSelection({ kind: "node", item: node });
     const element = cyRef.current?.getElementById(node.id);
     if (element?.length) cyRef.current?.animate({ center: { eles: element }, zoom: 1.15 }, { duration: reducedMotion ? 0 : 250 });
   };
 
   const selectEdgeFromList = (edge: TopologyEdge) => {
+    setInventoryView("routes");
     setSelection({ kind: "edge", item: edge });
     const element = cyRef.current?.getElementById(edge.id);
     if (element?.length) cyRef.current?.animate({ center: { eles: element } }, { duration: reducedMotion ? 0 : 250 });
@@ -307,7 +330,20 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
     cy.layout(layoutOptions as cytoscape.LayoutOptions).run();
   };
 
-  return <section className="topology-workspace" aria-label="Network topology investigation">
+  return <section className="topology-workspace" aria-labelledby="topology-workspace-heading">
+    <header className="topology-overview">
+      <div><span className="eyebrow">Relationship evidence</span><h2 id="topology-workspace-heading">Communication paths</h2><p>Explore where alerts were observed, which direction traffic moved, and where unresolved high-risk activity remains.</p></div>
+      <p className="topology-narrative" aria-live="polite">
+        {mostActiveEndpoint
+          ? `${mostActiveEndpoint.endpoint} is the most active visible endpoint with ${mostActiveEndpoint.alertCount} alert${mostActiveEndpoint.alertCount === 1 ? "" : "s"}.`
+          : "No endpoint relationships match the current filters."}
+      </p>
+    </header>
+    <div className="topology-metrics" aria-label="Visible topology summary">
+      <div><span>Visible evidence</span><b>{visibleAlerts.length}</b><small>{countLabel(visibleAlerts.length, "alert")} across {countLabel(graph.nodes.length, "endpoint")}</small></div>
+      <div className={elevatedRoutes ? "topology-metric--risk" : ""}><span>Open elevated risk</span><b>{elevatedRoutes}</b><small>{countLabel(elevatedRoutes, "route")} · {countLabel(elevatedEndpoints, "endpoint")}</small></div>
+      <div className={limitedEndpoints ? "topology-metric--limited" : ""}><span>Limited identity</span><b>{limitedEndpoints}</b><small>{countLabel(limitedEndpoints, "endpoint")} without confirmed addresses</small></div>
+    </div>
     <div className="topology-toolbar">
       <label>Search
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Endpoint, detection, protocol…" />
@@ -333,7 +369,7 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
         </button>
       </div>
       <span className="topology-summary" aria-live="polite">
-        {graph.nodes.length} endpoints · {graph.edges.length} directed routes · {visibleAlerts.length} alerts
+        {countLabel(graph.nodes.length, "endpoint")} · {countLabel(graph.edges.length, "directed route")} · {countLabel(visibleAlerts.length, "alert")}
       </span>
     </div>
 
@@ -353,48 +389,34 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
           ref={containerRef}
           className="topology-graph"
           role="img"
-          aria-label={`Directed network map with ${graph.nodes.length} endpoints and ${graph.edges.length} routes. Use the adjacent lists for keyboard access.`}
+          aria-label={`Directed network map with ${countLabel(graph.nodes.length, "endpoint")} and ${countLabel(graph.edges.length, "route")}. Use the adjacent structured explorer for keyboard access.`}
         />
+        <div className="topology-legend" aria-hidden="true">
+          <span><i className="topology-legend-risk" />Open high or critical risk</span>
+          <span><i className="topology-legend-volume" />Size and width reflect alert volume</span>
+        </div>
         {!graph.nodes.length && <p className="topology-empty">No routes match the current filters.</p>}
       </div>
 
-      <aside className="topology-side" aria-label="Accessible topology inventory">
-        <div className="topology-side-header"><h2>Endpoints and routes</h2></div>
-        <div className="topology-list">
-          <h3>Endpoints</h3>
-          {graph.nodes.map((node) => <button
-            type="button"
-            key={node.id}
-            aria-current={selection?.kind === "node" && selection.item.id === node.id}
-            onClick={() => selectNodeFromList(node)}
-          >
-            <strong>{node.label}</strong>
-            <span className={isElevated(node.highestSeverity) && node.unresolvedCount ? "topology-risk" : ""}>
-              {node.highestSeverity}
-            </span>
-            <small>{node.alertCount} alerts · {node.unresolvedCount} unresolved</small>
-            <small>{node.protocols.join(", ")}</small>
-          </button>)}
-          <h3>Directed routes</h3>
-          {graph.edges.map((edge) => <button
-            type="button"
-            key={edge.id}
-            aria-current={selection?.kind === "edge" && selection.item.id === edge.id}
-            onClick={() => selectEdgeFromList(edge)}
-          >
-            <strong>{edge.sourceEndpoint} → {edge.targetEndpoint}</strong>
-            <span className={isElevated(edge.highestSeverity) && edge.unresolvedCount ? "topology-risk" : ""}>
-              {edge.highestSeverity}
-            </span>
-            <small>{edge.alertCount} alerts · {edge.unresolvedCount} unresolved</small>
-            <small>{edge.protocols.join(", ")}</small>
-          </button>)}
-        </div>
-
-        {selection && <div className="topology-detail" aria-live="polite">
+      <aside className="topology-side" aria-label="Structured topology explorer">
+        <div className="topology-side-header"><div><span className="eyebrow">Non-visual map</span><h2>Explore relationships</h2></div></div>
+        <TabList
+          baseId="topology-inventory"
+          label="Topology inventory"
+          options={[
+            { value: "endpoints", label: `Endpoints (${graph.nodes.length})` },
+            { value: "routes", label: `Routes (${graph.edges.length})` },
+          ]}
+          panelId="topology-inventory-panel"
+          selected={inventoryView}
+          onSelect={setInventoryView}
+          className="topology-tabs"
+        />
+        {selection && <div className="topology-detail" aria-live="polite" aria-label="Selected relationship details">
           <h3>{selection.kind === "node" ? selection.item.endpoint : `${selection.item.sourceEndpoint} → ${selection.item.targetEndpoint}`}</h3>
           <dl>
-            <dt>Highest severity</dt><dd>{selection.item.highestSeverity}</dd>
+            <dt>Open risk</dt><dd>{selection.item.highestUnresolvedSeverity ?? "No unresolved alerts"}</dd>
+            <dt>Highest observed</dt><dd>{selection.item.highestSeverity}</dd>
             <dt>Alerts</dt><dd>{selection.item.alertCount}</dd>
             <dt>Unresolved</dt><dd>{selection.item.unresolvedCount}</dd>
             <dt>Protocols</dt><dd>{selection.item.protocols.join(", ") || "Unknown"}</dd>
@@ -406,9 +428,43 @@ export function TopologyWorkspace({ alerts, onViewAlerts, reducedMotion = false 
             className="primary"
             onClick={() => onViewAlerts(selection.kind === "node" ? selection.item.endpoint : selection.item.sourceEndpoint)}
           >
-            View related alerts
+            {selection.kind === "node" ? "View endpoint alerts" : "View alerts from source"}
           </button>
         </div>}
+        <div
+          className="topology-list"
+          id="topology-inventory-panel"
+          role="tabpanel"
+          aria-labelledby={tabId("topology-inventory", inventoryView)}
+        >
+          <h3 className="sr-only">{inventoryView === "endpoints" ? "Visible endpoints" : "Visible directed routes"}</h3>
+          {inventoryView === "endpoints" ? graph.nodes.map((node) => <button
+            type="button"
+            key={node.id}
+            aria-current={selection?.kind === "node" && selection.item.id === node.id}
+            onClick={() => selectNodeFromList(node)}
+          >
+            <strong>{node.label}</strong>
+            <span className={node.highestUnresolvedSeverity && isElevated(node.highestUnresolvedSeverity) ? "topology-risk" : ""}>
+              {node.highestUnresolvedSeverity ?? "none open"}
+            </span>
+            <small>{countLabel(node.alertCount, "alert")} · {node.unresolvedCount} unresolved</small>
+            <small>{node.protocols.join(", ")}</small>
+          </button>) : graph.edges.map((edge) => <button
+            type="button"
+            key={edge.id}
+            aria-current={selection?.kind === "edge" && selection.item.id === edge.id}
+            onClick={() => selectEdgeFromList(edge)}
+          >
+            <strong>{edge.sourceEndpoint} → {edge.targetEndpoint}</strong>
+            <span className={edge.highestUnresolvedSeverity && isElevated(edge.highestUnresolvedSeverity) ? "topology-risk" : ""}>
+              {edge.highestUnresolvedSeverity ?? "none open"}
+            </span>
+            <small>{countLabel(edge.alertCount, "alert")} · {edge.unresolvedCount} unresolved</small>
+            <small>{edge.protocols.join(", ")}</small>
+          </button>)}
+          {(inventoryView === "endpoints" ? graph.nodes.length : graph.edges.length) === 0 ? <p className="topology-list-empty">No {inventoryView} match the current filters.</p> : null}
+        </div>
       </aside>
     </div>
   </section>;

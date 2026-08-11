@@ -1,10 +1,13 @@
 import { AlertTriangle, CheckCircle2, FileSearch, RotateCcw, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
-import { predict } from "../../api";
+import { enqueueObservations, predict, startCustomReplay } from "../../api";
 import { useAuth } from "../../auth";
 import { PanelHeading } from "../../components/PanelHeading";
 import { datasetExampleProvenance, verifiedAttackObservationCsv, verifiedNormalObservationCsv } from "../../sampleObservation";
 import { parseCsv } from "../../utils";
+import type { IngestionBatchReceipt, ReplayStatus } from "../../types";
+
+type ProcessingMode = "immediate" | "durable" | "replay";
 
 interface PredictionResult {
   event_id?: string;
@@ -38,6 +41,8 @@ export function ObservationLab({ fixtureMode = false }: { fixtureMode?: boolean 
   const [filename, setFilename] = useState("");
   const [error, setError] = useState("");
   const [response, setResponse] = useState<unknown>();
+  const [processingMode, setProcessingMode] = useState<ProcessingMode>("immediate");
+  const [completedMode, setCompletedMode] = useState<ProcessingMode | null>(null);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const pageSize = 25;
@@ -52,7 +57,12 @@ export function ObservationLab({ fixtureMode = false }: { fixtureMode?: boolean 
         && canonicalHeaders.every((header, index) => headers[index] === header),
     };
   }, [rows]);
-  const results = useMemo(() => normalizeResults(response), [response]);
+  const results = useMemo(
+    () => completedMode === "immediate" ? normalizeResults(response) : [],
+    [completedMode, response],
+  );
+  const ingestionReceipt = completedMode === "durable" ? response as IngestionBatchReceipt : null;
+  const replayReceipt = completedMode === "replay" ? response as ReplayStatus : null;
   const pageCount = Math.max(1, Math.ceil(results.length / pageSize));
   const visibleResults = results.slice(page * pageSize, (page + 1) * pageSize);
   const attackCount = results.filter((result) => result.binary_prediction === "attack").length;
@@ -87,11 +97,23 @@ export function ObservationLab({ fixtureMode = false }: { fixtureMode?: boolean 
 
   const run = async () => {
     if (!schema.valid || !rows.length) return;
+    if (processingMode === "durable" && rows.length > 1_000) {
+      setError("Durable ingestion accepts at most 1,000 observations per batch. Split this file or use immediate analysis.");
+      return;
+    }
     if (!auth.authenticated) { auth.openLogin(); return; }
     setLoading(true);
     setError("");
+    setResponse(undefined);
+    setCompletedMode(null);
     try {
-      setResponse(await predict(rows));
+      const nextResponse = processingMode === "immediate"
+        ? await predict(rows)
+        : processingMode === "durable"
+          ? await enqueueObservations(rows)
+          : await startCustomReplay(rows);
+      setResponse(nextResponse);
+      setCompletedMode(processingMode);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Prediction request failed.");
     } finally {
@@ -104,6 +126,7 @@ export function ObservationLab({ fixtureMode = false }: { fixtureMode?: boolean 
     setFilename("");
     setError("");
     setResponse(undefined);
+    setCompletedMode(null);
   };
 
   return (
@@ -150,11 +173,30 @@ export function ObservationLab({ fixtureMode = false }: { fixtureMode?: boolean 
           </>
         ) : <div className="validation-item"><FileSearch /><span>Select a file to inspect its schema.</span></div>}
 
-        <div className="step-label"><b>3</b> Run inference</div>
-        {fixtureMode ? <div className="validation-item" role="note"><FileSearch /><span>Fixture preview validates files locally but cannot send predictions. Connect the API to run inference.</span></div> : null}
+        <div className="step-label"><b>3</b> Choose processing path</div>
+        <fieldset className="processing-modes">
+          <legend className="sr-only">Processing path</legend>
+          <label className={processingMode === "immediate" ? "processing-mode processing-mode--selected" : "processing-mode"}>
+            <input type="radio" name="processing-mode" value="immediate" checked={processingMode === "immediate"} onChange={() => setProcessingMode("immediate")} />
+            <span><b>Analyze now</b><small>Return a verdict for every row immediately. Best for controlled investigation.</small></span>
+          </label>
+          <label className={processingMode === "durable" ? "processing-mode processing-mode--selected" : "processing-mode"}>
+            <input type="radio" name="processing-mode" value="durable" checked={processingMode === "durable"} onChange={() => setProcessingMode("durable")} />
+            <span><b>Queue reliably</b><small>Persist up to 1,000 rows for worker processing, retries, and operations evidence.</small></span>
+          </label>
+          <label className={processingMode === "replay" ? "processing-mode processing-mode--selected" : "processing-mode"}>
+            <input type="radio" name="processing-mode" value="replay" checked={processingMode === "replay"} onChange={() => setProcessingMode("replay")} />
+            <span><b>Replay as live traffic</b><small>Stream these rows through the detector at a controlled interval for an end-to-end exercise.</small></span>
+          </label>
+        </fieldset>
+        {fixtureMode ? <div className="validation-item" role="note"><FileSearch /><span>Fixture preview validates files locally but cannot submit observations. Connect the API to use a processing path.</span></div> : null}
         <div className="lab-actions">
           <button className="primary-button" disabled={fixtureMode || !schema.valid || loading} onClick={run}>
-            {loading ? "Running…" : `Predict ${rows.length || 0} row${rows.length === 1 ? "" : "s"}`}
+            {loading ? "Submitting…" : processingMode === "immediate"
+              ? `Analyze ${rows.length || 0} row${rows.length === 1 ? "" : "s"}`
+              : processingMode === "durable"
+                ? `Queue ${rows.length || 0} row${rows.length === 1 ? "" : "s"}`
+                : `Replay ${rows.length || 0} row${rows.length === 1 ? "" : "s"}`}
           </button>
           <button className="secondary-button" disabled={!rows.length && !response} onClick={clear}>
             <RotateCcw aria-hidden="true" /> Clear
@@ -165,15 +207,31 @@ export function ObservationLab({ fixtureMode = false }: { fixtureMode?: boolean 
 
       <section className="panel lab-results">
         <PanelHeading
-          eyebrow="Prediction output"
-          title="Results"
-          description="Each result reports whether its detector and classifier values come from a probability-calibrated serving artifact."
+          eyebrow={completedMode === "durable" ? "Ingestion receipt" : completedMode === "replay" ? "Replay receipt" : "Prediction output"}
+          title={completedMode === "durable" ? "Queued observations" : completedMode === "replay" ? "Live replay started" : "Results"}
+          description={completedMode === "durable"
+            ? "The durable worker owns these observations now; progress and retries are visible in ingestion operations."
+            : completedMode === "replay"
+              ? "The uploaded observations are moving through the same live detector and event stream as recorded scenarios."
+              : "Each result reports whether its detector and classifier values come from a probability-calibrated serving artifact."}
           action={results.length ? <span className="panel-heading-meta">{results.length} evaluated</span> : undefined}
         />
-        {!results.length ? (
+        {ingestionReceipt ? (
+          <div className="submission-receipt" role="status">
+            <CheckCircle2 aria-hidden="true" />
+            <div><span>Batch accepted</span><strong>{ingestionReceipt.events.length} observation{ingestionReceipt.events.length === 1 ? "" : "s"} queued</strong><small className="mono">Batch {ingestionReceipt.batch_id}</small></div>
+            <dl><div><dt>Accepted</dt><dd>{ingestionReceipt.events.filter((event) => event.disposition === "accepted").length}</dd></div><div><dt>Duplicates</dt><dd>{ingestionReceipt.events.filter((event) => event.disposition === "duplicate").length}</dd></div></dl>
+          </div>
+        ) : replayReceipt ? (
+          <div className="submission-receipt" role="status">
+            <CheckCircle2 aria-hidden="true" />
+            <div><span>Custom replay</span><strong>{replayReceipt.status}</strong><small>{replayReceipt.total} observations · {replayReceipt.speed}× speed</small></div>
+            <dl><div><dt>Processed</dt><dd>{replayReceipt.processed}</dd></div><div><dt>Total</dt><dd>{replayReceipt.total}</dd></div></dl>
+          </div>
+        ) : !results.length ? (
           <div className="empty-state">
             <FileSearch aria-hidden="true" />
-            <p>Validated predictions will appear here as an investigation-ready summary, with raw data available on demand.</p>
+            <p>Choose a processing path to analyze immediately, queue reliably, or exercise the live event pipeline.</p>
           </div>
         ) : (
           <>

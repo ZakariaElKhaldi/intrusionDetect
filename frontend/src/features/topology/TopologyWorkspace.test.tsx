@@ -58,8 +58,11 @@ describe("TopologyWorkspace", () => {
     render(<TopologyWorkspace alerts={alerts} onViewAlerts={vi.fn()} />);
 
     expect(screen.getByRole("note")).toHaveTextContent("limited observations");
+    expect(screen.getByText(/most active visible endpoint/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Routes (1)" }));
     expect(screen.getByText("port:443 → 10.0.0.3")).toBeInTheDocument();
-    expect(screen.getByLabelText(/Directed network map with 2 endpoints and 1 routes/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Directed network map with 2 endpoints and 1 route/)).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "topology-inventory-routes-tab");
   });
 
   it("opens related alerts from the selected endpoint", () => {
@@ -67,7 +70,7 @@ describe("TopologyWorkspace", () => {
     render(<TopologyWorkspace alerts={alerts} onViewAlerts={onViewAlerts} />);
 
     fireEvent.click(screen.getByRole("button", { name: /port:443 critical/i }));
-    fireEvent.click(screen.getByRole("button", { name: "View related alerts" }));
+    fireEvent.click(screen.getByRole("button", { name: "View endpoint alerts" }));
     expect(onViewAlerts).toHaveBeenCalledWith("port:443");
   });
 
@@ -78,7 +81,7 @@ describe("TopologyWorkspace", () => {
     ]} onViewAlerts={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText("Protocol"), { target: { value: "UDP" } });
-    expect(screen.getByText("2 endpoints · 1 directed routes · 1 alerts")).toBeInTheDocument();
+    expect(screen.getByText("2 endpoints · 1 directed route · 1 alert")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "All activity" }));
     expect(screen.getByText("0 endpoints · 0 directed routes · 0 alerts")).toBeInTheDocument();
   });

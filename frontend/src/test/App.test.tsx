@@ -30,6 +30,7 @@ describe("dashboard", () => {
     const alertButtons = await screen.findAllByRole("button", { name: /^Open .* alert / });
     await user.click(alertButtons[0]);
     expect(await screen.findByRole("dialog", {}, { timeout: 2_000 })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close alert details" })).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "Close alert details" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Security alerts" })).toBeInTheDocument();
@@ -78,7 +79,7 @@ describe("dashboard", () => {
     await user.click(await screen.findByRole("button", { name: "Load verified normal example" }));
 
     expect(screen.getByText(/Fixture preview validates files locally/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Predict 1 row" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Analyze 1 row" })).toBeDisabled();
   });
 
   it("closes the mobile navigation disclosure after choosing a destination", async () => {
