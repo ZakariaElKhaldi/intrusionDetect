@@ -1,7 +1,7 @@
 import type { Alert, Page, Severity } from "./types";
 
 export const pageTitles: Record<Page, [string, string]> = {
-  overview: ["Live overview", "Traffic posture across your monitored IoT fleet"],
+  overview: ["Monitoring overview", "Persisted workload, live-session context, and delivery evidence"],
   alerts: ["Alert investigation", "Prioritize, filter, and explain suspicious flows"],
   topology: ["Network topology", "Device relationships and risky communication paths"],
   models: ["Model analysis", "Version performance and deployment health"],

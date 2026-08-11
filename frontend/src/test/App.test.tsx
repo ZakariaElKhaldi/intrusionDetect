@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
@@ -14,8 +14,8 @@ describe("dashboard", () => {
   it("navigates between the investigation pages", async () => {
     const user = userEvent.setup();
     render(<App />);
-    expect(screen.getByRole("heading", { name: "Live overview" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Alerts/i }));
+    expect(screen.getByRole("heading", { name: "Monitoring overview" })).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "Triage alerts" }));
     expect(screen.getByRole("heading", { name: "Alert investigation" })).toBeInTheDocument();
     expect(document.title).toBe("Alert investigation · Sentinel");
     expect(screen.getByRole("main")).toHaveFocus();
@@ -26,7 +26,7 @@ describe("dashboard", () => {
     history.replaceState(null, "", "/?fixture=true");
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole("button", { name: /Alerts/i }));
+    await user.click(screen.getByRole("link", { name: "Triage alerts" }));
     const alertButtons = await screen.findAllByRole("button", { name: /^Open .* alert / });
     await user.click(alertButtons[0]);
     expect(await screen.findByRole("dialog", {}, { timeout: 2_000 })).toBeInTheDocument();
@@ -55,7 +55,7 @@ describe("dashboard", () => {
   it("never substitutes fixture alerts when the connected API is offline", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole("button", { name: /Alerts/i }));
+    await user.click(screen.getByRole("link", { name: "Triage alerts" }));
     expect(await screen.findByText("No alerts recorded")).toBeInTheDocument();
     expect(screen.queryByText(/ALT-03048/)).not.toBeInTheDocument();
     expect(
@@ -79,29 +79,22 @@ describe("dashboard", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getAllByRole("button", { name: "Test observations" })[0]);
+    await user.click(screen.getByRole("link", { name: "Test observations" }));
     await user.click(await screen.findByRole("button", { name: "Load verified normal example" }));
 
     expect(screen.getByText(/Fixture preview validates files locally/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Analyze 1 row" })).toBeDisabled();
   });
 
-  it("closes the mobile navigation disclosure after choosing a destination", async () => {
+  it("keeps every primary destination directly navigable and marks the current route", async () => {
     history.replaceState(null, "", "/?fixture=true");
     const user = userEvent.setup();
     render(<App />);
-    const summary = screen.getByText("More").closest("summary");
-    const disclosure = summary?.closest("details");
-    expect(summary).not.toBeNull();
-    expect(disclosure).not.toBeNull();
 
-    await user.click(summary!);
-    expect(disclosure).toHaveAttribute("open");
-    await user.click(within(disclosure!).getByRole("button", { name: "Validate models" }));
+    expect(screen.getAllByRole("link", { name: /Monitor|Triage alerts|Map routes|Validate models|Test observations/ })).toHaveLength(5);
+    await user.click(screen.getByRole("link", { name: "Validate models" }));
 
-    expect(disclosure).not.toHaveAttribute("open");
-    expect(within(disclosure!).getByRole("button", { name: "Validate models" })).toHaveAttribute("aria-current", "page");
-    expect(summary).toHaveAccessibleName("More navigation, current page Model analysis");
+    expect(screen.getByRole("link", { name: "Validate models" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("heading", { name: "Model analysis" })).toBeInTheDocument();
   });
 });

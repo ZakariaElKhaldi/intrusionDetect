@@ -25,9 +25,10 @@ not treated as proof of detection effectiveness or operational capacity.
   while the authenticated backend remains the source of operator identity and
   immutable feedback time.
 - Alert investigation uses native 44-pixel buttons instead of pretending table
-  rows are controls, operational companion text has a tested 12-pixel floor,
-  and the mobile overflow navigation closes after selection while retaining a
-  visible and programmatic current-page indicator.
+  rows are controls, and operational companion text has a tested 12-pixel floor.
+  All five primary destinations remain direct native links at mobile widths,
+  visual and keyboard order match, and `aria-current` identifies the active
+  workspace without requiring an overflow disclosure.
 - React render failures are contained at the application and workspace levels.
   Recovery UI uses an accessible alert, moves focus to the retry action, keeps
   thrown details out of operator-visible copy, and resets when navigation

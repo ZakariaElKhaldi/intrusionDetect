@@ -1,7 +1,5 @@
 import {
   createContext,
-  type FormEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   useCallback,
   useContext,
@@ -12,6 +10,7 @@ import {
 } from "react";
 import { getAuthenticationStatus, getCurrentUser, login, setApiAccessToken, setUnauthorizedHandler } from "./api";
 import type { AuthSession } from "./types";
+import { OperatorSignInDialog } from "./features/shell/OperatorSignInDialog";
 
 const STORAGE_KEY = "iot-ids-auth-session";
 
@@ -55,7 +54,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [retryAvailableAt, setRetryAvailableAt] = useState<Date | null>(null);
-  const loginDialog = useRef<HTMLElement>(null);
   const returnFocusTo = useRef<HTMLElement | null>(null);
 
   const logout = useCallback(() => {
@@ -118,35 +116,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [retryAvailableAt]);
 
-  const containDialogFocus = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeLogin();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = [...(loginDialog.current?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-    ) ?? [])].filter((element) => !element.hidden);
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
+  const submit = async (username: string, password: string) => {
     setSubmitting(true);
     setError("");
     try {
-      const next = await login(String(data.get("username")), String(data.get("password")));
+      const next = await login(username, password);
       setRetryAvailableAt(null);
       setApiAccessToken(next.access_token);
       window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -175,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
   }), [authRequired, logout, openLogin, session]);
 
-  return <AuthContext.Provider value={value}>{children}{loginOpen ? <div className="dialog-backdrop" role="presentation"><section ref={loginDialog} className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description" onKeyDown={containDialogFocus}><h2 id="auth-title">Operator sign in</h2><p id="auth-description">Authentication is required for actions that change system state.</p><form onSubmit={(event) => void submit(event)}><label>Username<input name="username" autoComplete="username" required autoFocus/></label><label>Password<input name="password" type="password" autoComplete="current-password" required/></label>{error ? <div className="data-state data-state--error auth-error" role="alert">{error}</div> : null}{retryAvailableAt ? <p className="auth-retry">Try again after <time dateTime={retryAvailableAt.toISOString()}>{retryAvailableAt.toLocaleTimeString()}</time>.</p> : null}<div className="dialog-actions"><button type="button" className="secondary-button" onClick={closeLogin}>Cancel</button><button className="primary-button" type="submit" disabled={submitting || Boolean(retryAvailableAt)}>{submitting ? "Signing in…" : "Sign in"}</button></div></form></section></div> : null}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{children}{loginOpen ? <OperatorSignInDialog error={error} submitting={submitting} retryAvailableAt={retryAvailableAt} onClose={closeLogin} onSubmit={submit}/> : null}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthValue {

@@ -1,13 +1,4 @@
-import { Fragment, lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import {
-  Activity,
-  BarChart3,
-  FlaskConical,
-  LayoutDashboard,
-  Menu,
-  Network,
-  ShieldAlert,
-} from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   checkHealth,
   getAlert,
@@ -27,8 +18,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import type { Alert, AlertStatus, DashboardSummary, HealthInfo, IngestionStatus, ModelInfo, Page, ReplayScenario, ReplayStatus } from "./types";
 import { pageTitles } from "./utils";
 import { useAuth } from "./auth";
+import { ApplicationShell, type ShellSocketState } from "./features/shell/ApplicationShell";
 
-type SocketState = "connecting" | "live" | "offline";
 const Overview = lazy(() => import("./features/overview/Overview").then((module) => ({ default: module.Overview })));
 const OverviewOperations = lazy(() => import("./features/overview/OverviewOperations").then((module) => ({ default: module.OverviewOperations })));
 const AlertWorkspace = lazy(() => import("./features/alerts/AlertWorkspace").then((module) => ({ default: module.AlertWorkspace })));
@@ -40,24 +31,6 @@ const TopologyWorkspace = lazy(() => import("./features/topology").then((module)
 function isFixtureMode() {
   return new URLSearchParams(window.location.search).get("fixture") === "true";
 }
-
-const navGroups = [
-  {
-    label: "Monitor",
-    items: [
-      { page: "overview" as Page, label: "Monitor", icon: LayoutDashboard },
-      { page: "alerts" as Page, label: "Triage alerts", icon: ShieldAlert },
-      { page: "topology" as Page, label: "Map routes", icon: Network },
-    ],
-  },
-  {
-    label: "Investigate",
-    items: [
-      { page: "models" as Page, label: "Validate models", icon: BarChart3 },
-      { page: "testing" as Page, label: "Test observations", icon: FlaskConical },
-    ],
-  },
-];
 
 function pageFromUrl(): Page {
   const candidate = new URLSearchParams(window.location.search).get("view");
@@ -86,7 +59,7 @@ function App() {
   const [ingestionError, setIngestionError] = useState("");
   const [alertsError, setAlertsError] = useState("");
   const [modelsError, setModelsError] = useState("");
-  const [socketState, setSocketState] = useState<SocketState>("connecting");
+  const [socketState, setSocketState] = useState<ShellSocketState>("connecting");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [livePredictionCount, setLivePredictionCount] = useState(0);
   const [alertsLoading, setAlertsLoading] = useState(!fixtureMode);
@@ -99,7 +72,6 @@ function App() {
   const [replayScenario, setReplayScenario] = useState<ReplayScenario>("attack");
   const [replayPendingAction, setReplayPendingAction] = useState<ReplayPendingAction | null>(null);
   const pageRef = useRef(page);
-  const mobileMore = useRef<HTMLDetailsElement>(null);
   const seenPredictions = useRef(new Set<string>());
   const lastReplayStatus = useRef<string | null>(null);
 
@@ -328,7 +300,6 @@ function App() {
   }, [loadSummary, mergeAlerts, replay?.status]);
 
   const navigate = useCallback((nextPage: Page, params?: Record<string, string>) => {
-    if (mobileMore.current) mobileMore.current.open = false;
     const search = new URLSearchParams({ view: nextPage, ...params });
     if (fixtureMode) search.set("fixture", "true");
     window.history.pushState({}, "", `${window.location.pathname}?${search.toString()}`);
@@ -424,7 +395,6 @@ function App() {
     [navigate],
   );
 
-  const sourceLabel = fixtureMode ? "Fixture data" : health?.readiness === "blocked" ? "API blocked" : health?.readiness === "degraded" ? "API degraded" : health ? "Live API" : healthChecked ? "API unavailable" : "Checking source";
   const replayReady = Boolean(health && (health.readiness === undefined || health.readiness === "ready")
     && (health.components?.dataset?.status === undefined || health.components.dataset.status === "ready")
     && (health.components?.database?.status === undefined || health.components.database.status === "ready")
@@ -444,88 +414,22 @@ function App() {
               : "";
           }),
         ].filter(Boolean);
-  const [title, subtitle] = pageTitles[page];
+  const [title] = pageTitles[page];
 
   return (
-    <div className="app-shell">
-      <a className="skip-link" href="#main-content">Skip to main content</a>
-      <aside className="sidebar">
-        <button className="brand" type="button" onClick={() => navigate("overview")}>
-          <span className="brand-mark" aria-hidden="true">
-            <Activity size={18} />
-          </span>
-          <span className="brand-copy">
-            <strong>Sentinel</strong>
-            <small>Network observability</small>
-          </span>
-        </button>
-
-        <nav className="primary-nav" aria-label="Primary navigation">
-          {navGroups.map((group) => (
-            <Fragment key={group.label}>
-              <div className="nav-group">{group.label}</div>
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    className={`nav-button ${["models", "testing"].includes(item.page) ? "nav-button--mobile-overflow" : ""}`}
-                    aria-current={page === item.page ? "page" : undefined}
-                    aria-label={item.label}
-                    data-nav-page={item.page}
-                    type="button"
-                    key={item.page}
-                    onClick={() => navigate(item.page)}
-                  >
-                    <Icon size={17} strokeWidth={1.8} />
-                    <span>{item.label}</span>
-                    {item.page === "alerts" && queuedAlerts.length > 0 ? (
-                      <span className="nav-count" aria-label={`${queuedAlerts.length} new alerts`}>
-                        {queuedAlerts.length}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </Fragment>
-          ))}
-          <details ref={mobileMore} className={`mobile-more ${["models", "testing"].includes(page) ? "mobile-more--current" : ""}`}>
-            <summary aria-label={["models", "testing"].includes(page) ? `More navigation, current page ${pageTitles[page][0]}` : "More navigation"}><Menu aria-hidden="true" /><span>More</span></summary>
-            <div className="mobile-more-menu">
-              <button type="button" aria-current={page === "models" ? "page" : undefined} onClick={() => navigate("models")} data-nav-page="models">Validate models</button>
-              <button type="button" aria-current={page === "testing" ? "page" : undefined} onClick={() => navigate("testing")} data-nav-page="testing">Test observations</button>
-            </div>
-          </details>
-        </nav>
-
-        <div className="sidebar-footer">
-          <span className="avatar" aria-hidden="true">AN</span>
-          <span><b>Analyst</b><small>Investigation workspace</small></span>
-        </div>
-      </aside>
-
-      <div className="workspace">
-        <header className="topbar">
-          <div className="page-title">
-            <h1>{title}</h1>
-            <p>{subtitle}</p>
-          </div>
-          <div className="topbar-actions">
-            {fixtureMode ? <span className="operator-session">Read-only preview</span> : auth.session ? <div className="operator-session"><span>Signed in as <b>{auth.session.username}</b></span><button className="text-button" type="button" onClick={auth.logout}>Sign out</button></div> : auth.authRequired ? <button className="secondary-button" type="button" onClick={auth.openLogin}>Operator sign in</button> : <span className="operator-session">Local mutations enabled</span>}
-            <div className="system-status">
-              <span
-                className={`status-mark status-mark--${health ? socketState : "offline"}`}
-                aria-hidden="true"
-              />
-              <span>
-                <b>{fixtureMode ? "Fixture preview" : health?.readiness === "blocked" ? "Backend blocked" : health?.readiness === "degraded" ? "Backend degraded" : health && socketState === "live" ? "Live stream connected" : health ? "API connected" : healthChecked ? "Backend offline" : "Connecting"}</b>
-                <small>{sourceLabel} · stream {socketState}</small>
-              </span>
-            </div>
-          </div>
-        </header>
-        {fixtureMode ? <div className="fixture-badge" role="status">Fixture data · not connected evidence</div> : null}
-
-        <main id="main-content" tabIndex={-1}>
+    <ApplicationShell
+      page={page}
+      fixtureMode={fixtureMode}
+      health={health}
+      healthChecked={healthChecked}
+      socketState={socketState}
+      queuedAlertCount={queuedAlerts.length}
+      session={auth.session}
+      authRequired={auth.authRequired}
+      onNavigate={navigate}
+      onSignIn={auth.openLogin}
+      onSignOut={auth.logout}
+    >
           {!fixtureMode && healthChecked && !health ? (
             <div className="offline-notice" role="alert" data-state="offline">
               <span>Backend unavailable. No fixture records are mixed into this connected workspace.</span>
@@ -615,9 +519,6 @@ function App() {
             {page === "testing" ? <ObservationLab fixtureMode={fixtureMode} /> : null}
             </Suspense>
           </ErrorBoundary>
-        </main>
-      </div>
-
       {selectedAlert ? (
         <ErrorBoundary
           resetKey={selectedAlert.id}
@@ -637,7 +538,7 @@ function App() {
           </Suspense>
         </ErrorBoundary>
       ) : null}
-    </div>
+    </ApplicationShell>
   );
 }
 

@@ -631,6 +631,49 @@ evidence contract. Monitoring overview has eleven dedicated states, ingestion
 status has nine, and the operations composition has one; the complete Storybook
 catalogue contains 133 stories.
 
+## Application-shell and authentication iteration
+
+The shared shell was still embedded in `App.tsx`, so its navigation, evidence
+source, live-stream state, operator authority, and mobile layout could not be
+reviewed independently. Page changes were implemented as buttons even though
+they have stable URLs, the sidebar always claimed an “Analyst” identity while
+signed out, and one combined status indicator could say the API was connected
+while visually inheriting an offline stream state. Mobile navigation hid the
+model and observation workspaces behind a “More” disclosure.
+
+The U.S. Web Design System header guidance recommends short, clear labels and
+direct access to important sections. Its recent mobile-header accessibility
+change also makes visual order match tab order. W3C's `aria-current` technique
+provides the programmatic equivalent of a visible current-page treatment, while
+the landmark guidance calls for named navigation regions. WCAG status-message
+guidance supports announcing important state changes without forcing focus.
+
+Implementation consequences:
+
+- `ApplicationShell` is now a focused feature module rather than an anonymous
+  block inside the network orchestration component;
+- brand and workspace destinations are genuine links with stable query URLs,
+  modifier-key behavior, named navigation, grouped lists, and `aria-current`;
+- all five destinations remain directly reachable in a five-item mobile bar,
+  using compact visible labels while retaining descriptive accessible names;
+- API evidence and live WebSocket state are separate labelled facts, so a
+  disconnected stream never makes persisted API evidence appear unavailable;
+- fixture, checking, connected, degraded, blocked, and unavailable source
+  states have distinct copy and non-color cues;
+- the sidebar identity now truthfully distinguishes a named session with its
+  expiry time, signed-out mutation boundary, authentication-disabled local
+  operation, and read-only fixture preview;
+- the page title no longer calls the persisted-window overview exclusively
+  “live”; and
+- `OperatorSignInDialog` is independently documented for ready, submitting,
+  invalid-credential, service-failure, and rate-limited states while retaining
+  focus containment, Escape dismissal, return focus, and the server retry time.
+
+No dependency was added. Native links, lists, landmarks, definition lists,
+forms, and the existing Lucide icon set provide the required semantics. The
+application shell has eleven dedicated Storybook states and operator sign-in
+has five; the complete catalogue contains 149 stories.
+
 ## Sources
 
 - [Web Content Accessibility Guidelines (WCAG) 2.2](https://www.w3.org/TR/WCAG22/)
@@ -689,3 +732,6 @@ catalogue contains 133 stories.
 - [W3C: Complex images](https://www.w3.org/WAI/tutorials/images/complex/)
 - [W3C: Accessible tables](https://www.w3.org/WAI/tutorials/tables/)
 - [W3C: Table captions and summaries](https://www.w3.org/WAI/tutorials/tables/caption-summary/)
+- [U.S. Web Design System: Header](https://designsystem.digital.gov/components/header/)
+- [W3C: Using `aria-current` to identify the current item](https://www.w3.org/WAI/WCAG21/Techniques/aria/ARIA26)
+- [WAI-ARIA APG: Landmark regions](https://www.w3.org/WAI/ARIA/apg/practices/landmark-regions/)

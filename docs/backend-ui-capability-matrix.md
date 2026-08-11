@@ -12,9 +12,9 @@ browser controls.
 | Backend capability | Frontend integration | Operator affordance | Coverage |
 |---|---|---|---|
 | `GET /health` | `checkHealth` | Global connection state, overview serving-path evidence, component reasons, replay readiness | Covered |
-| `GET /auth/status` | `getAuthenticationStatus` | Determines whether mutation controls require sign-in | Covered |
-| `POST /auth/login` | `login` | Accessible operator sign-in dialog with retry timing | Covered |
-| `GET /auth/me` | `getCurrentUser` | Validates the stored session; signed-in identity is visible in the shell | Covered |
+| `GET /auth/status` | `getAuthenticationStatus` | Distinguishes required sign-in from explicitly enabled local mutations in the shared shell | Covered |
+| `POST /auth/login` | `login` | Accessible operator sign-in dialog with ready, pending, failure, and server-declared retry timing states | Covered |
+| `GET /auth/me` | `getCurrentUser` | Validates the stored session; signed-in identity and exact local expiry time remain visible in the shell | Covered |
 | `POST /predict` | `predict` | Observation Lab local 83-feature preflight, focused preview, and immediate analysis for one valid row | Covered |
 | `POST /predict/batch` | `predict` | Observation Lab immediate analysis for 2–10,000 locally validated rows with exact result review | Covered |
 | `GET /alerts` | `getAlerts` | Initial/replay-completion synchronization; the paged route owns queue browsing | Covered, compatibility path |
