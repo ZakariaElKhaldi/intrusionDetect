@@ -104,6 +104,51 @@ No dependency was added. Cytoscape and fCoSE remain appropriate for the visual
 network layout, while the existing shared tab component and native HTML provide
 the non-visual structure and keyboard interaction.
 
+## Model-operations iteration
+
+The previous model page placed runtime monitoring before a long, visually
+continuous body of offline test evidence. That made three different claims look
+equivalent: which version is serving, whether observed traffic has shifted, and
+how candidates performed under an offline protocol. NIST's AI RMF separates
+governance, measurement, and management activities and emphasizes documented
+monitoring after deployment. Model Cards likewise call for evaluation results
+to be accompanied by intended context, procedures, limitations, and
+disaggregated evidence instead of presenting a headline score alone.
+
+Implementation consequences:
+
+- the model workspace now opens with the runtime serving bundle and production
+  health, while offline evaluation has a separate, explicit workspace view;
+- the detector and family-classifier roles show runtime-reported version,
+  activation state, and whether their scores are calibrated probabilities;
+- the offline champion remains labelled as test evidence and cannot be mistaken
+  for the currently deployed runtime descriptor;
+- health state, reason, cohort/window, observation count, and trend remain
+  visible, while exact aggregate, feature, category, and history tables use
+  named native disclosures; and
+- evaluation data is fetched only after the user opens the offline view,
+  avoiding an unnecessary request during operational monitoring.
+
+No runtime dependency was added for this redesign. Shared tabs and native
+`details`/`summary` elements supply the required keyboard and disclosure
+semantics.
+
+## Storybook documentation baseline
+
+Storybook was added only after checking its current package metadata. Version
+10.5.7's official React/Vite adapter supports React 19, Vite 6, and the
+project's TypeScript version. The initial catalogue documents shared headings,
+severity labels, keyboard tabs, the serving bundle, and the complete model
+workspace in multiple meaningful states. Stories live next to their components
+and use Component Story Format, following Storybook's recommended structure.
+
+The official Docs and Accessibility addons are the only addons included. The
+project-wide accessibility setting treats automated violations as errors, while
+the catalogue explicitly notes that keyboard, screen-reader, zoom, and human
+testing remain necessary. Future redesign iterations must add or update stories
+alongside their implementation so Storybook grows into the complete living UI
+inventory rather than a disconnected showcase.
+
 ## Sources
 
 - [Web Content Accessibility Guidelines (WCAG) 2.2](https://www.w3.org/TR/WCAG22/)
@@ -118,3 +163,7 @@ the non-visual structure and keyboard interaction.
 - [Systematic Literature Review on Cyber Situational Awareness Visualizations](https://doi.org/10.1109/ACCESS.2022.3178195)
 - [Rich Screen Reader Experiences for Accessible Data Visualization](https://vis.csail.mit.edu/pubs/rich-screen-reader-vis-experiences/)
 - [W3C guidance on equivalent alternatives for complex visual content](https://www.w3.org/WAI/wcag-curric/gid2-0.htm)
+- [NIST AI Risk Management Framework Playbook](https://www.nist.gov/itl/ai-risk-management-framework/nist-ai-rmf-playbook)
+- [Model Cards for Model Reporting](https://research.google/pubs/model-cards-for-model-reporting/)
+- [Storybook: How to write stories](https://storybook.js.org/docs/writing-stories)
+- [Storybook: Accessibility testing](https://storybook.js.org/docs/writing-tests/accessibility-testing)

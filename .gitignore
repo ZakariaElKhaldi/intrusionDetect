@@ -9,6 +9,7 @@ __pycache__/
 # JavaScript
 node_modules/
 frontend/dist/
+frontend/storybook-static/
 frontend/coverage/
 frontend/playwright-report/
 frontend/test-results/
