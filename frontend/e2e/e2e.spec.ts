@@ -50,10 +50,11 @@ async function waitForReplay(
 async function waitForConnectedPage(page: Page, view = "overview") {
   await page.goto(`/?view=${view}`);
   await signIn(page);
-  await expect(page.getByText("Live stream connected", { exact: true })).toBeVisible();
-  await expect(page.locator(".system-status small")).toContainText("stream live", {
+  await expect(page.locator(".shell-status")).toHaveAttribute("data-tone", "ready", {
     timeout: 10_000,
   });
+  await expect(page.locator(".shell-status")).toContainText("Connected");
+  await expect(page.locator(".shell-status small")).toHaveCount(0);
 }
 
 async function startReplayFromBrowser(

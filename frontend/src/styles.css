@@ -129,19 +129,18 @@ h1, h2, h3, p { margin-top: 0; }
   text-align: center;
   text-transform: uppercase;
 }
-.shell-status-rail { display: grid; grid-template-columns: repeat(2, minmax(142px, 1fr)); margin: 0; border: 1px solid var(--line); background: #fff; }
-.shell-status { min-width: 0; padding: 7px 10px; border-right: 1px solid var(--line); }
-.shell-status:last-child { border-right: 0; }
+.shell-status-rail { margin: 0; }
+.shell-status { display: flex; min-width: 0; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+.shell-status > i { flex: 0 0 auto; width: 8px; height: 8px; border: 2px solid var(--ink-soft); border-radius: 50%; background: #fff; }
+.shell-status-copy { display: flex; min-width: 0; align-items: baseline; gap: 5px; }
 .shell-status dt { color: var(--ink-soft); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.shell-status dd { display: flex; align-items: center; gap: 8px; margin: 3px 0 0; }
-.shell-status dd > i { flex: 0 0 auto; width: 9px; height: 9px; border: 2px solid var(--ink-soft); border-radius: 50%; background: #fff; }
-.shell-status dd > span { display: flex; min-width: 0; flex-direction: column; }
+.shell-status dd { display: flex; min-width: 0; align-items: baseline; gap: 5px; margin: 0; }
 .shell-status b { font-size: 12px; line-height: 1.25; }
-.shell-status small { overflow: hidden; margin-top: 1px; color: var(--ink-soft); font-size: 10px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-.shell-status[data-tone="ready"] dd > i { border-color: var(--success); background: var(--success); }
-.shell-status[data-tone="degraded"] dd > i, .shell-status[data-tone="checking"] dd > i { border-color: var(--accent); background: var(--accent); }
-.shell-status[data-tone="blocked"] dd > i { border-color: var(--danger); background: var(--danger); }
-.shell-status[data-tone="offline"] dd > i, .shell-status[data-tone="fixture"] dd > i { border-color: var(--ink); background: transparent; }
+.shell-status small { overflow: hidden; max-width: 180px; color: var(--ink-soft); font-size: 10px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.shell-status[data-tone="ready"] > i { border-color: var(--success); background: var(--success); }
+.shell-status[data-tone="degraded"] > i, .shell-status[data-tone="checking"] > i { border-color: var(--accent); background: var(--accent); }
+.shell-status[data-tone="blocked"] > i { border-color: var(--danger); background: var(--danger); }
+.shell-status[data-tone="offline"] > i, .shell-status[data-tone="fixture"] > i { border-color: var(--ink); background: transparent; }
 .operator-session { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); font-size: 12px; white-space: nowrap; }
 .operator-session .text-button { min-height: 32px; }
 .shell-story-content { min-height: 360px; padding: 28px; }

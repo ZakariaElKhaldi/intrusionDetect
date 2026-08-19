@@ -32,10 +32,10 @@ describe("application shell", () => {
     expect(onNavigate).toHaveBeenCalledWith("topology");
   });
 
-  it("separates backend evidence, stream, and operator authority", () => {
+  it("summarizes connection health without repeating status labels", () => {
     render(<ApplicationShell {...base} health={{ ...base.health, readiness: "degraded" }} socketState="offline"><p>Content</p></ApplicationShell>);
     expect(screen.getByText("Degraded")).toBeInTheDocument();
-    expect(screen.getByText("Offline")).toBeInTheDocument();
+    expect(screen.getByText("API degraded · stream offline")).toBeInTheDocument();
     expect(screen.getByText("Signed out")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Operator sign in" })).toBeInTheDocument();
   });

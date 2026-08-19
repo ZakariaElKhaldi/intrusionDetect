@@ -51,32 +51,26 @@ function navigationHref(page: Page, fixtureMode: boolean) {
   return `?${search.toString()}`;
 }
 
-function SourceStatus({ fixtureMode, health, healthChecked }: Pick<ApplicationShellProps, "fixtureMode" | "health" | "healthChecked">) {
+function ConnectionStatus({ fixtureMode, health, healthChecked, socketState }: Pick<ApplicationShellProps, "fixtureMode" | "health" | "healthChecked" | "socketState">) {
   const state = fixtureMode
-    ? { label: "Fixture", detail: "Generated records", tone: "fixture" }
+    ? { label: "Preview", detail: "Fixture data", tone: "fixture" }
     : !healthChecked
-      ? { label: "Checking", detail: "API evidence pending", tone: "checking" }
+      ? { label: "Checking", detail: "API + live events", tone: "checking" }
       : !health
-        ? { label: "Unavailable", detail: "No connected evidence", tone: "offline" }
+        ? { label: "Unavailable", detail: "API + live events", tone: "offline" }
         : health.readiness === "blocked"
           ? { label: "Blocked", detail: "Serving path unavailable", tone: "blocked" }
           : health.readiness === "degraded"
-            ? { label: "Degraded", detail: "Serving with exceptions", tone: "degraded" }
-            : { label: "Connected", detail: "API evidence available", tone: "ready" };
-  return <div className="shell-status" data-tone={state.tone}><dt>Evidence source</dt><dd><i aria-hidden="true"/><span><b>{state.label}</b><small>{state.detail}</small></span></dd></div>;
-}
-
-function StreamStatus({ fixtureMode, health, socketState }: Pick<ApplicationShellProps, "fixtureMode" | "health" | "socketState">) {
-  const state = fixtureMode
-    ? { label: "Disabled", detail: "Preview has no live stream", tone: "fixture" }
-    : !health
-      ? { label: "Unavailable", detail: "Waiting for API", tone: "offline" }
-      : socketState === "live"
-        ? { label: "Connected", detail: "Receiving live events", tone: "ready" }
-        : socketState === "connecting"
-          ? { label: "Reconnecting", detail: "Persisted views remain usable", tone: "checking" }
-          : { label: "Offline", detail: "Persisted views remain usable", tone: "offline" };
-  return <div className="shell-status" data-tone={state.tone}><dt>Live stream</dt><dd><i aria-hidden="true"/><span><b>{state.label}</b><small>{state.detail}</small></span></dd></div>;
+            ? { label: "Degraded", detail: socketState === "live" ? "API degraded · stream live" : "API degraded · stream offline", tone: "degraded" }
+            : socketState === "live"
+              ? { label: "Connected", detail: "", tone: "ready" }
+              : socketState === "connecting"
+                ? { label: "Connecting", detail: "API ready · stream pending", tone: "checking" }
+                : { label: "Partial", detail: "API ready · stream offline", tone: "offline" };
+  return <div className="shell-status" data-tone={state.tone}>
+    <i aria-hidden="true"/>
+    <div className="shell-status-copy"><dt>System</dt><dd><b>{state.label}</b>{state.detail ? <small>{state.detail}</small> : null}</dd></div>
+  </div>;
 }
 
 function OperatorIdentity({ fixtureMode, session, authRequired }: Pick<ApplicationShellProps, "fixtureMode" | "session" | "authRequired">) {
@@ -131,8 +125,7 @@ export function ApplicationShell({ page, fixtureMode, health, healthChecked, soc
         <div className="page-title"><h1>{title}</h1><p>{subtitle}</p></div>
         <div className="topbar-actions">
           <dl className="shell-status-rail" aria-live="polite">
-            <SourceStatus fixtureMode={fixtureMode} health={health} healthChecked={healthChecked}/>
-            <StreamStatus fixtureMode={fixtureMode} health={health} socketState={socketState}/>
+            <ConnectionStatus fixtureMode={fixtureMode} health={health} healthChecked={healthChecked} socketState={socketState}/>
           </dl>
           {fixtureMode ? <span className="operator-session">Read-only</span> : session ? <div className="operator-session"><span>Signed in as <b>{session.username}</b></span><button className="text-button" type="button" onClick={onSignOut}>Sign out</button></div> : authRequired ? <button className="secondary-button" type="button" onClick={onSignIn}>Operator sign in</button> : <span className="operator-session">Local mutations enabled</span>}
         </div>
