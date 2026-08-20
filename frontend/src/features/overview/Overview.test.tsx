@@ -26,6 +26,15 @@ describe("Overview", () => {
     expect(screen.getByText("cache, not full corpus")).toBeInTheDocument();
   });
 
+  it("uses a compact missing-value mark for an unavailable detector score", () => {
+    renderOverview({ summary: { ...connectedDashboardSummary, median_detection_score: null } });
+
+    const metric = screen.getByText("Median detector score").closest("article");
+    expect(metric).toHaveTextContent("—");
+    expect(metric).toHaveTextContent("No score in this window");
+    expect(metric).not.toHaveTextContent("Not reported");
+  });
+
   it("pairs the timeline summary with an exact actionable table", async () => {
     const user = userEvent.setup();
     const onTimeBucket = vi.fn();
