@@ -198,6 +198,7 @@ async def test_every_state_changing_api_rejects_missing_credentials(tmp_path) ->
         for path, operations in schema["paths"].items()
         if any(method in operations for method in ("post", "put", "patch", "delete"))
         and path != "/auth/login"
+        and path != "/sensors/suricata/events"  # independently authenticated sensor channel
     }
     assert documented_mutations == set(mutation_paths)
     for path in documented_mutations:
@@ -229,6 +230,7 @@ async def test_sensitive_reads_deny_anonymous_access_while_bootstrap_and_probes_
         "/api/v1/model-health/cohorts",
         "/api/v1/model-health?window=fast",
         "/api/v1/model-health/history?window=fast",
+        "/api/v1/sensors/status",
     ]
     public_paths = [
         "/api/v1/auth/status",
@@ -265,6 +267,8 @@ async def test_sensitive_reads_deny_anonymous_access_while_bootstrap_and_probes_
             if method not in {"get", "post", "put", "patch", "delete"}:
                 continue
             if path in public_schema_paths:
+                assert "security" not in operation, (method, path)
+            elif path == "/sensors/suricata/events":
                 assert "security" not in operation, (method, path)
             else:
                 assert operation["security"] == [{"HTTPBearer": []}], (method, path)

@@ -11,25 +11,27 @@ class AlertResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     alert_id: UUID
-    event_id: UUID
+    event_id: UUID | None
+    detection_source: Literal["ml_model", "suricata"] = "ml_model"
     severity: str
     reasons: list[str]
     top_features: list[dict]
     status: str
     created_at: datetime
-    model_version: str
-    detector_model_version: str
+    model_version: str | None
+    detector_model_version: str | None
     classifier_model_version: str | None
-    binary_prediction: str
+    binary_prediction: str | None
     attack_class: str | None
-    confidence: float
-    detection_score: float
+    confidence: float | None
+    detection_score: float | None
     attack_class_score: float | None
-    detector_latency_ms: float
+    detector_latency_ms: float | None
     classifier_latency_ms: float | None
-    total_latency_ms: float
+    total_latency_ms: float | None
     raw_features: dict
     network_context: dict | None = None
+    sensor_evidence: dict | None = None
 
 
 class FeedbackRequest(BaseModel):

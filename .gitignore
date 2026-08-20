@@ -23,6 +23,7 @@ data/raw/*
 /archive.zip
 models/runs/
 models/artifacts/
+.lab/
 !models/production/
 !models/production/**
 

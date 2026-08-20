@@ -50,6 +50,8 @@ services:
       IOT_IDS_ADMIN_PASSWORD_HASH: "${IOT_IDS_ADMIN_PASSWORD_HASH:?generate an Argon2id hash first}"
       IOT_IDS_SECRET_KEY: "${IOT_IDS_SECRET_KEY:?set a random secret of at least 32 bytes}"
       IOT_IDS_ACCESS_TOKEN_MINUTES: "${IOT_IDS_ACCESS_TOKEN_MINUTES:-30}"
+      IOT_IDS_SENSOR_TOKEN_HASH: "${IOT_IDS_SENSOR_TOKEN_HASH:-}"
+      IOT_IDS_SENSOR_OFFLINE_SECONDS: "${IOT_IDS_SENSOR_OFFLINE_SECONDS:-30}"
       # The backend is reachable only from this private network and host
       # loopback; the edge NGINX gateway overwrites X-Forwarded-For.
       FORWARDED_ALLOW_IPS: "*"
@@ -64,7 +66,7 @@ services:
       dockerfile: backend/Dockerfile
     environment: *backend-environment
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${IOT_IDS_BACKEND_PORT:-8000}:8000"
     restart: unless-stopped
     depends_on:
       migration:
@@ -91,7 +93,7 @@ services:
     build:
       context: frontend
     ports:
-      - "5173:8080"
+      - "${IOT_IDS_FRONTEND_PORT:-5173}:8080"
     restart: unless-stopped
     depends_on:
       backend:

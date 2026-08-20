@@ -35,6 +35,8 @@ class Settings:
     admin_password_hash: str = ""
     secret_key: str = ""
     access_token_minutes: int = 30
+    sensor_token_hash: str = ""
+    sensor_offline_seconds: int = 30
     log_level: str = "WARNING"
     log_format: str = "json"
 
@@ -113,11 +115,22 @@ class Settings:
             admin_password_hash=os.getenv("IOT_IDS_ADMIN_PASSWORD_HASH", ""),
             secret_key=os.getenv("IOT_IDS_SECRET_KEY", ""),
             access_token_minutes=int(os.getenv("IOT_IDS_ACCESS_TOKEN_MINUTES", "30")),
+            sensor_token_hash=os.getenv("IOT_IDS_SENSOR_TOKEN_HASH", "").strip().lower(),
+            sensor_offline_seconds=int(
+                os.getenv("IOT_IDS_SENSOR_OFFLINE_SECONDS", "30")
+            ),
             log_level=os.getenv("IOT_IDS_LOG_LEVEL", "INFO").strip().upper(),
             log_format=os.getenv("IOT_IDS_LOG_FORMAT", "json").strip().lower(),
         )
 
     def validate_authentication(self) -> None:
+        if self.sensor_token_hash and (
+            len(self.sensor_token_hash) != 64
+            or any(character not in "0123456789abcdef" for character in self.sensor_token_hash)
+        ):
+            raise ValueError("IOT_IDS_SENSOR_TOKEN_HASH must be a lowercase SHA-256 hex digest")
+        if not 5 <= self.sensor_offline_seconds <= 3_600:
+            raise ValueError("IOT_IDS_SENSOR_OFFLINE_SECONDS must be between 5 and 3600")
         if not self.auth_enabled:
             return
         if not self.admin_username.strip():

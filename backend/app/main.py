@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, FastAPI, Request, Response, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -21,9 +22,11 @@ from app.api import (
     models,
     predictions,
     replay,
+    suricata,
 )
 from app.api.auth import LoginRateLimiter
 from app.api.errors import safe_validation_details
+from app.api.suricata import sensor_status
 from app.config import Settings
 from app.database.models import Base, ModelVersion
 from app.database.schema import verify_schema_current
@@ -230,6 +233,9 @@ def create_app(
                 ingestion_health = ingestion_status(
                     session, lease_seconds=settings.worker_lease_seconds
                 )
+                sensor_health = sensor_status(
+                    session, offline_seconds=settings.sensor_offline_seconds
+                )
             database_status = "ready"
         except Exception:  # pragma: no cover - depends on external database failure
             database_status = "blocked"
@@ -243,6 +249,7 @@ def create_app(
                 },
             )
             ingestion_health = None
+            sensor_health = None
         model_health_component = app.state.model_health.component()
         model_health_degrades_readiness = bool(
             model_health_component.get("degrades_readiness")
@@ -394,6 +401,18 @@ def create_app(
                     }
                 ),
                 "model_health": model_health_component,
+                "sensor": (
+                    {
+                        **sensor_health,
+                        "reason": (
+                            "a passive Suricata sensor is reporting live traffic"
+                            if sensor_health["status"] == "online"
+                            else "no passive Suricata sensor is currently reporting"
+                        ),
+                    }
+                    if sensor_health
+                    else {"status": "blocked", "reason": "database is unavailable"}
+                ),
             },
         }
 
@@ -406,7 +425,7 @@ def create_app(
             if evidence["readiness"] == "blocked"
             else status.HTTP_200_OK
         )
-        return JSONResponse(evidence, status_code=status_code)
+        return JSONResponse(jsonable_encoder(evidence), status_code=status_code)
 
     # Authentication bootstrap and operational probes are deliberately public.
     # All business data is deny-by-default when authentication is enabled.
@@ -420,6 +439,7 @@ def create_app(
     router.include_router(replay.router)
     router.include_router(ingestion.router)
     router.include_router(model_health.router)
+    router.include_router(suricata.router)
     app.include_router(router)
     app.include_router(router, prefix="/api/v1", include_in_schema=False)
     return app

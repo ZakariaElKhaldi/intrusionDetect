@@ -111,8 +111,8 @@ def test_compose_has_no_default_database_password_or_cross_origin_browser_url() 
     assert "VITE_API_URL:" not in compose
     assert "VITE_WS_URL:" not in compose
     assert "condition: service_healthy" in compose
-    assert '"5173:8080"' in compose
-    assert '"127.0.0.1:8000:8000"' in compose
+    assert '"${IOT_IDS_FRONTEND_PORT:-5173}:8080"' in compose
+    assert '"127.0.0.1:${IOT_IDS_BACKEND_PORT:-8000}:8000"' in compose
     assert 'FORWARDED_ALLOW_IPS: "*"' in compose
     assert '\n      - "8000:8000"' not in compose
     assert "read_only: true" in compose

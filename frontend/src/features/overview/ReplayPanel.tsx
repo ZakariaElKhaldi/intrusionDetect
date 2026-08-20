@@ -133,14 +133,30 @@ export function ReplayPanel({
   return (
     <section className="panel replay-console" aria-labelledby="replay-title" data-testid="replay-panel">
       <header className="replay-console-header">
-        <div>
-          <span className="eyebrow">Controlled dataset exercise</span>
-          <h2 id="replay-title">Replay recorded traffic</h2>
-          <p>Run a bounded RT-IoT2022 scenario through detection, persistence, alerting, and the live event stream.</p>
+        <div className="replay-header-title">
+          <h2 id="replay-title">Traffic replay</h2>
+          <span>RT-IoT2022</span>
         </div>
-        <div className="replay-contract" aria-label="Replay contract">
-          <span><Database aria-hidden="true" /><b>Server dataset</b><small>Checksum-validated at startup</small></span>
-          <span><Gauge aria-hidden="true" /><b>250 ms base cadence</b><small>Adjusted by selected speed</small></span>
+        <div className="replay-header-controls" aria-label="Replay setup">
+          <label className="replay-header-control">
+            <span><Database aria-hidden="true" />Traffic</span>
+            <select aria-label="Replay scenario" value={scenario} onChange={(event) => onScenario(event.target.value as ReplayScenario)} disabled={active || blocked}>
+              <option value="attack">Attack-labelled traffic</option>
+              <option value="normal">Normal-labelled traffic</option>
+              <option value="all">Original file order</option>
+              <optgroup label="Exact attack family">
+                {attackFamilies.map((family) => <option value={`class:${family}`} key={family}>{family.replaceAll("_", " ")}</option>)}
+              </optgroup>
+            </select>
+          </label>
+          <label className="replay-header-control replay-header-control--speed">
+            <span><Gauge aria-hidden="true" />Speed</span>
+            <span className="replay-speed-input">
+              <input aria-label="Replay speed" aria-invalid={Boolean(speedIssue)} aria-describedby={speedHintId} type="number" min="0.01" max="100" step="0.25" value={speed} onChange={(event) => onSpeed(Number(event.target.value))} disabled={running || blocked} />
+              <b aria-hidden="true">×</b>
+            </span>
+            <small id={speedHintId} className={speedIssue ? "field-guidance field-guidance--error" : "field-guidance"}>{speedIssue || `${(250 / speed).toFixed(1)} ms / event`}</small>
+          </label>
         </div>
       </header>
 
@@ -162,24 +178,7 @@ export function ReplayPanel({
 
       <div className="replay-console-grid">
         <fieldset className="replay-configuration">
-          <legend><span>Run configuration</span><small>Changes are local until Start or Resume is activated.</small></legend>
-          <label className="replay-field replay-field--wide">
-            <span>Scenario</span>
-            <select aria-label="Replay scenario" value={scenario} onChange={(event) => onScenario(event.target.value as ReplayScenario)} disabled={active || blocked}>
-              <option value="attack">Attack-labelled traffic</option>
-              <option value="normal">Normal-labelled traffic</option>
-              <option value="all">Original file order</option>
-              <optgroup label="Exact attack family">
-                {attackFamilies.map((family) => <option value={`class:${family}`} key={family}>{family.replaceAll("_", " ")}</option>)}
-              </optgroup>
-            </select>
-            <small>Exact-family options match the dataset label, not a fuzzy search.</small>
-          </label>
-          <label className="replay-field">
-            <span>Replay speed</span>
-            <input aria-label="Replay speed" aria-invalid={Boolean(speedIssue)} aria-describedby={speedHintId} type="number" min="0.01" max="100" step="0.25" value={speed} onChange={(event) => onSpeed(Number(event.target.value))} disabled={running || blocked} />
-            <small id={speedHintId} className={speedIssue ? "field-guidance field-guidance--error" : "field-guidance"}>{speedIssue || `${(250 / speed).toFixed(1)} ms approximate cadence · backend range 0.01–100×`}</small>
-          </label>
+          <legend><span>Replay range</span></legend>
           <label className="replay-field">
             <span>Start at dataset row</span>
             <input aria-label="Replay offset" aria-invalid={Boolean(offsetIssue)} aria-describedby={offsetHintId} type="number" min="0" step="1" value={offset} onChange={(event) => onOffset(Number(event.target.value))} disabled={active || blocked} />

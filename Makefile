@@ -1,4 +1,4 @@
-.PHONY: help setup download-data prepare-data validate-data train verify-model native-corpus native-train test lint build dev migrate worker model-health-worker ingest-events ingestion-ops pcap-validate pcap-ingest run-all check-all demo demo-preflight project-preflight e2e benchmark benchmark-postgres docker-up docker-down
+.PHONY: help setup download-data prepare-data validate-data train verify-model native-corpus native-train test lint build dev migrate worker model-health-worker ingest-events ingestion-ops pcap-validate pcap-ingest run-all check-all demo demo-preflight project-preflight e2e benchmark benchmark-postgres docker-up docker-down lab-preflight lab-up lab-normal lab-scan lab-mqtt-attack lab-web-attack lab-status lab-down lab-reset lab-bundle lab-load-bundle
 
 DATASET ?= data/raw/RT_IOT2022.csv
 DATA_ARCHIVE ?= data/raw/rt-iot2022.zip
@@ -52,6 +52,8 @@ help:
 	@echo "  make benchmark      Measure normal and attack dataset replay"
 	@echo "  make benchmark-postgres INGESTION_INPUT=path Benchmark the PostgreSQL queue"
 	@echo "  make docker-up      Start the demonstration stack"
+	@echo "  make lab-up         Start the isolated live IoT cyber range"
+	@echo "  make lab-preflight  Verify the presentation host without changing it"
 
 setup:
 	cd backend && $(UV) sync --extra dev --extra postgres --extra pcap
@@ -184,3 +186,36 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+lab-preflight:
+	./scripts/labctl preflight
+
+lab-up:
+	./scripts/labctl up
+
+lab-normal:
+	./scripts/labctl normal
+
+lab-scan:
+	./scripts/labctl scan
+
+lab-mqtt-attack:
+	./scripts/labctl mqtt-attack
+
+lab-web-attack:
+	./scripts/labctl web-attack
+
+lab-status:
+	./scripts/labctl status
+
+lab-down:
+	./scripts/labctl down
+
+lab-reset:
+	./scripts/labctl reset
+
+lab-bundle:
+	./scripts/labctl bundle
+
+lab-load-bundle:
+	./scripts/labctl load-bundle

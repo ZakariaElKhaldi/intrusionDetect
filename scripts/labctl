@@ -1,0 +1,335 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STATE_DIR="${ROOT_DIR}/.lab"
+ENV_FILE="${STATE_DIR}/runtime.env"
+BUNDLE_DIR="${STATE_DIR}/bundle"
+PROJECT="iot-ids-lab"
+COMPOSE=(docker compose --project-name "${PROJECT}" --env-file "${ENV_FILE}" -f "${ROOT_DIR}/docker-compose.yml" -f "${ROOT_DIR}/docker-compose.lab.yml")
+LAB_NETWORK="iotlab"
+LAB_INTERFACE="iotlab0"
+LAB_SUBNET="172.30.0.0/24"
+
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+note() { printf '%s\n' "$*"; }
+
+distro_help() {
+  local distro="unknown"
+  if [[ -r /etc/os-release ]]; then
+    distro="$(. /etc/os-release && printf '%s' "${ID:-unknown}")"
+  fi
+  case "${distro}" in
+    fedora)
+      note "Fedora setup: https://docs.docker.com/engine/install/fedora/"
+      note "Install Docker Engine and docker-compose-plugin, then start docker.service."
+      ;;
+    nixos)
+      note "NixOS setup: enable virtualisation.docker.enable and add pkgs.docker-compose."
+      note "Add your presentation user to users.users.<name>.extraGroups = [ \"docker\" ]; then rebuild."
+      ;;
+    arch)
+      note "Arch setup: install docker and docker-compose, enable --now docker.service."
+      ;;
+    *)
+      note "Install rootful Docker Engine and the Docker Compose v2 plugin."
+      ;;
+  esac
+}
+
+ensure_runtime_env() {
+  mkdir -p "${STATE_DIR}"
+  if [[ -f "${ENV_FILE}" ]]; then return; fi
+  command -v openssl >/dev/null || fail "openssl is required to generate lab-only secrets"
+  local database_password secret_key sensor_token sensor_hash
+  database_password="$(openssl rand -hex 24)"
+  secret_key="$(openssl rand -hex 32)"
+  sensor_token="$(openssl rand -hex 32)"
+  sensor_hash="$(printf '%s' "${sensor_token}" | sha256sum | awk '{print $1}')"
+  umask 077
+  {
+    printf 'IOT_IDS_POSTGRES_PASSWORD=%s\n' "${database_password}"
+    printf 'IOT_IDS_SECRET_KEY=%s\n' "${secret_key}"
+    printf '%s\n' 'IOT_IDS_ADMIN_PASSWORD_HASH=$$argon2id$$v=19$$m=65536,t=3,p=4$$q1rFCW90xpQmyFVg4ymTXg$$lX/Rtqui8wxO2Ojyyzt2aFBCwH4VbrqJfZ6D8N4I3XE'
+    printf 'IOT_IDS_ADMIN_USERNAME=admin\n'
+    printf 'IOT_IDS_SENSOR_TOKEN=%s\n' "${sensor_token}"
+    printf 'IOT_IDS_SENSOR_TOKEN_HASH=%s\n' "${sensor_hash}"
+  } > "${ENV_FILE}"
+  note "Created lab-only credentials in ${ENV_FILE} (dashboard: admin / sentinel-demo)."
+}
+
+check_engine() {
+  command -v docker >/dev/null || { distro_help; fail "docker was not found"; }
+  docker info >/dev/null 2>&1 || { distro_help; fail "rootful Docker Engine is not reachable by this user"; }
+  docker compose version >/dev/null 2>&1 || { distro_help; fail "Docker Compose v2 is required"; }
+  local security operating context
+  security="$(docker info --format '{{json .SecurityOptions}}')"
+  operating="$(docker info --format '{{.OperatingSystem}}')"
+  context="$(docker context show)"
+  [[ "${security}" != *rootless* ]] || fail "rootless Docker cannot expose the host bridge to Suricata"
+  [[ "${operating} ${context}" != *"Docker Desktop"* ]] || fail "Docker Desktop is not supported; use native Linux Docker Engine"
+}
+
+check_host() {
+  [[ "$(uname -s)" == "Linux" ]] || fail "the live capture lab requires a native Linux host"
+  case "$(uname -m)" in x86_64|aarch64|arm64) ;; *) fail "unsupported architecture: $(uname -m)" ;; esac
+  local distro="unknown"
+  [[ -r /etc/os-release ]] && distro="$(. /etc/os-release && printf '%s' "${ID:-unknown}")"
+  case "${distro}" in arch|nixos|fedora) ;; *) distro_help; fail "unsupported presentation distribution: ${distro}" ;; esac
+}
+
+check_files() {
+  local required=(
+    docker-compose.yml docker-compose.lab.yml lab/suricata/local.rules
+    lab/mosquitto/mosquitto.conf lab/mosquitto/start.sh
+    backend/app/lab/traffic.py backend/app/lab/verify.py backend/app/ingestion/suricata_agent.py
+    data/raw/RT_IOT2022.csv data/dataset-manifest.json
+    models/production/manifest.json frontend/src/data.ts
+  )
+  local item
+  for item in "${required[@]}"; do
+    [[ -f "${ROOT_DIR}/${item}" ]] || fail "required lab file is missing: ${item}"
+  done
+}
+
+check_secrets() {
+  [[ -r "${ENV_FILE}" ]] || fail "lab credentials are missing; run make lab-up once or restore the presentation .lab directory"
+  local required=(IOT_IDS_POSTGRES_PASSWORD IOT_IDS_SECRET_KEY IOT_IDS_ADMIN_PASSWORD_HASH IOT_IDS_SENSOR_TOKEN IOT_IDS_SENSOR_TOKEN_HASH)
+  local name
+  for name in "${required[@]}"; do
+    grep -q "^${name}=" "${ENV_FILE}" || fail "${ENV_FILE} is missing ${name}"
+  done
+}
+
+check_cached_rules() {
+  [[ -r "${STATE_DIR}/suricata-config/suricata.yaml" ]] \
+    || fail "cached Suricata configuration is missing; run make lab-up or make lab-load-bundle"
+}
+
+check_network_conflict() {
+  if ! docker network inspect "${LAB_NETWORK}" >/dev/null 2>&1; then
+    if docker network ls -q | xargs -r docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{"\n"}}{{end}}' 2>/dev/null | grep -Fxq "${LAB_SUBNET}"; then
+      fail "subnet ${LAB_SUBNET} is already assigned to another Docker network"
+    fi
+    if [[ -e "/sys/class/net/${LAB_INTERFACE}" ]]; then
+      fail "host interface ${LAB_INTERFACE} already exists outside the labelled lab network"
+    fi
+    return
+  fi
+  local driver internal subnet bridge
+  driver="$(docker network inspect -f '{{.Driver}}' "${LAB_NETWORK}")"
+  internal="$(docker network inspect -f '{{.Internal}}' "${LAB_NETWORK}")"
+  subnet="$(docker network inspect -f '{{(index .IPAM.Config 0).Subnet}}' "${LAB_NETWORK}")"
+  bridge="$(docker network inspect -f '{{index .Options "com.docker.network.bridge.name"}}' "${LAB_NETWORK}")"
+  [[ "${driver}" == bridge && "${internal}" == true && "${subnet}" == "${LAB_SUBNET}" && "${bridge}" == "${LAB_INTERFACE}" ]] \
+    || fail "network ${LAB_NETWORK} exists but does not match the isolated lab contract"
+}
+
+check_ports() {
+  command -v ss >/dev/null || return
+  if docker ps --filter "label=com.docker.compose.project=${PROJECT}" --format '{{.ID}}' | grep -q .; then
+    return
+  fi
+  local port
+  for port in "${IOT_IDS_FRONTEND_PORT:-5173}" "${IOT_IDS_BACKEND_PORT:-8000}"; do
+    if ss -H -ltn "sport = :${port}" 2>/dev/null | grep -q .; then
+      fail "TCP port ${port} is already in use; stop the conflicting service before lab-up"
+    fi
+  done
+}
+
+check_images() {
+  local missing=0 image
+  local images=(
+    "postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193"
+    "eclipse-mosquitto:2.0.22-openssl@sha256:212f89e1eaeb2c322d6441b64396e3346026674db8fa9c27beac293405c32b3c"
+    "jasonish/suricata:8.0.4@sha256:8058c0580c48cae4013bb8d576e5fe7cfe59884ea5526239056825b70c849ec8"
+    "iot-ids-lab-backend:0.1.0"
+    "iot-ids-lab-frontend:0.1.0"
+  )
+  for image in "${images[@]}"; do
+    if ! docker image inspect "${image}" >/dev/null 2>&1; then
+      printf 'MISSING IMAGE: %s\n' "${image}" >&2
+      missing=1
+    fi
+  done
+  return "${missing}"
+}
+
+check_image_identities() {
+  [[ -r "${BUNDLE_DIR}/images.txt" && -r "${BUNDLE_DIR}/digests.txt" ]] || return 0
+  local image expected actual
+  while IFS=$'\t' read -r image expected; do
+    expected="${expected%% *}"
+    actual="$(docker image inspect --format '{{.Id}}' "${image}")"
+    [[ "${actual}" == "${expected}" ]] \
+      || fail "image identity mismatch for ${image}; reload the verified offline bundle"
+  done < <(paste "${BUNDLE_DIR}/images.txt" "${BUNDLE_DIR}/digests.txt")
+}
+
+check_capture_runtime() {
+  local image="jasonish/suricata:8.0.4@sha256:8058c0580c48cae4013bb8d576e5fe7cfe59884ea5526239056825b70c849ec8"
+  docker image inspect "${image}" >/dev/null 2>&1 || return 0
+  docker run --rm --network host --cap-drop ALL --cap-add NET_ADMIN --cap-add NET_RAW --cap-add SYS_NICE \
+    --entrypoint /bin/sh "${image}" -c 'test -r /proc/net/dev' >/dev/null \
+    || fail "Docker could not start a host-networked container with the required capture capabilities"
+}
+
+preflight() {
+  local allow_missing="${1:-false}"
+  check_host
+  check_engine
+  check_files
+  check_secrets
+  [[ "${allow_missing}" == true ]] || check_cached_rules
+  check_network_conflict
+  check_ports
+  if ! check_images; then
+    [[ "${allow_missing}" == true ]] || fail "load the offline bundle or run lab-bundle while online"
+    note "Images will be pulled or built by lab-up."
+  else
+    check_image_identities
+  fi
+  check_capture_runtime
+  note "Lab preflight passed for native rootful Docker Engine."
+}
+
+ensure_network() {
+  check_network_conflict
+  if docker network inspect "${LAB_NETWORK}" >/dev/null 2>&1; then return; fi
+  docker network create --driver bridge --internal --subnet "${LAB_SUBNET}" \
+    --opt "com.docker.network.bridge.name=${LAB_INTERFACE}" \
+    --label com.sentinel.lab=true "${LAB_NETWORK}" >/dev/null
+  note "Created isolated ${LAB_INTERFACE} (${LAB_SUBNET})."
+}
+
+ensure_capture_state() {
+  mkdir -p "${STATE_DIR}/eve"
+  chmod 0777 "${STATE_DIR}/eve"
+  local config_dir="${STATE_DIR}/suricata-config"
+  local image="jasonish/suricata:8.0.4@sha256:8058c0580c48cae4013bb8d576e5fe7cfe59884ea5526239056825b70c849ec8"
+  docker image inspect "${image}" >/dev/null 2>&1 || docker pull "${image}" >/dev/null
+  docker run --rm --cap-drop ALL --security-opt no-new-privileges:true --user 998:998 \
+    --volume "${STATE_DIR}/eve:/eve" --entrypoint /bin/sh "${image}" \
+    -c 'chmod -R a+rwX /eve 2>/dev/null || true'
+  if [[ ! -r "${config_dir}/suricata.yaml" ]]; then
+    mkdir -p "${config_dir}"
+    chmod 0777 "${config_dir}"
+    docker run --rm --cap-drop ALL --security-opt no-new-privileges:true --user 998:998 \
+      --volume "${config_dir}:/export" --entrypoint /bin/sh "${image}" \
+      -c 'cp -R /etc/suricata/. /export/ && chmod -R a+rX /export/*'
+    note "Cached the pinned Suricata configuration under ${config_dir}."
+  fi
+  docker run --rm --cap-drop ALL --security-opt no-new-privileges:true --user 998:998 \
+    --volume "${config_dir}:/export" \
+    --volume "${ROOT_DIR}/lab/suricata/local.rules:/source/local.rules:ro" \
+    --entrypoint /bin/sh "${image}" \
+    -c 'mkdir -p /export/rules && cp /source/local.rules /export/rules/local.rules && chmod a+r /export/rules/local.rules'
+}
+
+compose_down() {
+  "${COMPOSE[@]}" --profile scenario down --remove-orphans "$@" || true
+  if docker network inspect "${LAB_NETWORK}" >/dev/null 2>&1; then
+    local label
+    label="$(docker network inspect -f '{{index .Labels "com.sentinel.lab"}}' "${LAB_NETWORK}")"
+    [[ "${label}" == true ]] && docker network rm "${LAB_NETWORK}" >/dev/null || true
+  fi
+}
+
+scenario() {
+  local mode="$1"
+  ensure_runtime_env
+  check_engine
+  docker network inspect "${LAB_NETWORK}" >/dev/null 2>&1 || fail "lab is not running; use make lab-up"
+  local started signature_id=""
+  started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  "${COMPOSE[@]}" --profile scenario run --rm --no-deps attacker "${mode}"
+  case "${mode}" in
+    scan) signature_id=9900001 ;;
+    mqtt-attack) signature_id=9900002 ;;
+    web-attack) signature_id=9900003 ;;
+  esac
+  if [[ -n "${signature_id}" ]]; then
+    "${COMPOSE[@]}" exec -T backend python -m app.lab.verify "${signature_id}" --after "${started}" --timeout 5
+  fi
+}
+
+bundle() {
+  ensure_runtime_env
+  check_host
+  check_engine
+  check_files
+  command -v zstd >/dev/null || fail "zstd is required to create the offline bundle"
+  ensure_capture_state
+  mkdir -p "${BUNDLE_DIR}"
+  "${COMPOSE[@]}" --profile scenario build
+  local external_images=(
+    "postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193"
+    "eclipse-mosquitto:2.0.22-openssl@sha256:212f89e1eaeb2c322d6441b64396e3346026674db8fa9c27beac293405c32b3c"
+    "jasonish/suricata:8.0.4@sha256:8058c0580c48cae4013bb8d576e5fe7cfe59884ea5526239056825b70c849ec8"
+  )
+  local external_image
+  for external_image in "${external_images[@]}"; do docker pull "${external_image}" >/dev/null; done
+  mapfile -t images < <("${COMPOSE[@]}" --profile scenario config --images | sort -u)
+  local image
+  for image in "${images[@]}"; do docker image inspect "${image}" >/dev/null; done
+  printf '%s\n' "${images[@]}" > "${BUNDLE_DIR}/images.txt"
+  : > "${BUNDLE_DIR}/digests.txt"
+  for image in "${images[@]}"; do
+    docker image inspect --format '{{.Id}} {{join .RepoDigests " "}}' "${image}" >> "${BUNDLE_DIR}/digests.txt"
+  done
+  docker save "${images[@]}" | zstd -T0 -19 -o "${BUNDLE_DIR}/images.tar.zst"
+  cp "${ROOT_DIR}/lab/suricata/local.rules" "${BUNDLE_DIR}/local.rules"
+  tar -C "${STATE_DIR}/suricata-config" -cf "${BUNDLE_DIR}/suricata-config.tar" .
+  sha256sum "${BUNDLE_DIR}/images.tar.zst" "${BUNDLE_DIR}/local.rules" "${BUNDLE_DIR}/suricata-config.tar" > "${BUNDLE_DIR}/SHA256SUMS"
+  note "Offline lab bundle written to ${BUNDLE_DIR}."
+}
+
+load_bundle() {
+  check_host
+  check_engine
+  command -v zstd >/dev/null || fail "zstd is required to load the offline bundle"
+  [[ -f "${BUNDLE_DIR}/images.tar.zst" ]] || fail "offline bundle is missing: ${BUNDLE_DIR}/images.tar.zst"
+  (cd "${BUNDLE_DIR}" && sha256sum -c SHA256SUMS)
+  zstd -dc "${BUNDLE_DIR}/images.tar.zst" | docker load
+  mkdir -p "${STATE_DIR}/suricata-config"
+  chmod 0777 "${STATE_DIR}/suricata-config"
+  local image="jasonish/suricata:8.0.4@sha256:8058c0580c48cae4013bb8d576e5fe7cfe59884ea5526239056825b70c849ec8"
+  docker run --rm --cap-drop ALL --security-opt no-new-privileges:true --user 998:998 \
+    --volume "${STATE_DIR}/suricata-config:/config" \
+    --volume "${BUNDLE_DIR}/suricata-config.tar:/bundle.tar:ro" \
+    --entrypoint /bin/sh "${image}" \
+    -c 'tar --no-same-owner --no-same-permissions --no-overwrite-dir -m -C /config -xf /bundle.tar'
+  note "Offline lab images loaded and verified."
+}
+
+command="${1:-help}"
+case "${command}" in
+  preflight) preflight false ;;
+  up)
+    ensure_runtime_env
+    preflight true
+    ensure_network
+    ensure_capture_state
+    "${COMPOSE[@]}" up --build --detach
+    note "Live lab started. Open http://localhost:${IOT_IDS_FRONTEND_PORT:-5173} (admin / sentinel-demo)."
+    ;;
+  normal) scenario normal ;;
+  scan) scenario scan ;;
+  mqtt-attack) scenario mqtt-attack ;;
+  web-attack) scenario web-attack ;;
+  status)
+    ensure_runtime_env
+    check_engine
+    "${COMPOSE[@]}" --profile scenario ps
+    docker network inspect -f 'network={{.Name}} internal={{.Internal}} subnet={{(index .IPAM.Config 0).Subnet}} bridge={{index .Options "com.docker.network.bridge.name"}}' "${LAB_NETWORK}" 2>/dev/null || true
+    ;;
+  down) ensure_runtime_env; check_engine; compose_down ;;
+  reset) ensure_runtime_env; check_engine; compose_down --volumes; preflight true; ensure_network; ensure_capture_state; "${COMPOSE[@]}" up --build --detach ;;
+  bundle) bundle ;;
+  load-bundle) ensure_runtime_env; load_bundle ;;
+  *)
+    note "Usage: scripts/labctl {preflight|up|normal|scan|mqtt-attack|web-attack|status|down|reset|bundle|load-bundle}"
+    exit 2
+    ;;
+esac

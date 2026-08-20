@@ -23,10 +23,12 @@ function renderPanel(overrides: Partial<ReplayPanelProps> = {}) {
 describe("ReplayPanel", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("discloses the dataset contract and full backend input ranges before starting", () => {
+  it("puts the frequent replay controls in the header and keeps backend input ranges available", () => {
     renderPanel();
 
-    expect(screen.getByText("Checksum-validated at startup")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Traffic replay" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Replay scenario" })).toHaveValue("attack");
+    expect(screen.getByText("250.0 ms / event")).toBeInTheDocument();
     expect(screen.getByRole("spinbutton", { name: "Replay speed" })).toHaveAttribute("max", "100");
     expect(screen.getByRole("spinbutton", { name: "Replay limit" })).toHaveAttribute("max", "1000000");
     expect(screen.getByText(/skipped before scenario filtering/i)).toBeInTheDocument();

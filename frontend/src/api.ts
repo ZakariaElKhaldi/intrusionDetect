@@ -27,6 +27,7 @@ import type {
   RedriveResponse,
   AuthSession,
   IngestionBatchReceipt,
+  SensorStatus,
   ObservationPrediction,
   BatchPredictionResponse,
 } from "./types";
@@ -50,7 +51,8 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
 
 interface AlertWire {
   alert_id: string;
-  event_id: string;
+  event_id: string | null;
+  detection_source?: "ml_model" | "suricata";
   severity: string;
   reasons: string[];
   top_features: {
@@ -93,6 +95,7 @@ interface AlertWire {
     explanation_type?: string;
   };
   feedback?: AnalystFeedback[];
+  sensor_evidence?: Alert["sensor_evidence"];
 }
 
 interface ModelWire {
@@ -193,7 +196,8 @@ function alertFromWire(value: AlertWire): Alert {
   const alertEvidenceType = evidenceTypeForAlert(value);
   return {
     id: value.alert_id,
-    event_id: value.event_id,
+    event_id: value.event_id ?? undefined,
+    detection_source: value.detection_source ?? "ml_model",
     timestamp: value.created_at,
     attack_type: value.attack_class ?? value.reasons?.[0] ?? "Suspicious activity",
     binary_prediction: value.binary_prediction,
@@ -235,6 +239,7 @@ function alertFromWire(value: AlertWire): Alert {
       ),
     })),
     feedback: value.feedback ?? [],
+    sensor_evidence: value.sensor_evidence,
   };
 }
 
@@ -397,6 +402,14 @@ export async function getIngestionStatus(): Promise<IngestionStatus> {
     throw new ApiError("Ingestion status response is invalid.", 502, value);
   }
   return value as IngestionStatus;
+}
+
+export async function getSensorStatus(): Promise<SensorStatus> {
+  const value = await request<unknown>("/sensors/status");
+  if (!value || typeof value !== "object" || !("status" in value) || !("sensors" in value) || !Array.isArray(value.sensors)) {
+    throw new ApiError("Sensor status response is invalid.", 502, value);
+  }
+  return value as SensorStatus;
 }
 
 function queryString(values: Record<string, string | number | undefined>) {

@@ -56,7 +56,7 @@ describe("Overview", () => {
   it("distinguishes initial loading from genuine absence", () => {
     renderOverview({ summary: null, summaryLoading: true, alerts: [] });
 
-    expect(screen.getAllByRole("status")[0]).toHaveTextContent("Loading persisted summary");
+    expect(screen.getByText("Loading persisted summary…")).toHaveAttribute("role", "status");
     expect(screen.queryByRole("region", { name: "Persisted workload summary" })).not.toBeInTheDocument();
     expect(screen.queryByText("No unresolved alerts in this persisted window")).not.toBeInTheDocument();
   });

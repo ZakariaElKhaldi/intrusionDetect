@@ -7,7 +7,8 @@ versioned prefix.
 
 Authentication bootstrap (`GET /auth/status`, `POST /auth/login`) and machine
 probes remain public. When authentication is enabled, every other `Covered`
-HTTP capability is protected by the backend's shared bearer dependency. The
+HTTP capability is protected by the backend's shared bearer dependency, except
+the machine-owned Suricata ingestion route, which uses a separate sensor token. The
 live WebSocket sends its bearer credential as the first application message
 and is not marked live until the server acknowledges authentication; bearer
 credentials are never placed in its URL.
@@ -47,8 +48,10 @@ browser controls.
 | `GET /model-health/cohorts` | `getModelHealthCohorts` | Deployment/cohort selector | Covered |
 | `GET /model-health` | `getModelHealth` | Fast/slow snapshot, state/reason, trend and exact evidence | Covered |
 | `GET /model-health/history` | `getModelHealthHistory` | Recent cohort history and exact checks | Covered |
+| `GET /sensors/status` | `getSensorStatus` | Passive sensor heartbeat, interface, rules, packet/drop counters, and accepted live alerts | Covered |
 | `WS /live` | `socketUrl`, `socketAuthenticationMessage`, `isLiveConnectionMessage`, `isLivePongMessage`, `liveEventFromSocketMessage` | Authenticated connection acknowledgement, heartbeat/watchdog recovery, live prediction count, alert queue, last-event and stream state | Covered |
 | `POST /ingestion/offline-pcap/events` | Local offline-PCAP command | Server-owned ingestion channel requiring local capture/extraction workflow | Server-owned |
+| `POST /sensors/suricata/events` | EVE ingestion agent | Machine-owned authenticated EVE delivery with checkpointing and deduplication | Machine-owned |
 | `GET /livez` | Container/orchestrator probe | Process liveness; not an analyst decision surface | Machine-owned |
 | `GET /readyz` | Container/orchestrator probe | Traffic readiness; human component evidence comes from `/health` | Machine-owned |
 | `GET /metrics` | Prometheus-compatible scraper | Telemetry backend input; relevant aggregates appear in operator workspaces | Machine-owned |

@@ -58,4 +58,4 @@ def test_schema_check_accepts_every_declared_alembic_head(
     assert {"claim_token", "claim_expires_at", "next_attempt_at"} <= outbox_columns
     assert "ix_outbox_events_delivery_claim" in outbox_indexes
     engine.dispose()
-    assert expected_schema_heads() == {"20260810_04"}
+    assert expected_schema_heads() == {"20260820_05"}

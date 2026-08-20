@@ -4,6 +4,7 @@ import {
   getAlert,
   getAlerts,
   getReplayStatus,
+  getSensorStatus,
   getDashboardSummary,
   getIngestionStatus,
   getModels,
@@ -18,7 +19,7 @@ import {
 import { sampleAlerts, sampleModels } from "./data";
 import { ReplayPanel, type ReplayPendingAction } from "./features/overview/ReplayPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import type { Alert, AlertStatus, DashboardSummary, HealthInfo, IngestionStatus, ModelInfo, Page, ReplayScenario, ReplayStatus } from "./types";
+import type { Alert, AlertStatus, DashboardSummary, HealthInfo, IngestionStatus, ModelInfo, Page, ReplayScenario, ReplayStatus, SensorStatus } from "./types";
 import { pageTitles } from "./utils";
 import { useAuth } from "./auth";
 import { ApplicationShell, type ShellSocketState } from "./features/shell/ApplicationShell";
@@ -60,6 +61,9 @@ function App() {
   const [ingestion, setIngestion] = useState<IngestionStatus | null>(null);
   const [ingestionLoading, setIngestionLoading] = useState(!fixtureMode);
   const [ingestionError, setIngestionError] = useState("");
+  const [sensorStatus, setSensorStatus] = useState<SensorStatus | null>(null);
+  const [sensorLoading, setSensorLoading] = useState(!fixtureMode);
+  const [sensorError, setSensorError] = useState("");
   const [alertsError, setAlertsError] = useState("");
   const [modelsError, setModelsError] = useState("");
   const [socketState, setSocketState] = useState<ShellSocketState>("connecting");
@@ -161,9 +165,11 @@ function App() {
     setModels([]);
     setSummary(null);
     setIngestion(null);
+    setSensorStatus(null);
     setReplay(null);
     setSummaryLoading(false);
     setIngestionLoading(false);
+    setSensorLoading(false);
   }, [auth.authenticated, fixtureMode]);
 
   useEffect(() => {
@@ -203,6 +209,36 @@ function App() {
       if (timer) window.clearTimeout(timer);
     };
   }, [auth.authenticated, fixtureMode, loadIngestionStatus]);
+
+  const loadSensorStatus = useCallback(async () => {
+    if (fixtureMode || !auth.authenticated) return;
+    setSensorError("");
+    try {
+      setSensorStatus(await getSensorStatus());
+    } catch (error) {
+      setSensorError(error instanceof Error ? error.message : "Sensor status is unavailable.");
+    } finally {
+      setSensorLoading(false);
+    }
+  }, [auth.authenticated, fixtureMode]);
+
+  useEffect(() => {
+    if (fixtureMode || !auth.authenticated) {
+      setSensorLoading(false);
+      return;
+    }
+    let disposed = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      await loadSensorStatus();
+      if (!disposed) timer = window.setTimeout(poll, 5_000);
+    };
+    void poll();
+    return () => {
+      disposed = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [auth.authenticated, fixtureMode, loadSensorStatus]);
 
   const hydrateReplay = useCallback(async () => {
     if (fixtureMode || !auth.authenticated) return;
@@ -500,24 +536,6 @@ function App() {
             <Suspense fallback={<div className="panel data-state" role="status">Loading workspace…</div>}>
             {page === "overview" ? (
             <div className="monitor-page">
-              <ReplayPanel
-                replay={replay}
-                scenario={replayScenario}
-                speed={replaySpeed}
-                offset={replayOffset}
-                limit={replayLimit}
-                error={replayError}
-                disabled={fixtureMode || !replayReady}
-                unavailableReasons={replayUnavailableReasons}
-                pendingAction={replayPendingAction}
-                onScenario={setReplayScenario}
-                onSpeed={setReplaySpeed}
-                onOffset={setReplayOffset}
-                onLimit={setReplayLimit}
-                onPrimary={() => void handleReplay()}
-                onStop={() => void stopReplay()}
-                onRetry={() => void hydrateReplay()}
-              />
               <Overview
                 alerts={alerts}
                 fixtureMode={fixtureMode}
@@ -536,6 +554,10 @@ function App() {
                 onOpenAlert={openAlert}
                 onTimeBucket={openTimeBucket}
                 onViewAlertQueue={() => navigate("alerts")}
+                sensorStatus={sensorStatus}
+                sensorLoading={sensorLoading}
+                sensorError={sensorError}
+                onRetrySensor={() => void loadSensorStatus()}
               />
               <OverviewOperations
                 health={health}
@@ -547,6 +569,27 @@ function App() {
                 lastUpdate={lastUpdate}
                 onRetryIngestion={() => void loadIngestionStatus()}
               />
+              <section className="research-replay" aria-labelledby="research-replay-title">
+                <div className="research-replay-heading"><span className="eyebrow">Research lab</span><h2 id="research-replay-title">Dataset experiment</h2><p>Replay is controlled model evidence, separate from the passive sensor and live packet alerts above.</p></div>
+                <ReplayPanel
+                  replay={replay}
+                  scenario={replayScenario}
+                  speed={replaySpeed}
+                  offset={replayOffset}
+                  limit={replayLimit}
+                  error={replayError}
+                  disabled={fixtureMode || !replayReady}
+                  unavailableReasons={replayUnavailableReasons}
+                  pendingAction={replayPendingAction}
+                  onScenario={setReplayScenario}
+                  onSpeed={setReplaySpeed}
+                  onOffset={setReplayOffset}
+                  onLimit={setReplayLimit}
+                  onPrimary={() => void handleReplay()}
+                  onStop={() => void stopReplay()}
+                  onRetry={() => void hydrateReplay()}
+                />
+              </section>
             </div>
           ) : null}
           {page === "alerts" ? (
@@ -591,7 +634,7 @@ function App() {
               alert={selectedAlert}
               onClose={() => setSelectedAlert(null)}
               onStatusChange={updateAlertStatus}
-              loadExplanation={!fixtureMode}
+              loadExplanation={!fixtureMode && selectedAlert.detection_source !== "suricata"}
               readOnly={fixtureMode}
             />
           </Suspense>

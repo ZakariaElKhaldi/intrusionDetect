@@ -1,0 +1,144 @@
+services:
+  backend:
+    image: iot-ids-lab-backend:0.1.0
+    environment:
+      IOT_IDS_SENSOR_TOKEN_HASH: "${IOT_IDS_SENSOR_TOKEN_HASH:?run scripts/labctl up}"
+      IOT_IDS_ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
+
+  migration:
+    image: iot-ids-lab-backend:0.1.0
+    build: !reset null
+
+  worker:
+    image: iot-ids-lab-backend:0.1.0
+    build: !reset null
+
+  frontend:
+    image: iot-ids-lab-frontend:0.1.0
+
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0.22-openssl@sha256:212f89e1eaeb2c322d6441b64396e3346026674db8fa9c27beac293405c32b3c
+    entrypoint: ["/bin/sh", "/lab/start.sh"]
+    user: "1883:1883"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:mode=1777"]
+    volumes:
+      - ./lab/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./lab/mosquitto/start.sh:/lab/start.sh:ro
+    networks:
+      iotlab:
+        ipv4_address: 172.30.0.20
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -u lab-device -P lab-password -t lab/health -m ready"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  temperature-sensor:
+    image: iot-ids-lab-backend:0.1.0
+    command: ["python", "-m", "app.lab.traffic", "temperature"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:mode=1777"]
+    healthcheck:
+      disable: true
+    networks:
+      iotlab:
+        ipv4_address: 172.30.0.30
+    depends_on:
+      mqtt-broker:
+        condition: service_healthy
+
+  camera-api:
+    image: iot-ids-lab-backend:0.1.0
+    command: ["python", "-m", "app.lab.traffic", "camera"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:mode=1777"]
+    healthcheck:
+      disable: true
+    networks:
+      iotlab:
+        ipv4_address: 172.30.0.31
+
+  attacker:
+    image: iot-ids-lab-backend:0.1.0
+    entrypoint: ["python", "-m", "app.lab.traffic"]
+    command: ["normal"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:mode=1777"]
+    profiles: ["scenario"]
+    networks:
+      iotlab:
+        ipv4_address: 172.30.0.40
+
+  suricata:
+    image: jasonish/suricata:8.0.4@sha256:8058c0580c48cae4013bb8d576e5fe7cfe59884ea5526239056825b70c849ec8
+    network_mode: host
+    entrypoint: ["/usr/bin/suricata"]
+    command:
+      - -i
+      - iotlab0
+      - -S
+      - /etc/suricata/rules/local.rules
+      - --set
+      - vars.address-groups.HOME_NET=[172.30.0.0/24]
+      - --set
+      - unix-command.enabled=no
+      - --set
+      - detect-engine.sgh-mpm-caching=no
+      - --init-errors-fatal
+    cap_drop: ["ALL"]
+    cap_add: ["NET_ADMIN", "NET_RAW", "SYS_NICE"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+      - /run:mode=755
+      - /var/run/suricata:uid=998,gid=998,mode=755
+      - /var/lib/suricata/cache:uid=998,gid=998,mode=755
+    volumes:
+      - ./.lab/suricata-config:/etc/suricata:ro
+      - ./.lab/eve:/var/log/suricata
+    restart: unless-stopped
+
+  sensor-agent:
+    image: iot-ids-lab-backend:0.1.0
+    command: ["python", "-m", "app.ingestion.suricata_agent"]
+    environment:
+      IOT_IDS_SENSOR_TOKEN: "${IOT_IDS_SENSOR_TOKEN:?run scripts/labctl up}"
+      IOT_IDS_SENSOR_API_URL: http://backend:8000/api/v1/sensors/suricata/events
+      IOT_IDS_SENSOR_ID: presentation-lab
+      IOT_IDS_SENSOR_INTERFACE: iotlab0
+      IOT_IDS_EVE_CHECKPOINT: /data/eve-checkpoint.json
+      IOT_IDS_SURICATA_VERSION: "8.0.4"
+      IOT_IDS_SURICATA_RULE_COUNT: "3"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:mode=1777"]
+    healthcheck:
+      disable: true
+    volumes:
+      - ./.lab/eve:/var/log/suricata:ro
+      - sensor-agent-state:/data
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      suricata:
+        condition: service_started
+
+networks:
+  iotlab:
+    name: iotlab
+    external: true
+
+volumes:
+  sensor-agent-state:

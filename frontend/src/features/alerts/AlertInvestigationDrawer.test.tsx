@@ -117,6 +117,38 @@ describe("AlertInvestigationView", () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
+  it("presents Suricata signature evidence without model controls or scores", () => {
+    const sensorAlert: Alert = {
+      ...alert,
+      event_id: undefined,
+      detection_source: "suricata",
+      attack_type: "IOT LAB TCP service scan",
+      confidence: 0,
+      detection_score: undefined,
+      sensor_evidence: {
+        sensor_id: "presentation-lab",
+        engine: "suricata",
+        engine_version: "8.0.4",
+        signature_id: 9900001,
+        signature_revision: 1,
+        signature: "IOT LAB TCP service scan",
+        category: "Network Scan",
+        priority: 2,
+        action: "allowed",
+        flow_id: "42",
+      },
+    };
+    render(<AlertInvestigationView alert={sensorAlert} onClose={vi.fn()} readOnly />);
+
+    expect(screen.queryByRole("tab", { name: "Model evidence" })).not.toBeInTheDocument();
+    expect(screen.getByText("Suricata signature")).toBeInTheDocument();
+    expect(screen.queryByText("Detector model score")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Record data" }));
+    expect(screen.getByText("Signature evidence")).toBeInTheDocument();
+    expect(screen.getByText("presentation-lab")).toBeInTheDocument();
+    expect(screen.queryByText("Raw flow features")).not.toBeInTheDocument();
+  });
+
   it("closes with Escape", () => {
     const onClose = vi.fn();
     render(<AlertInvestigationView alert={alert} onClose={onClose} readOnly />);

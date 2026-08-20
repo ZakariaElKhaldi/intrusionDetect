@@ -121,7 +121,8 @@ export function AlertInvestigationView({
   const restoreFrameRef = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const [view, setView] = useState<InvestigationView>(initialView);
+  const isSuricata = alert.detection_source === "suricata";
+  const [view, setView] = useState<InvestigationView>(isSuricata && initialView === "model" ? "triage" : initialView);
   const [activeStage, setActiveStage] = useState(0);
   const [proposedStatus, setProposedStatus] = useState<AlertStatus>(alert.status === "new" ? "investigating" : "resolved");
   const [notes, setNotes] = useState("");
@@ -151,6 +152,10 @@ export function AlertInvestigationView({
   useEffect(() => {
     if (activeStage >= explanations.length) setActiveStage(0);
   }, [activeStage, explanations.length]);
+
+  useEffect(() => {
+    if (isSuricata && view === "model") setView("triage");
+  }, [isSuricata, view]);
 
   useEffect(() => {
     if (restoreFrameRef.current !== null) window.cancelAnimationFrame(restoreFrameRef.current);
@@ -239,7 +244,7 @@ export function AlertInvestigationView({
         label="Alert investigation sections"
         options={[
           { value: "triage", label: "Triage" },
-          { value: "model", label: "Model evidence" },
+          ...(!isSuricata ? [{ value: "model" as const, label: "Model evidence" }] : []),
           { value: "record", label: "Record data" },
         ]}
         panelId={panelId}
@@ -253,8 +258,8 @@ export function AlertInvestigationView({
           <section className="investigation-summary" aria-label="Alert decision summary">
             <div><span>Observed severity</span><strong>{alert.severity}</strong></div>
             <div><span>Current disposition</span><strong>{displayStatus(alert.status)}</strong></div>
-            <div><span>Detector verdict</span><strong>{alert.binary_prediction ?? "Attack alert"}</strong></div>
-            <div><span>Detector model score</span><strong>{formatScore(alert.detection_score ?? alert.confidence)}</strong></div>
+            <div><span>Detection source</span><strong>{isSuricata ? "Suricata signature" : "ML model"}</strong></div>
+            <div><span>{isSuricata ? "Matched rule" : "Detector model score"}</span><strong>{isSuricata ? alert.sensor_evidence?.signature_id ?? "Not reported" : formatScore(alert.detection_score ?? alert.confidence)}</strong></div>
           </section>
 
           <section className="drawer-section decision-panel" aria-labelledby={`decision-title-${instanceId}`}>
@@ -305,9 +310,9 @@ export function AlertInvestigationView({
         </> : null}
 
         {view === "record" ? <>
-          <section className="drawer-section"><h3>Record provenance</h3><dl className="investigation-facts"><div><dt>Alert ID</dt><dd>{alert.id}</dd></div><div><dt>Event ID</dt><dd>{alert.event_id ?? "Not reported"}</dd></div><div><dt>Observed</dt><dd><time dateTime={alert.timestamp}>{new Date(alert.timestamp).toLocaleString()}</time></dd></div><div><dt>Capture ID</dt><dd>{alert.network_context?.capture_id ?? "Not reported"}</dd></div><div><dt>Interface</dt><dd>{alert.network_context?.interface ?? "Not reported"}</dd></div><div><dt>Extractor fingerprint</dt><dd>{alert.network_context?.extractor_fingerprint ?? "Not reported"}</dd></div></dl></section>
+          <section className="drawer-section"><h3>Record provenance</h3><dl className="investigation-facts"><div><dt>Alert ID</dt><dd>{alert.id}</dd></div><div><dt>Event ID</dt><dd>{alert.event_id ?? "Not reported"}</dd></div><div><dt>Observed</dt><dd><time dateTime={alert.timestamp}>{new Date(alert.timestamp).toLocaleString()}</time></dd></div><div><dt>Detection source</dt><dd>{isSuricata ? "Suricata network signature" : "RT-IoT2022 model pipeline"}</dd></div><div><dt>Interface</dt><dd>{alert.network_context?.interface ?? "Not reported"}</dd></div><div><dt>{isSuricata ? "Sensor" : "Extractor fingerprint"}</dt><dd>{isSuricata ? alert.sensor_evidence?.sensor_id ?? "Not reported" : alert.network_context?.extractor_fingerprint ?? "Not reported"}</dd></div></dl></section>
           <section className="drawer-section"><h3>Network context</h3><dl className="investigation-facts"><div><dt>Source address</dt><dd>{alert.network_context?.source_ip ?? alert.source_ip}</dd></div><div><dt>Source port</dt><dd>{alert.network_context?.source_port ?? "Not reported"}</dd></div><div><dt>Destination address</dt><dd>{alert.network_context?.destination_ip ?? alert.destination_ip}</dd></div><div><dt>Destination port</dt><dd>{alert.network_context?.destination_port ?? "Not reported"}</dd></div><div><dt>Protocol</dt><dd>{alert.network_context?.protocol ?? alert.protocol}</dd></div><div><dt>Identity quality</dt><dd>{alert.identity_quality?.replace("_", " ") ?? "Not reported"}</dd></div></dl></section>
-          <details className="drawer-disclosure" open><summary><span>Raw flow features</span><small>{Object.keys(alert.features ?? {}).length} observed values</small></summary><div className="drawer-disclosure-body"><dl className="feature-grid">{Object.entries(alert.features ?? {}).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{value}</dd></div>)}</dl>{!Object.keys(alert.features ?? {}).length ? <p>No raw feature values were returned with this alert record.</p> : null}</div></details>
+          {isSuricata ? <details className="drawer-disclosure" open><summary><span>Signature evidence</span><small>Evidence reported by the passive sensor</small></summary><div className="drawer-disclosure-body"><dl className="feature-grid"><div><dt>Signature</dt><dd>{alert.sensor_evidence?.signature ?? alert.attack_type}</dd></div><div><dt>Signature ID / revision</dt><dd>{alert.sensor_evidence?.signature_id ?? "—"} / {alert.sensor_evidence?.signature_revision ?? "—"}</dd></div><div><dt>Category</dt><dd>{alert.sensor_evidence?.category ?? "Not reported"}</dd></div><div><dt>Priority</dt><dd>{alert.sensor_evidence?.priority ?? "Not reported"}</dd></div><div><dt>Action</dt><dd>{alert.sensor_evidence?.action ?? "Not reported"}</dd></div><div><dt>Application protocol</dt><dd>{alert.sensor_evidence?.application_protocol ?? "Not reported"}</dd></div><div><dt>Flow ID</dt><dd>{alert.sensor_evidence?.flow_id ?? "Not reported"}</dd></div><div><dt>Engine</dt><dd>{alert.sensor_evidence?.engine ?? "Suricata"} {alert.sensor_evidence?.engine_version ?? ""}</dd></div></dl></div></details> : <details className="drawer-disclosure" open><summary><span>Raw flow features</span><small>{Object.keys(alert.features ?? {}).length} observed values</small></summary><div className="drawer-disclosure-body"><dl className="feature-grid">{Object.entries(alert.features ?? {}).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{value}</dd></div>)}</dl>{!Object.keys(alert.features ?? {}).length ? <p>No raw feature values were returned with this alert record.</p> : null}</div></details>}
         </> : null}
       </div>
     </div>
@@ -322,13 +327,14 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
   readOnly?: boolean;
 }) {
   const auth = useAuth();
+  const explanationEnabled = loadExplanation && alert.detection_source !== "suricata";
   const [explanations, setExplanations] = useState<AlertExplanationStage[]>([]);
-  const [explanationState, setExplanationState] = useState<ExplanationState>(loadExplanation ? "loading" : "empty");
+  const [explanationState, setExplanationState] = useState<ExplanationState>(explanationEnabled ? "loading" : "empty");
   const [explanationError, setExplanationError] = useState("");
   const [explanationRefresh, setExplanationRefresh] = useState(0);
 
   useEffect(() => {
-    if (!loadExplanation) {
+    if (!explanationEnabled) {
       setExplanationState("empty");
       setExplanations([]);
       return;
@@ -349,7 +355,7 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
         setExplanationState("error");
       });
     return () => { cancelled = true; };
-  }, [alert.id, explanationRefresh, loadExplanation]);
+  }, [alert.id, explanationEnabled, explanationRefresh]);
 
   const saveDisposition = async (status: AlertStatus, notes: string): Promise<AnalystFeedback | null> => {
     if (!auth.authenticated) {
@@ -369,7 +375,7 @@ export function AlertDrawer({ alert, onClose, onStatusChange, loadExplanation = 
     explanations={explanations}
     explanationState={explanationState}
     explanationError={explanationError}
-    onRetryExplanation={loadExplanation ? () => setExplanationRefresh((value) => value + 1) : undefined}
+    onRetryExplanation={explanationEnabled ? () => setExplanationRefresh((value) => value + 1) : undefined}
     readOnly={readOnly}
   />;
 }

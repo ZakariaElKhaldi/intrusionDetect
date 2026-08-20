@@ -11,8 +11,9 @@ import {
 import { useId, useMemo } from "react";
 import { PanelHeading } from "../../components/PanelHeading";
 import { SeverityLabel } from "../../components/SeverityLabel";
-import type { Alert, DashboardSummary } from "../../types";
+import type { Alert, DashboardSummary, SensorStatus } from "../../types";
 import { formatTime } from "../../utils";
+import { SensorStatusPanel } from "./SensorStatusPanel";
 
 const terminalStatuses = new Set(["resolved", "false_positive"]);
 const rangeLabels: Record<DashboardSummary["range"], string> = {
@@ -103,9 +104,13 @@ export interface OverviewProps {
   onOpenAlert: (alert: Alert) => void;
   onTimeBucket: (start: string, bucketMinutes?: number) => void;
   onViewAlertQueue?: () => void;
+  sensorStatus?: SensorStatus | null;
+  sensorLoading?: boolean;
+  sensorError?: string;
+  onRetrySensor?: () => void;
 }
 
-export function Overview({ alerts, fixtureMode, socketState, lastUpdate, livePredictionCount, alertsLoading = false, alertsError = "", onRetry, summary = null, summaryLoading = false, summaryError = "", summaryRange = "24h", onSummaryRange, onRetrySummary, onOpenAlert, onTimeBucket, onViewAlertQueue }: OverviewProps) {
+export function Overview({ alerts, fixtureMode, socketState, lastUpdate, livePredictionCount, alertsLoading = false, alertsError = "", onRetry, summary = null, summaryLoading = false, summaryError = "", summaryRange = "24h", onSummaryRange, onRetrySummary, onOpenAlert, onTimeBucket, onViewAlertQueue, sensorStatus = null, sensorLoading = false, sensorError = "", onRetrySensor }: OverviewProps) {
   const openAlerts = alerts.filter((alert) => !terminalStatuses.has(alert.status));
   const critical = openAlerts.filter((alert) => alert.severity === "critical");
   const endpoints = new Set(alerts.flatMap((alert) => [alert.source_ip, alert.destination_ip]).filter(Boolean));
@@ -118,6 +123,7 @@ export function Overview({ alerts, fixtureMode, socketState, lastUpdate, livePre
   const topFamily = Object.entries(summary?.family_counts ?? fixtureFamilies).sort((left, right) => right[1] - left[1])[0];
 
   return <div className="overview-workspace">
+    <SensorStatusPanel status={sensorStatus} loading={sensorLoading} error={sensorError} fixtureMode={fixtureMode} onRetry={() => onRetrySensor?.()}/>
     <EvidenceScope summary={summary} requestedRange={summaryRange} loading={summaryLoading} error={summaryError} fixtureMode={fixtureMode} onRange={onSummaryRange} onRetry={onRetrySummary}/>
 
     {summary ? <section className="briefing-metrics" aria-label="Persisted workload summary"><OverviewMetric label="Predictions" value={summary.predictions.total.toLocaleString()} detail={`${summary.predictions.attack.toLocaleString()} attack · ${summary.predictions.normal.toLocaleString()} normal`} icon={Radio}/><OverviewMetric label="Alert records" value={summary.alerts.total.toLocaleString()} detail={`${summary.alerts.resolved.toLocaleString()} resolved · ${summary.alerts.false_positive.toLocaleString()} false positive`} icon={ShieldCheck}/><OverviewMetric label="Unresolved work" value={summary.alerts.unresolved.toLocaleString()} detail={`${summary.alerts.open.toLocaleString()} open under the backend terminal-state contract`} icon={CircleAlert} attention={summary.alerts.unresolved > 0}/><OverviewMetric label="Open critical" value={summary.alerts.critical_open.toLocaleString()} detail="Critical alerts not resolved or false positive" icon={CircleAlert} attention={summary.alerts.critical_open > 0}/><OverviewMetric label="Median detector score" value={summary.median_detection_score == null ? "Not reported" : `${(summary.median_detection_score * 100).toFixed(1)}%`} detail="Persisted model output; probability meaning follows each artifact" icon={Crosshair}/></section> : fixtureMode ? <section className="briefing-metrics briefing-metrics--fixture" aria-label="Fixture workload summary"><OverviewMetric label="Fixture alerts" value={alerts.length.toLocaleString()} detail="Generated records, not persisted totals" icon={ShieldCheck}/><OverviewMetric label="Fixture unresolved" value={openAlerts.length.toLocaleString()} detail="Illustrative open workload" icon={CircleAlert}/><OverviewMetric label="Fixture critical" value={critical.length.toLocaleString()} detail="Illustrative high-attention records" icon={CircleAlert}/><OverviewMetric label="Median fixture score" value={`${(fixtureMedian * 100).toFixed(1)}%`} detail="Generated model scores, not measured performance" icon={Crosshair}/></section> : null}

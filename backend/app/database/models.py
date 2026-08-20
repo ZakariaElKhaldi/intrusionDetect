@@ -71,17 +71,57 @@ class Alert(Base):
     alert_id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
-    event_id: Mapped[str] = mapped_column(ForeignKey("observations.event_id"), index=True)
-    prediction_id: Mapped[str] = mapped_column(
-        ForeignKey("predictions.prediction_id"), unique=True
+    event_id: Mapped[str | None] = mapped_column(
+        ForeignKey("observations.event_id"), nullable=True, index=True
     )
+    prediction_id: Mapped[str | None] = mapped_column(
+        ForeignKey("predictions.prediction_id"), nullable=True, unique=True
+    )
+    detection_source: Mapped[str] = mapped_column(
+        String(32), default="ml_model", index=True
+    )
+    external_event_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, unique=True, index=True
+    )
+    occurred_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    sensor_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    signature_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    signature: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    action: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    network_context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    sensor_evidence: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     severity: Mapped[str] = mapped_column(String(16), index=True)
     reasons: Mapped[list] = mapped_column(JSON, default=list)
     top_features: Mapped[list] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(24), default="new", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    prediction: Mapped[Prediction] = relationship(back_populates="alert")
+    prediction: Mapped[Prediction | None] = relationship(back_populates="alert")
     feedback: Mapped[list[AnalystFeedback]] = relationship(back_populates="alert")
+
+
+class SensorState(Base):
+    __tablename__ = "sensor_states"
+
+    sensor_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    interface: Mapped[str] = mapped_column(String(128))
+    engine_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rule_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    packets: Mapped[int] = mapped_column(Integer, default=0)
+    capture_drops: Mapped[int] = mapped_column(Integer, default=0)
+    events_seen: Mapped[int] = mapped_column(Integer, default=0)
+    alerts_accepted: Mapped[int] = mapped_column(Integer, default=0)
+    last_event_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class ModelVersion(Base):

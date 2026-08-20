@@ -30,6 +30,7 @@ export interface Alert {
   binary_prediction?: "normal" | "attack";
   attack_class?: string | null;
   confidence: number;
+  detection_source?: "ml_model" | "suricata";
   severity: Severity;
   source_ip: string;
   destination_ip: string;
@@ -59,6 +60,45 @@ export interface Alert {
     extractor_fingerprint?: string | null;
   } | null;
   feedback?: AnalystFeedback[];
+  sensor_evidence?: {
+    sensor_id?: string;
+    engine?: string;
+    engine_version?: string | null;
+    signature_id?: number;
+    signature_revision?: number | null;
+    signature?: string;
+    category?: string;
+    priority?: number;
+    action?: string;
+    application_protocol?: string | null;
+    flow_id?: string | null;
+    tx_id?: number | null;
+    pcap_count?: number | null;
+  } | null;
+}
+
+export interface SensorStatus {
+  status: "online" | "offline";
+  sensors: Array<{
+    sensor_id: string;
+    status: "online" | "offline";
+    interface: string;
+    engine_version: string | null;
+    rule_count: number | null;
+    packets: number;
+    capture_drops: number;
+    events_seen: number;
+    alerts_accepted: number;
+    last_event_at: string | null;
+    last_heartbeat_at: string;
+  }>;
+  aggregate: {
+    packets: number;
+    capture_drops: number;
+    events_seen: number;
+    alerts_accepted: number;
+  };
+  checked_at: string;
 }
 
 export interface HealthInfo {

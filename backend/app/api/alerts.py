@@ -22,8 +22,35 @@ router = APIRouter(tags=["alerts"])
 
 
 def _alert_response(
-    alert: Alert, prediction: Prediction, observation: Observation
+    alert: Alert, prediction: Prediction | None, observation: Observation | None
 ) -> AlertResponse:
+    if alert.detection_source == "suricata":
+        return AlertResponse(
+            alert_id=alert.alert_id,
+            event_id=None,
+            detection_source="suricata",
+            severity=alert.severity,
+            reasons=alert.reasons,
+            top_features=[],
+            status=alert.status,
+            created_at=alert.occurred_at or alert.created_at,
+            model_version=None,
+            detector_model_version=None,
+            classifier_model_version=None,
+            binary_prediction=None,
+            attack_class=alert.signature,
+            confidence=None,
+            detection_score=None,
+            attack_class_score=None,
+            detector_latency_ms=None,
+            classifier_latency_ms=None,
+            total_latency_ms=None,
+            raw_features={},
+            network_context=alert.network_context,
+            sensor_evidence=alert.sensor_evidence,
+        )
+    if prediction is None or observation is None:
+        raise RuntimeError("model alert is missing its prediction or observation")
     return AlertResponse(
         alert_id=alert.alert_id,
         event_id=alert.event_id,
@@ -45,6 +72,8 @@ def _alert_response(
         total_latency_ms=prediction.end_to_end_latency_ms,
         raw_features=observation.raw_features,
         network_context=observation.network_context,
+        detection_source="ml_model",
+        sensor_evidence=None,
     )
 
 
@@ -61,14 +90,15 @@ def list_alerts(
     with request.app.state.SessionLocal() as session:
         statement = (
             select(Alert, Prediction, Observation)
-            .join(Prediction, Prediction.prediction_id == Alert.prediction_id)
-            .join(Observation, Observation.event_id == Alert.event_id)
+            .outerjoin(Prediction, Prediction.prediction_id == Alert.prediction_id)
+            .outerjoin(Observation, Observation.event_id == Alert.event_id)
         )
         if severity:
             statement = statement.where(Alert.severity == severity)
         if alert_status:
             statement = statement.where(Alert.status == alert_status)
-        statement = statement.order_by(Alert.created_at.desc()).offset(offset).limit(limit)
+        observed_at = func.coalesce(Alert.occurred_at, Alert.created_at)
+        statement = statement.order_by(observed_at.desc()).offset(offset).limit(limit)
         return [
             _alert_response(alert, prediction, observation)
             for alert, prediction, observation in session.execute(statement).all()
@@ -94,19 +124,22 @@ def page_alerts(
     with request.app.state.SessionLocal() as session:
         statement = (
             select(Alert, Prediction, Observation)
-            .join(Prediction, Prediction.prediction_id == Alert.prediction_id)
-            .join(Observation, Observation.event_id == Alert.event_id)
+            .outerjoin(Prediction, Prediction.prediction_id == Alert.prediction_id)
+            .outerjoin(Observation, Observation.event_id == Alert.event_id)
         )
         if severity:
             statement = statement.where(Alert.severity == severity)
         if alert_status:
             statement = statement.where(Alert.status == alert_status)
         if family:
-            statement = statement.where(Prediction.attack_class == family)
+            statement = statement.where(
+                or_(Prediction.attack_class == family, Alert.signature == family)
+            )
+        observed_at = func.coalesce(Alert.occurred_at, Alert.created_at)
         if from_time:
-            statement = statement.where(Alert.created_at >= from_time)
+            statement = statement.where(observed_at >= from_time)
         if to_time:
-            statement = statement.where(Alert.created_at < to_time)
+            statement = statement.where(observed_at < to_time)
         if query and query.strip():
             needle = query.casefold().strip()
             escaped = (
@@ -117,6 +150,8 @@ def page_alerts(
                 or_(
                     Alert.alert_id.ilike(pattern, escape="\\"),
                     Prediction.attack_class.ilike(pattern, escape="\\"),
+                    Alert.signature.ilike(pattern, escape="\\"),
+                    Alert.sensor_id.ilike(pattern, escape="\\"),
                     cast(Observation.network_context, String).ilike(
                         pattern, escape="\\"
                     ),
@@ -131,7 +166,7 @@ def page_alerts(
         )
         page_rows = list(
             session.execute(
-                statement.order_by(Alert.created_at.desc()).offset(offset).limit(limit)
+                statement.order_by(observed_at.desc()).offset(offset).limit(limit)
             ).all()
         )
         items = [
@@ -172,29 +207,8 @@ def get_alert(alert_id: UUID, request: Request) -> AlertDetail:
                 .order_by(AnalystFeedback.created_at)
             ).all()
         )
-        return AlertDetail(
-            alert_id=alert.alert_id,
-            event_id=alert.event_id,
-            severity=alert.severity,
-            reasons=alert.reasons,
-            top_features=alert.top_features,
-            status=alert.status,
-            created_at=alert.created_at,
-            model_version=prediction.model_version,
-            detector_model_version=prediction.detector_model_version,
-            classifier_model_version=prediction.classifier_model_version,
-            binary_prediction=prediction.binary_prediction,
-            attack_class=prediction.attack_class,
-            confidence=prediction.confidence,
-            detection_score=prediction.detection_score,
-            attack_class_score=prediction.attack_class_score,
-            detector_latency_ms=prediction.detector_latency_ms,
-            classifier_latency_ms=prediction.classifier_latency_ms,
-            total_latency_ms=prediction.end_to_end_latency_ms,
-            raw_features=observation.raw_features,
-            network_context=observation.network_context,
-            feedback=feedback,
-        )
+        response = _alert_response(alert, prediction, observation)
+        return AlertDetail(**response.model_dump(), feedback=feedback)
 
 
 @router.get(
@@ -205,6 +219,11 @@ def get_alert_explanation(alert_id: UUID, request: Request) -> dict:
         alert = session.get(Alert, str(alert_id))
         if not alert:
             raise HTTPException(status_code=404, detail="alert not found")
+        if alert.detection_source != "ml_model":
+            raise HTTPException(
+                status_code=409,
+                detail="model explanation is not applicable to a Suricata signature alert",
+            )
         prediction = session.get(Prediction, alert.prediction_id)
         observation = session.get(Observation, alert.event_id)
         if not prediction.attack_class:
