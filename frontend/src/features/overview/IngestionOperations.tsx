@@ -125,7 +125,7 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
 
   return (
     <section className="panel operations-panel" aria-label="Ingestion operations">
-      <PanelHeading eyebrow="Operational evidence" title="Ingestion operations" description="Investigate durable jobs and committed publication. Authenticated operators can safely redrive eligible dead letters after review."/>
+      <PanelHeading title="Ingestion operations"/>
       {fixtureMode ? <div className="data-state" role="note">Fixture preview contains no operational queue evidence.</div> : !auth.authenticated ? <div className="data-state" role="note"><span>Sign in to inspect protected job and outbox evidence.</span><button type="button" className="secondary-button" onClick={auth.openLogin}>Operator sign in</button></div> : (
         <>
           <TabList

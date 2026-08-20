@@ -64,7 +64,7 @@ describe("Overview", () => {
   it("keeps fixture records outside the persisted timeline contract", () => {
     renderOverview({ fixtureMode: true, summary: null, socketState: "offline", livePredictionCount: 0 });
 
-    expect(screen.getByText(/Generated alert records demonstrate layout/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Situation briefing" })).toBeInTheDocument();
     expect(screen.getByRole("note")).toHaveTextContent("not projected onto a fabricated persisted timeline");
     expect(screen.queryByText("Exact summary provenance")).not.toBeInTheDocument();
   });

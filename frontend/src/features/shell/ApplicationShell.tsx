@@ -81,7 +81,7 @@ function OperatorIdentity({ fixtureMode, session, authRequired }: Pick<Applicati
 }
 
 export function ApplicationShell({ page, fixtureMode, health, healthChecked, socketState, queuedAlertCount, session, authRequired, onNavigate, onSignIn, onSignOut, children }: ApplicationShellProps) {
-  const [title, subtitle] = pageTitles[page];
+  const [title] = pageTitles[page];
   const activate = (event: MouseEvent<HTMLAnchorElement>, nextPage: Page) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -122,7 +122,7 @@ export function ApplicationShell({ page, fixtureMode, health, healthChecked, soc
 
     <div className="workspace">
       <header className="topbar">
-        <div className="page-title"><h1>{title}</h1><p>{subtitle}</p></div>
+        <div className="page-title"><h1>{title}</h1></div>
         <div className="topbar-actions">
           <div className="shell-status-rail" aria-live="polite">
             <ConnectionStatus fixtureMode={fixtureMode} health={health} healthChecked={healthChecked} socketState={socketState}/>

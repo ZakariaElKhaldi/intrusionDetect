@@ -198,7 +198,7 @@ export function ReplayPanel({
 
         <section className={`replay-run replay-run--${lifecycle ?? "unavailable"}`} aria-labelledby="replay-run-title">
           <div className="replay-run-heading">
-            <div><span className="eyebrow">Server-owned state</span><h3 id="replay-run-title">Current run</h3></div>
+            <h3 id="replay-run-title">Current run</h3>
             <span className={`replay-lifecycle replay-lifecycle--${lifecycle ?? "unavailable"}`} role="status">{replay && lifecycle ? lifecycleCopy[lifecycle].label : "Not loaded"}</span>
           </div>
           {replay && lifecycle ? <>

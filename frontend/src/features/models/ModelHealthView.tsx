@@ -109,7 +109,7 @@ export function ModelHealthView({
     : Number(Boolean(right.drifted) || ["warning", "critical"].includes(String(right.status))) - Number(Boolean(left.drifted) || ["warning", "critical"].includes(String(left.status))) || Number(right.score ?? right.js_distance ?? 0) - Number(left.score ?? left.js_distance ?? 0)), [featureSort, snapshot?.features]);
 
   if (fixtureMode) {
-    return <section className="panel model-health-panel" aria-label="Model health"><PanelHeading eyebrow="Serving evidence" title="Model health" description="Monitoring evidence is computed from connected observations, not fixtures." /><div className="data-state" role="note">Fixture preview contains no model-health cohort.</div></section>;
+    return <section className="panel model-health-panel" aria-label="Model health"><PanelHeading title="Model health"/><div className="data-state" role="note">Fixture preview contains no model-health cohort.</div></section>;
   }
 
   const featureAlarms = snapshot ? numeric(snapshot.aggregate.feature_alarm_count) ?? features.filter((feature) => Boolean(feature.drifted) || ["warning", "critical"].includes(String(feature.status))).length : 0;
@@ -125,7 +125,7 @@ export function ModelHealthView({
 
   return (
     <section className="panel model-health-panel" aria-label="Model health">
-      <PanelHeading eyebrow="Production monitoring" title="Model health" description="Cohort-isolated evidence for human review. This workspace never retrains, promotes, rolls back, or changes serving thresholds." />
+      <PanelHeading title="Model health"/>
       <div className="model-health-toolbar">
         <TabList baseId="model-health-window" label="Model-health window" options={[{ value: "fast", label: "Fast · 24 hours" }, { value: "slow", label: "Slow · 7 days" }]} panelId="model-health-window-panel" selected={windowName} onSelect={onWindowName} />
         <label className="cohort-selector">Cohort<select value={cohortIndex} onChange={(event) => onCohortIndex(event.target.value)}><option value="">Current deployment cohort</option>{cohorts.map((cohort, index) => <option key={cohortLabel(cohort)} value={index}>{cohortLabel(cohort)}</option>)}</select></label>

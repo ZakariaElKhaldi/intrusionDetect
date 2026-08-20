@@ -180,13 +180,7 @@ export function ObservationResults({
   return (
     <section className="panel lab-results" aria-label="Observation results">
       <PanelHeading
-        eyebrow={completedMode === "durable" ? "Ingestion receipt" : completedMode === "replay" ? "Replay receipt" : "Prediction output"}
         title={completedMode === "durable" ? "Queued observations" : completedMode === "replay" ? "Live replay started" : "Results"}
-        description={completedMode === "durable"
-          ? "The durable worker owns these observations now; progress and retries are visible in ingestion operations."
-          : completedMode === "replay"
-            ? "The uploaded observations are moving through the same detector and event stream as recorded scenarios."
-            : "Review verdicts against uploaded labels, then disclose exact serving evidence only where it is needed."}
         action={results.length ? <span className="panel-heading-meta">{results.length} evaluated</span> : undefined}
       />
       {ingestionReceipt ? (

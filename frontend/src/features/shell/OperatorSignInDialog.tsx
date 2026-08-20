@@ -38,10 +38,8 @@ export function OperatorSignInDialog({ error = "", submitting = false, retryAvai
   };
 
   return <div className="dialog-backdrop" role="presentation">
-    <section ref={dialog} className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description" onKeyDown={containFocus}>
-      <span className="eyebrow">Authorized action</span>
+    <section ref={dialog} className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" onKeyDown={containFocus}>
       <h2 id="auth-title">Operator sign in</h2>
-      <p id="auth-description">Sign in to access operational evidence, live telemetry, and controls. Service availability remains visible while signed out.</p>
       <form onSubmit={submit}>
         <label>Username<input name="username" autoComplete="username" required autoFocus/></label>
         <label>Password<input name="password" type="password" autoComplete="current-password" required/></label>

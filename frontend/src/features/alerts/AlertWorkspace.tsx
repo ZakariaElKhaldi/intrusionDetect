@@ -105,7 +105,7 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
 
   return <section className="panel alerts-panel" aria-labelledby="alerts-heading" aria-busy={pageLoading || loading}>
     <header className="queue-header">
-      <div><span className="eyebrow">Analyst work queue</span><h2 id="alerts-heading">Security alerts</h2><p>Inspect packet-signature evidence and model detections without mixing their provenance.</p></div>
+      <h2 id="alerts-heading">Security alerts</h2>
       <div className="queue-order"><b>{resultTotal.toLocaleString()}</b><span>matching {resultTotal === 1 ? "alert" : "alerts"} · newest first</span></div>
     </header>
     {!fixtureMode && !auth.authenticated ? <div className="data-state" role="note"><span>Sign in to inspect the protected alert queue.</span><button type="button" className="secondary-button" onClick={auth.openLogin}>Operator sign in</button></div> : null}

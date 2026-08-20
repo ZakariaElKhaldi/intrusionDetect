@@ -46,7 +46,7 @@ const recovered: IngestionJobDetail = {
 };
 
 function Frame({ children }: { children: ReactNode }) {
-  return <section className="panel operations-panel"><PanelHeading eyebrow="Operational evidence" title="Ingestion operations" description="Investigate durable jobs and committed publication. Authenticated operators can safely redrive eligible dead letters after review."/>{children}</section>;
+  return <section className="panel operations-panel"><PanelHeading title="Ingestion operations"/>{children}</section>;
 }
 
 export const FixtureBoundary: Story = {};

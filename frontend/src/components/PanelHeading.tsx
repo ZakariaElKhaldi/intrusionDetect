@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
 
 export function PanelHeading({
-  eyebrow,
   title,
-  description,
   action,
 }: {
+  /** Accepted temporarily for call-site compatibility; compact headers do not render decorative copy. */
   eyebrow?: string;
   title: string;
   description?: string;
@@ -13,13 +12,8 @@ export function PanelHeading({
 }) {
   return (
     <div className="panel-heading">
-      <div>
-        {eyebrow && <span className="eyebrow">{eyebrow}</span>}
-        <h2>{title}</h2>
-        {description && <p>{description}</p>}
-      </div>
+      <h2>{title}</h2>
       {action}
     </div>
   );
 }
-

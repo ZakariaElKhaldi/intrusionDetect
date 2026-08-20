@@ -263,7 +263,7 @@ export function AlertInvestigationView({
           </section>
 
           <section className="drawer-section decision-panel" aria-labelledby={`decision-title-${instanceId}`}>
-            <div className="decision-heading"><div><span className="eyebrow">Human decision</span><h3 id={`decision-title-${instanceId}`}>Record disposition</h3></div><span className={`status-text status-text--${alert.status}`}>Current: {displayStatus(alert.status)}</span></div>
+            <div className="decision-heading"><h3 id={`decision-title-${instanceId}`}>Record disposition</h3><span className={`status-text status-text--${alert.status}`}>Current: {displayStatus(alert.status)}</span></div>
             <p>Choose the next state and preserve the reasoning that another analyst would need to audit the decision.</p>
             {readOnly ? <p className="readonly-note" role="note">Fixture data is read-only. Connect the API to persist analyst feedback.</p> : <>
               <div className="decision-form">
@@ -291,7 +291,7 @@ export function AlertInvestigationView({
         </> : null}
 
         {view === "model" ? <>
-          <section className="drawer-section explanation-boundary" role="note"><span className="eyebrow">Interpretation boundary</span><h3>Decision support, not causal proof</h3><p>Model scores and signed SHAP impacts describe this model's output. They do not establish attacker intent, causality, or deployment-wide accuracy.</p></section>
+          <section className="drawer-section explanation-boundary" role="note"><h3>Decision support, not causal proof</h3><p>Model scores and signed SHAP impacts describe this model's output. They do not establish attacker intent, causality, or deployment-wide accuracy.</p></section>
           <section className="drawer-section"><h3>Cascade decision</h3><div className="cascade-trace"><div><span>1 · Detector</span><strong>{alert.binary_prediction ?? "attack"}</strong><small>{formatScore(alert.detection_score ?? alert.confidence)} model score</small></div><ArrowRight aria-hidden="true" /><div><span>2 · Classifier</span><strong>{alert.attack_class ?? alert.attack_type}</strong><small>{formatScore(alert.attack_class_score)} model score</small></div></div></section>
           <section className="drawer-section"><h3>Serving evidence</h3><dl className="investigation-facts"><div><dt>Detector artifact</dt><dd>{alert.detector_model_version ?? alert.model_version ?? "Not reported"}</dd></div><div><dt>Classifier artifact</dt><dd>{alert.classifier_model_version ?? "Not used or reported"}</dd></div><div><dt>Detector latency</dt><dd>{formatLatency(alert.detector_latency_ms)}</dd></div><div><dt>Classifier latency</dt><dd>{formatLatency(alert.classifier_latency_ms)}</dd></div><div><dt>Total inference latency</dt><dd>{formatLatency(alert.total_latency_ms)}</dd></div><div><dt>Score meaning</dt><dd>Model output; calibration not declared on this alert record</dd></div></dl></section>
           <section className="drawer-section" aria-labelledby={`explanation-title-${instanceId}`}><h3 id={`explanation-title-${instanceId}`}>On-demand explanation</h3>

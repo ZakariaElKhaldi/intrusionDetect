@@ -94,7 +94,7 @@ export function ObservationLabView({
 
   return <div className="observation-workspace">
     <header className="panel observation-intro">
-      <div><span className="eyebrow">Controlled observation workflow</span><h2>Validate before traffic reaches the detector</h2><p>Inspect an RT-IoT2022 feature file, choose its operational path, and review the exact receipt or model result.</p></div>
+      <h2>Observation lab</h2>
       <dl aria-label="Observation workflow contract">
         <div><dt>Schema</dt><dd>rt-iot2022-v1 <span className="observation-contract-note">83 ordered model features</span></dd></div>
         <div><dt>File boundary</dt><dd>CSV · 10 MB <span className="observation-contract-note">One header and up to 100,000 rows</span></dd></div>
@@ -104,7 +104,7 @@ export function ObservationLabView({
 
     <div className="observation-preflight">
       <section className="panel observation-source" aria-labelledby="observation-source-title">
-        <div className="observation-section-heading"><span className="step-number">1</span><div><span className="eyebrow">Source evidence</span><h3 id="observation-source-title">Choose observations</h3><p>Select one CSV or use a checksum-bound example from the documented dataset extract.</p></div></div>
+        <div className="observation-section-heading"><span className="step-number">1</span><h3 id="observation-source-title">Choose observations</h3></div>
 
         <div className="observation-file-control">
           <label htmlFor={inputId}>RT-IoT2022 CSV file</label>
@@ -133,7 +133,7 @@ export function ObservationLabView({
       </section>
 
       <section className="panel observation-review" aria-labelledby="observation-review-title">
-        <div className="observation-section-heading"><span className="step-number">2</span><div><span className="eyebrow">Preflight</span><h3 id="observation-review-title">Review contract and values</h3><p>Submission remains blocked until headers, order, categorical values, and numeric values match the backend contract.</p></div></div>
+        <div className="observation-section-heading"><span className="step-number">2</span><h3 id="observation-review-title">Review contract and values</h3></div>
 
         {!rows.length ? <div className="observation-awaiting"><FileSearch aria-hidden="true" /><strong>No file selected</strong><span>Choose a CSV to inspect its schema and sample values locally.</span></div> : <>
           <div className="validation-summary" aria-live="polite">
@@ -152,7 +152,7 @@ export function ObservationLabView({
     </div>
 
     <section className="panel observation-dispatch" aria-labelledby="observation-dispatch-title">
-      <div className="observation-section-heading"><span className="step-number">3</span><div><span className="eyebrow">Operational effect</span><h3 id="observation-dispatch-title">Choose processing path</h3><p>The selected path changes persistence, timing, recovery, and where follow-up evidence appears.</p></div></div>
+      <div className="observation-section-heading"><span className="step-number">3</span><h3 id="observation-dispatch-title">Choose processing path</h3></div>
       <fieldset className="processing-mode-grid" disabled={loading}>
         <legend className="sr-only">Processing path</legend>
         {(Object.keys(modeCopy) as ProcessingMode[]).map((mode) => <label key={mode} className={processingMode === mode ? "processing-mode-card processing-mode-card--selected" : "processing-mode-card"}>

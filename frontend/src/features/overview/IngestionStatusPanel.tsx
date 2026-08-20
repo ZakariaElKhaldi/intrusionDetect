@@ -31,20 +31,20 @@ export interface IngestionStatusPanelProps {
 
 export function IngestionStatusPanel({ status, loading, error, fixtureMode, onRetry }: IngestionStatusPanelProps) {
   if (fixtureMode) {
-    return <section className="panel ingestion-panel" aria-label="Ingestion pipeline"><PanelHeading eyebrow="Live input" title="Ingestion pipeline" description="Queue and worker evidence is available only from a connected API."/><div className="data-state" role="note">Fixture preview is read-only. No ingestion request was made.</div></section>;
+    return <section className="panel ingestion-panel" aria-label="Ingestion pipeline"><PanelHeading title="Ingestion pipeline"/><div className="data-state" role="note">Fixture preview is read-only. No ingestion request was made.</div></section>;
   }
   if (loading && !status) {
-    return <section className="panel ingestion-panel" aria-label="Ingestion pipeline"><PanelHeading eyebrow="Live input" title="Ingestion pipeline" description="Durable queue and worker activity."/><div className="data-state" role="status">Loading ingestion status…</div></section>;
+    return <section className="panel ingestion-panel" aria-label="Ingestion pipeline"><PanelHeading title="Ingestion pipeline"/><div className="data-state" role="status">Loading ingestion status…</div></section>;
   }
   if (error && !status) {
-    return <section className="panel ingestion-panel ingestion-panel--offline" aria-label="Ingestion pipeline"><PanelHeading eyebrow="Live input" title="Ingestion pipeline" description="Durable queue and worker activity."/><div className="data-state data-state--error" role="alert"><span>Ingestion status is offline. {error}</span><button className="secondary-button" type="button" onClick={onRetry}>Retry ingestion status</button></div></section>;
+    return <section className="panel ingestion-panel ingestion-panel--offline" aria-label="Ingestion pipeline"><PanelHeading title="Ingestion pipeline"/><div className="data-state data-state--error" role="alert"><span>Ingestion status is offline. {error}</span><button className="secondary-button" type="button" onClick={onRetry}>Retry ingestion status</button></div></section>;
   }
   if (!status) return null;
   const state = ingestionState(status);
   const heartbeat = status.worker.last_heartbeat_at ? new Date(status.worker.last_heartbeat_at).toLocaleString() : "Not reported";
   return (
     <section className={`panel ingestion-panel ingestion-panel--${state}`} aria-label="Ingestion pipeline" data-ingestion-state={state}>
-      <PanelHeading eyebrow="Live input" title="Ingestion pipeline" description="Durable intake, worker progress, and delivery pressure." action={<span className="ingestion-state"><i aria-hidden="true"/>{stateLabel(state)}</span>}/>
+      <PanelHeading title="Ingestion pipeline" action={<span className="ingestion-state"><i aria-hidden="true"/>{stateLabel(state)}</span>}/>
       {error ? <div className="ingestion-stale" role="alert">The latest refresh failed; showing the last successful snapshot. <button className="text-button" type="button" onClick={onRetry}>Retry</button></div> : null}
       <dl className="ingestion-metrics">
         <div><dt>Queued</dt><dd><span>{status.queue_depth.toLocaleString()}</span><small>events waiting</small></dd></div>

@@ -18,9 +18,7 @@ export function ServingModelSummary({ models, loading, error }: { models: ModelI
   return (
     <section className="panel serving-models" aria-labelledby="serving-models-title">
       <PanelHeading
-        eyebrow="Live inference path"
         title="Serving bundle"
-        description="Versions reported by the runtime model registry. Offline champions and deployment health are shown separately."
         action={<span className={`ops-state ${available === roles.length ? "ops-state--healthy" : "ops-state--warning"}`}>{available}/{roles.length} roles reported</span>}
       />
       {loading ? <div className="data-state" role="status">Loading serving model descriptors…</div> : null}

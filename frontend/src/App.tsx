@@ -590,7 +590,7 @@ function App() {
                 onRetryIngestion={() => void loadIngestionStatus()}
               />
               <section className="research-replay" aria-labelledby="research-replay-title">
-                <div className="research-replay-heading"><span className="eyebrow">Research lab</span><h2 id="research-replay-title">Dataset experiment</h2><p>Replay is controlled model evidence, separate from the passive sensor and live packet alerts above.</p></div>
+                <div className="research-replay-heading"><h2 id="research-replay-title">Dataset experiment</h2></div>
                 <ReplayPanel
                   replay={replay}
                   scenario={replayScenario}

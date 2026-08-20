@@ -58,7 +58,7 @@ export function ModelEvaluationView({ stage, report, loading = false, error = ""
   const modelBytes = active?.operational_metrics?.serialized_model_size_bytes;
 
   return <div className="model-evaluation-view">
-    <section className="evaluation-boundary" aria-labelledby="evaluation-boundary-title"><div><span className="eyebrow">Decision boundary</span><h2 id="evaluation-boundary-title">Offline evidence, not deployment validation</h2></div><p>Use this workspace to inspect candidate selection and held-out behavior under the recorded protocol. Production effectiveness still requires representative field evaluation.</p></section>
+    <section className="evaluation-boundary" aria-labelledby="evaluation-boundary-title"><h2 id="evaluation-boundary-title">Offline evaluation</h2><span className="ops-state ops-state--warning">Not deployment validation</span></section>
     {loading ? <div className="panel data-state" role="status">Loading {taskName.toLowerCase()} evidence…</div> : null}
     {fixtureMode && !report && !loading ? <div className="panel data-state" role="note">Connected evaluation evidence is not available in fixture mode. Serving descriptors are not reused as benchmark results.</div> : null}
     {error && !report ? <div className="panel data-state data-state--error" role="alert"><span>{error}</span><button className="secondary-button" type="button" onClick={onRetry}>Retry evaluation</button></div> : null}

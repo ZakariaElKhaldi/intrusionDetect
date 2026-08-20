@@ -67,7 +67,7 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
 
   return <div className="models-page">
     <section className="panel model-workspace-intro" aria-labelledby="model-workspace-title">
-      <div><span className="eyebrow">Evidence boundaries</span><h2 id="model-workspace-title">Know what is live before reading what was tested</h2><p>Serving versions and observed production health answer operational questions. Offline evaluation compares candidates under a documented test protocol.</p></div>
+      <h2 id="model-workspace-title">Model evidence</h2>
       <div className="model-evidence-map" aria-label="Model evidence map"><span><b>01</b> Serving bundle</span><span><b>02</b> Production health</span><span><b>03</b> Offline evaluation</span></div>
     </section>
     {!fixtureMode && !auth.authenticated ? <section className="panel data-state" role="note"><span>Sign in to inspect protected serving, health, and evaluation evidence.</span><button type="button" className="secondary-button" onClick={auth.openLogin}>Operator sign in</button></section> : null}

@@ -362,7 +362,7 @@ export function TopologyWorkspace({
 
   return <section className="topology-workspace" aria-labelledby="topology-workspace-heading">
     <header className="topology-overview">
-      <div><span className="eyebrow">Relationship evidence</span><h2 id="topology-workspace-heading">Communication paths</h2><p>Explore where alerts were observed, which direction traffic moved, and where unresolved high-risk activity remains.</p></div>
+      <h2 id="topology-workspace-heading">Communication paths</h2>
       <p className="topology-narrative" aria-live="polite">
         {initialLoading
           ? "Loading the current relationship evidence source."
@@ -461,7 +461,7 @@ export function TopologyWorkspace({
       </div>
 
       <aside className="topology-side" aria-label="Structured topology explorer">
-        <div className="topology-side-header"><div><span className="eyebrow">Structured evidence</span><h2>Explore exact relationships</h2><p>Ordered by open severity, unresolved count, then alert volume.</p></div></div>
+        <div className="topology-side-header"><h2>Relationships</h2></div>
         <TabList
           baseId="topology-inventory"
           label="Topology inventory"
