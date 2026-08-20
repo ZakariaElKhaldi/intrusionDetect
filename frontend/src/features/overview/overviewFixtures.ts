@@ -19,7 +19,7 @@ export const connectedDashboardSummary: DashboardSummary = {
   predictions: { total: 128, attack: 42, normal: 86 },
   alerts: { total: 42, open: 26, unresolved: 26, critical_open: 5, resolved: 13, false_positive: 3 },
   median_detection_score: 0.873,
-  status_counts: { new: 12, in_review: 10, escalated: 4, resolved: 13, false_positive: 3 },
+  status_counts: { new: 12, investigating: 10, confirmed: 4, resolved: 13, false_positive: 3 },
   severity_counts: { critical: 8, high: 14, medium: 13, low: 7 },
   family_counts: { DOS_SYN_Hping: 13, NMAP_TCP_scan: 9, ARP_poisioning: 8, DDOS_Slowloris: 7, Metasploit_Brute_Force_SSH: 5 },
   protocol_counts: { tcp: 27, udp: 12, icmp: 3 },

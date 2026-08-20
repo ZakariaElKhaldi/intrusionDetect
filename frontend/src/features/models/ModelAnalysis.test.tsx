@@ -1,8 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EvaluationReport, ModelInfo } from "../../types";
 import { ModelAnalysis } from "./ModelAnalysis";
+
+const authState = vi.hoisted(() => ({ authenticated: true, openLogin: vi.fn() }));
+vi.mock("../../auth", () => ({ useAuth: () => authState }));
 
 const models: ModelInfo[] = [
   { name: "Isolation detector", version: "detector-7", role: "detector", status: "active", probability_calibrated: true, macro_f1: 0.94 },
@@ -10,6 +13,17 @@ const models: ModelInfo[] = [
 ];
 
 describe("ModelAnalysis", () => {
+  beforeEach(() => {
+    authState.authenticated = true;
+    authState.openLogin.mockClear();
+  });
+
+  it("does not mount protected model evidence before sign in", () => {
+    authState.authenticated = false;
+    render(<ModelAnalysis models={[]} />);
+    expect(screen.getByRole("note")).toHaveTextContent("Sign in to inspect protected serving, health, and evaluation evidence");
+    expect(screen.queryByRole("tab", { name: "Offline evaluation" })).not.toBeInTheDocument();
+  });
   it("separates serving evidence from offline evaluation", async () => {
     render(<ModelAnalysis models={models} fixtureMode />);
 

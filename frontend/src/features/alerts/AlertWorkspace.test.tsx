@@ -8,8 +8,10 @@ const api = vi.hoisted(() => ({
   getAlertExplanation: vi.fn(),
   submitAlertFeedback: vi.fn(),
 }));
+const authState = vi.hoisted(() => ({ authenticated: true, openLogin: vi.fn() }));
 
 vi.mock("../../api", () => api);
+vi.mock("../../auth", () => ({ useAuth: () => authState }));
 
 const alert: Alert = {
   id: "alert-1",
@@ -28,7 +30,16 @@ describe("AlertWorkspace", () => {
     vi.useFakeTimers();
     history.replaceState(null, "", "/?view=alerts");
     api.getAlertsPage.mockReset();
+    authState.authenticated = true;
     api.getAlertsPage.mockReturnValue(new Promise(() => undefined));
+  });
+
+  it("does not request the protected queue before sign in", () => {
+    authState.authenticated = false;
+    render(<AlertWorkspace alerts={[]} pending={0} onSelect={vi.fn()} applyPending={vi.fn()}/>);
+    act(() => vi.advanceTimersByTime(250));
+    expect(api.getAlertsPage).not.toHaveBeenCalled();
+    expect(screen.getByRole("note")).toHaveTextContent("Sign in to inspect the protected alert queue");
   });
 
   afterEach(() => {

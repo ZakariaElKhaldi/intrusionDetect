@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getEvaluation } from "../../api";
+import { useAuth } from "../../auth";
 import { TabList, tabId } from "../../components/TabList";
 import type { EvaluationReport, ModelInfo } from "../../types";
 import { ModelEvaluationView, type EvaluationStage } from "./ModelEvaluationView";
@@ -19,6 +20,8 @@ export interface ModelAnalysisProps {
 }
 
 export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading = false, descriptorError = "", initialView = "operations", initialStage = "binary", initialReports = {} }: ModelAnalysisProps) {
+  const auth = useAuth();
+  const connected = !fixtureMode && auth.authenticated;
   const [view, setView] = useState<WorkspaceView>(initialView);
   const [stage, setStage] = useState<EvaluationStage>(initialStage);
   const [reports, setReports] = useState<Partial<Record<EvaluationStage, EvaluationReport>>>(initialReports);
@@ -27,7 +30,10 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    if (view !== "evaluation" || fixtureMode || reports[stage]) return;
+    if (view !== "evaluation" || !connected || reports[stage]) {
+      if (!connected) setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -39,18 +45,18 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [fixtureMode, reload, reports, stage, view]);
+  }, [connected, reload, reports, stage, view]);
 
   const changeView = (next: WorkspaceView) => {
     setView(next);
     setError("");
-    if (next === "evaluation" && !fixtureMode && !reports[stage]) setLoading(true);
+    if (next === "evaluation" && connected && !reports[stage]) setLoading(true);
   };
 
   const changeStage = (next: EvaluationStage) => {
     setStage(next);
     setError("");
-    setLoading(!fixtureMode && !reports[next]);
+    setLoading(connected && !reports[next]);
   };
 
   const retry = () => {
@@ -64,6 +70,8 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
       <div><span className="eyebrow">Evidence boundaries</span><h2 id="model-workspace-title">Know what is live before reading what was tested</h2><p>Serving versions and observed production health answer operational questions. Offline evaluation compares candidates under a documented test protocol.</p></div>
       <div className="model-evidence-map" aria-label="Model evidence map"><span><b>01</b> Serving bundle</span><span><b>02</b> Production health</span><span><b>03</b> Offline evaluation</span></div>
     </section>
+    {!fixtureMode && !auth.authenticated ? <section className="panel data-state" role="note"><span>Sign in to inspect protected serving, health, and evaluation evidence.</span><button type="button" className="secondary-button" onClick={auth.openLogin}>Operator sign in</button></section> : null}
+    {fixtureMode || auth.authenticated ? <>
     <TabList baseId="model-workspace" label="Model workspace" options={[{ value: "operations", label: "Serving & health" }, { value: "evaluation", label: "Offline evaluation" }]} panelId="model-workspace-panel" selected={view} onSelect={changeView} className="stage-tabs model-workspace-tabs"/>
     <div id="model-workspace-panel" role="tabpanel" aria-labelledby={tabId("model-workspace", view)}>
       {view === "operations" ? <div className="model-operations-view"><ServingModelSummary models={models} loading={descriptorLoading} error={descriptorError}/><ModelHealth fixtureMode={fixtureMode}/></div> : <>
@@ -71,5 +79,6 @@ export function ModelAnalysis({ models, fixtureMode = false, descriptorLoading =
         <div id="evaluation-stage-panel" role="tabpanel" aria-labelledby={tabId("evaluation-stage", stage)}><ModelEvaluationView stage={stage} report={reports[stage] ?? null} loading={loading} error={error} fixtureMode={fixtureMode} onRetry={retry}/></div>
       </>}
     </div>
+    </> : null}
   </div>;
 }

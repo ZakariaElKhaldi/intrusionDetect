@@ -10,7 +10,8 @@ vi.mock("../../api", () => ({
   getOutboxEvents: vi.fn(),
   redriveIngestionJobs: vi.fn(),
 }));
-vi.mock("../../auth", () => ({ useAuth: () => ({ authenticated: true, openLogin: vi.fn() }) }));
+const authState = vi.hoisted(() => ({ authenticated: true, openLogin: vi.fn() }));
+vi.mock("../../auth", () => ({ useAuth: () => authState }));
 
 const job = {
   event_id: "event-1", batch_id: "batch-1", state: "retrying" as const, attempts: 2,
@@ -30,6 +31,7 @@ const detailFields = {
 describe("IngestionOperations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authState.authenticated = true;
     vi.mocked(getIngestionJobs).mockResolvedValue({ items: [job], total: 1, limit: 20, next_cursor: null });
     vi.mocked(getOutboxEvents).mockResolvedValue({ items: [
       { outbox_id: "out-1", event_id: "event-1", event_type: "prediction.created", status: "published", publish_attempts: 1, last_error: null, claimed: false, claim_expires_at: null, next_attempt_at: null, created_at: job.created_at, published_at: job.updated_at },
@@ -108,6 +110,13 @@ describe("IngestionOperations", () => {
   it("does not request live operational evidence in fixture mode", async () => {
     render(<IngestionOperations fixtureMode/>);
     expect(screen.getByRole("note")).toHaveTextContent("no operational queue evidence");
+    await waitFor(() => expect(getIngestionJobs).not.toHaveBeenCalled());
+  });
+
+  it("does not request protected operational evidence before sign in", async () => {
+    authState.authenticated = false;
+    render(<IngestionOperations fixtureMode={false}/>);
+    expect(screen.getByRole("note")).toHaveTextContent("Sign in to inspect protected job and outbox evidence");
     await waitFor(() => expect(getIngestionJobs).not.toHaveBeenCalled());
   });
 

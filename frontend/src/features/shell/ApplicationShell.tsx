@@ -69,7 +69,7 @@ function ConnectionStatus({ fixtureMode, health, healthChecked, socketState }: P
                 : { label: "Partial", detail: "API ready · stream offline", tone: "offline" };
   return <div className="shell-status" data-tone={state.tone}>
     <i aria-hidden="true"/>
-    <div className="shell-status-copy"><dt>System</dt><dd><b>{state.label}</b>{state.detail ? <small>{state.detail}</small> : null}</dd></div>
+    <dl className="shell-status-copy"><dt>System</dt><dd><b>{state.label}</b>{state.detail ? <small>{state.detail}</small> : null}</dd></dl>
   </div>;
 }
 
@@ -124,9 +124,9 @@ export function ApplicationShell({ page, fixtureMode, health, healthChecked, soc
       <header className="topbar">
         <div className="page-title"><h1>{title}</h1><p>{subtitle}</p></div>
         <div className="topbar-actions">
-          <dl className="shell-status-rail" aria-live="polite">
+          <div className="shell-status-rail" aria-live="polite">
             <ConnectionStatus fixtureMode={fixtureMode} health={health} healthChecked={healthChecked} socketState={socketState}/>
-          </dl>
+          </div>
           {fixtureMode ? <span className="operator-session">Read-only</span> : session ? <div className="operator-session"><span>Signed in as <b>{session.username}</b></span><button className="text-button" type="button" onClick={onSignOut}>Sign out</button></div> : authRequired ? <button className="secondary-button" type="button" onClick={onSignIn}>Operator sign in</button> : <span className="operator-session">Local mutations enabled</span>}
         </div>
       </header>

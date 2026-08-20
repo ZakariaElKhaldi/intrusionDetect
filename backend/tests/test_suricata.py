@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -42,7 +42,7 @@ async def test_suricata_ingestion_is_authenticated_idempotent_and_not_model_evid
                 "stats": {"capture": {"kernel_packets": 321, "kernel_drops": 2}},
             },
             {
-                "timestamp": datetime.now(UTC).isoformat(),
+                "timestamp": (datetime.now(UTC) - timedelta(hours=2)).isoformat(),
                 "event_type": "alert",
                 "flow_id": "998877",
                 "src_ip": "172.30.0.40",
@@ -98,6 +98,29 @@ async def test_suricata_ingestion_is_authenticated_idempotent_and_not_model_evid
                 await client.get(f"/alerts/{alert['alert_id']}/explanation")
             ).status_code == 409
 
+            summary = (await client.get("/dashboard/summary", params={"range": "all"})).json()
+            assert summary["scope"]["time_field"] == "observed_at"
+            assert summary["family_counts"] == {
+                "IOT LAB repeated MQTT authentication failure": 1
+            }
+            assert summary["protocol_counts"] == {"tcp": 1}
+            active_bucket = next(
+                bucket for bucket in summary["severity_timeline"] if bucket["total"]
+            )
+            bucket_start = datetime.fromisoformat(active_bucket["bucket_start"])
+            matching_page = await client.get(
+                "/alerts/page",
+                params={
+                    "from": bucket_start.isoformat(),
+                    "to": (bucket_start + timedelta(hours=1)).isoformat(),
+                },
+            )
+            assert matching_page.json()["total"] == 1
+            endpoint_search = await client.get(
+                "/alerts/page", params={"q": "172.30.0.40"}
+            )
+            assert endpoint_search.json()["total"] == 1
+
             sensor = (await client.get("/sensors/status")).json()
             assert sensor["status"] == "online"
             assert sensor["aggregate"] == {
@@ -109,7 +132,8 @@ async def test_suricata_ingestion_is_authenticated_idempotent_and_not_model_evid
             assert sensor["sensors"][0]["interface"] == "iotlab0"
 
             health = (await client.get("/health")).json()
-            assert health["components"]["sensor"]["status"] == "online"
+            assert health["components"]["sensor"]["status"] == "ready"
+            assert health["components"]["sensor"]["sensor_status"] == "online"
 
 
 def test_eve_follower_commits_only_delivered_offsets_and_recovers_after_restart(

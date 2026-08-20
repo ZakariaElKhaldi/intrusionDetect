@@ -1,6 +1,7 @@
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { getAlertsPage } from "../../api";
+import { useAuth } from "../../auth";
 import { SeverityLabel } from "../../components/SeverityLabel";
 import type { Alert } from "../../types";
 import { formatTime } from "../../utils";
@@ -23,6 +24,8 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
   alerts: Alert[]; pending: number; onSelect: (alert: Alert) => void; applyPending: () => void;
   loading?: boolean; error?: string; onRetry?: () => void; fixtureMode?: boolean;
 }) {
+  const auth = useAuth();
+  const connected = !fixtureMode && auth.authenticated;
   const params = new URLSearchParams(location.search);
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [severity, setSeverity] = useState(params.get("severity") ?? "all");
@@ -39,6 +42,10 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
   const [pageError, setPageError] = useState("");
   const [pageRefresh, setPageRefresh] = useState(0);
   const pageLimit = 50;
+  const alertRevision = useMemo(
+    () => alerts.map((alert) => `${alert.id}:${alert.status}`).join("|"),
+    [alerts],
+  );
   const sourceAlerts = fixtureMode ? alerts : pageItems ?? alerts;
   const initialLoading = (loading || pageLoading) && sourceAlerts.length === 0;
   const families = useMemo(() => [...new Set(alerts.map((alert) => alert.attack_type))].sort(), [alerts]);
@@ -58,7 +65,10 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
   useEffect(() => { setPageOffset(0); }, [family, from, query, range, severity, status, to]);
 
   useEffect(() => {
-    if (fixtureMode) return;
+    if (!connected) {
+      setPageLoading(false);
+      return;
+    }
     let cancelled=false;
     const timer=window.setTimeout(() => {
       setPageLoading(true); setPageError("");
@@ -69,7 +79,7 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
         .finally(()=>{if(!cancelled)setPageLoading(false);});
     },200);
     return ()=>{cancelled=true;window.clearTimeout(timer);};
-  },[alerts[0]?.id,family,fixtureMode,from,pageOffset,pageRefresh,query,range,severity,status,to]);
+  },[alertRevision,connected,family,from,pageOffset,pageRefresh,query,range,severity,status,to]);
 
   useEffect(() => {
     const next = new URLSearchParams(location.search);
@@ -98,6 +108,7 @@ export function AlertWorkspace({ alerts, pending, onSelect, applyPending, loadin
       <div><span className="eyebrow">Analyst work queue</span><h2 id="alerts-heading">Security alerts</h2><p>Inspect packet-signature evidence and model detections without mixing their provenance.</p></div>
       <div className="queue-order"><b>{resultTotal.toLocaleString()}</b><span>matching {resultTotal === 1 ? "alert" : "alerts"} · newest first</span></div>
     </header>
+    {!fixtureMode && !auth.authenticated ? <div className="data-state" role="note"><span>Sign in to inspect the protected alert queue.</span><button type="button" className="secondary-button" onClick={auth.openLogin}>Operator sign in</button></div> : null}
     <nav className="queue-views" aria-label="Alert queue views">
       <span>Quick views</span>
       {([

@@ -43,6 +43,20 @@ function pageFromUrl(): Page {
     : "overview";
 }
 
+const summaryRangeStorageKey = "sentinel-overview-range";
+const dashboardRanges: DashboardSummary["range"][] = ["15m", "1h", "24h", "7d", "all"];
+
+function restoredSummaryRange(): DashboardSummary["range"] {
+  try {
+    const stored = window.sessionStorage.getItem(summaryRangeStorageKey);
+    return dashboardRanges.includes(stored as DashboardSummary["range"])
+      ? stored as DashboardSummary["range"]
+      : "24h";
+  } catch {
+    return "24h";
+  }
+}
+
 function App() {
   const auth = useAuth();
   const fixtureMode = isFixtureMode();
@@ -52,7 +66,7 @@ function App() {
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [models, setModels] = useState<ModelInfo[]>(fixtureMode ? sampleModels : []);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [summaryRange, setSummaryRange] = useState<DashboardSummary["range"]>("24h");
+  const [summaryRange, setSummaryRange] = useState<DashboardSummary["range"]>(restoredSummaryRange);
   const [summaryLoading, setSummaryLoading] = useState(!fixtureMode);
   const [summaryError, setSummaryError] = useState("");
   const [health, setHealth] = useState<HealthInfo | null>(null);
@@ -131,14 +145,15 @@ function App() {
 
   useEffect(() => {
     pageRef.current = page;
-    if (page === "alerts" && queuedAlerts.length > 0) {
-      setAlerts((current) => {
-        const ids = new Set(current.map((alert) => alert.id));
-        return [...queuedAlerts.filter((alert) => !ids.has(alert.id)), ...current];
-      });
-      setQueuedAlerts([]);
+  }, [page]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(summaryRangeStorageKey, summaryRange);
+    } catch {
+      // The selected range still works for this render if storage is disabled.
     }
-  }, [page, queuedAlerts]);
+  }, [summaryRange]);
 
   useEffect(() => {
     const onPopState = () => setPage(pageFromUrl());
@@ -263,6 +278,7 @@ function App() {
     let retryTimer: number | undefined;
     let heartbeatTimer: number | undefined;
     let pongTimer: number | undefined;
+    let summaryRefreshTimer: number | undefined;
     let disposed = false;
     let retryAttempt = 0;
 
@@ -319,6 +335,11 @@ function App() {
           }
           const incoming = liveEventFromSocketMessage(event.data);
           if (!incoming) return;
+          if (summaryRefreshTimer) window.clearTimeout(summaryRefreshTimer);
+          summaryRefreshTimer = window.setTimeout(() => {
+            summaryRefreshTimer = undefined;
+            void loadSummary();
+          }, 150);
           if (incoming.type === "prediction.created") {
             setLastUpdate(new Date());
             if (!seenPredictions.current.has(incoming.data.prediction_id)) {
@@ -330,15 +351,12 @@ function App() {
           const alert = incoming.data;
           setLastUpdate(new Date(alert.timestamp));
           if (pageRef.current === "alerts") {
-            setAlerts((current) => [
-              alert,
-              ...current.filter((item) => item.id !== alert.id),
-            ]);
-          } else {
             setQueuedAlerts((current) => [
               alert,
               ...current.filter((item) => item.id !== alert.id),
             ]);
+          } else {
+            setAlerts((current) => mergeAlerts(current, [alert]));
           }
         };
         socket.onerror = () => setSocketState("offline");
@@ -357,13 +375,14 @@ function App() {
     return () => {
       disposed = true;
       if (retryTimer) window.clearTimeout(retryTimer);
+      if (summaryRefreshTimer) window.clearTimeout(summaryRefreshTimer);
       clearHeartbeat();
       socket?.close();
     };
-  }, [auth.authenticated, auth.session?.access_token, fixtureMode]);
+  }, [auth.authenticated, auth.session?.access_token, fixtureMode, loadSummary, mergeAlerts]);
 
   useEffect(() => {
-    if (fixtureMode) return;
+    if (fixtureMode || !auth.authenticated) return;
     let disposed = false;
     let timer: number | undefined;
     const poll = async () => {
@@ -384,15 +403,15 @@ function App() {
       disposed = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [fixtureMode, replay?.status, replay?.processed]);
+  }, [auth.authenticated, fixtureMode, replay?.status, replay?.processed]);
 
   useEffect(() => {
-    if (replay?.status === "completed" && lastReplayStatus.current !== "completed") {
+    if (auth.authenticated && replay?.status === "completed" && lastReplayStatus.current !== "completed") {
       void getAlerts().then((incoming) => setAlerts((current) => mergeAlerts(current, incoming))).catch(() => undefined);
       void loadSummary();
     }
     lastReplayStatus.current = replay?.status ?? null;
-  }, [loadSummary, mergeAlerts, replay?.status]);
+  }, [auth.authenticated, loadSummary, mergeAlerts, replay?.status]);
 
   const navigate = useCallback((nextPage: Page, params?: Record<string, string>) => {
     const search = new URLSearchParams({ view: nextPage, ...params });
@@ -439,7 +458,8 @@ function App() {
       current.map((alert) => (alert.id === id ? { ...alert, status } : alert)),
     );
     setSelectedAlert((current) => (current?.id === id ? { ...current, status } : current));
-  }, []);
+    void loadSummary();
+  }, [loadSummary]);
 
   const handleReplay = useCallback(async () => {
     if (fixtureMode) return;
@@ -598,7 +618,7 @@ function App() {
               pending={queuedAlerts.length}
               onSelect={openAlert}
               applyPending={() => {
-                setAlerts((current) => [...queuedAlerts, ...current]);
+                setAlerts((current) => mergeAlerts(current, queuedAlerts));
                 setQueuedAlerts([]);
               }}
               loading={alertsLoading}

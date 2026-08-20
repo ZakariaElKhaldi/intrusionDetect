@@ -76,6 +76,7 @@ def dashboard_summary(
     checked_at = datetime.now(UTC)
     start = checked_at - RANGE_DURATION[time_range] if time_range != "all" else None
     with request.app.state.SessionLocal() as session:
+        alert_observed_at = func.coalesce(Alert.occurred_at, Alert.created_at)
         prediction_total_statement = select(func.count()).select_from(Prediction)
         binary_statement = select(
             Prediction.binary_prediction, func.count()
@@ -83,31 +84,38 @@ def dashboard_summary(
         alert_total_statement = select(func.count()).select_from(Alert)
         status_statement = select(Alert.status, func.count()).group_by(Alert.status)
         severity_statement = select(Alert.severity, func.count()).group_by(Alert.severity)
+        detection_family = func.coalesce(Prediction.attack_class, Alert.signature)
         family_statement = (
-            select(Prediction.attack_class, func.count())
+            select(detection_family, func.count())
             .select_from(Alert)
-            .join(Prediction, Prediction.prediction_id == Alert.prediction_id)
-            .group_by(Prediction.attack_class)
+            .outerjoin(Prediction, Prediction.prediction_id == Alert.prediction_id)
+            .group_by(detection_family)
         )
-        protocol = Observation.raw_features["proto"].as_string()
+        protocol = func.lower(
+            func.coalesce(
+                Observation.raw_features["proto"].as_string(),
+                Observation.network_context["protocol"].as_string(),
+                Alert.network_context["protocol"].as_string(),
+            )
+        )
         protocol_statement = (
             select(protocol, func.count())
             .select_from(Alert)
-            .join(Observation, Observation.event_id == Alert.event_id)
+            .outerjoin(Observation, Observation.event_id == Alert.event_id)
             .group_by(protocol)
         )
-        earliest_statement = select(func.min(Alert.created_at))
+        earliest_statement = select(func.min(alert_observed_at))
         if start:
             prediction_total_statement = prediction_total_statement.where(
                 Prediction.created_at >= start
             )
             binary_statement = binary_statement.where(Prediction.created_at >= start)
-            alert_total_statement = alert_total_statement.where(Alert.created_at >= start)
-            status_statement = status_statement.where(Alert.created_at >= start)
-            severity_statement = severity_statement.where(Alert.created_at >= start)
-            family_statement = family_statement.where(Alert.created_at >= start)
-            protocol_statement = protocol_statement.where(Alert.created_at >= start)
-            earliest_statement = earliest_statement.where(Alert.created_at >= start)
+            alert_total_statement = alert_total_statement.where(alert_observed_at >= start)
+            status_statement = status_statement.where(alert_observed_at >= start)
+            severity_statement = severity_statement.where(alert_observed_at >= start)
+            family_statement = family_statement.where(alert_observed_at >= start)
+            protocol_statement = protocol_statement.where(alert_observed_at >= start)
+            earliest_statement = earliest_statement.where(alert_observed_at >= start)
 
         prediction_total = int(session.scalar(prediction_total_statement) or 0)
         alert_total = int(session.scalar(alert_total_statement) or 0)
@@ -158,7 +166,7 @@ def dashboard_summary(
             bucket_minutes = RANGE_BUCKET_MINUTES[time_range]
         bucket_seconds = bucket_minutes * 60
         bucket_epoch = cast(
-            func.floor(extract("epoch", Alert.created_at) / bucket_seconds)
+            func.floor(extract("epoch", alert_observed_at) / bucket_seconds)
             * bucket_seconds,
             BigInteger,
         ).label("bucket_epoch")
@@ -168,7 +176,7 @@ def dashboard_summary(
             .order_by(bucket_epoch)
         )
         if start:
-            timeline_statement = timeline_statement.where(Alert.created_at >= start)
+            timeline_statement = timeline_statement.where(alert_observed_at >= start)
         timeline_rows = [
             (int(epoch), str(severity), int(count))
             for epoch, severity, count in session.execute(timeline_statement)
@@ -181,7 +189,7 @@ def dashboard_summary(
         )
         if start:
             critical_open_statement = critical_open_statement.where(
-                Alert.created_at >= start
+                alert_observed_at >= start
             )
         critical_open = int(session.scalar(critical_open_statement) or 0)
 
@@ -199,7 +207,7 @@ def dashboard_summary(
         },
         "scope": {
             "source": "persisted_database_records",
-            "time_field": "created_at",
+            "time_field": "observed_at",
             "range": time_range,
             "from": start.isoformat() if start else None,
             "to": checked_at.isoformat(),

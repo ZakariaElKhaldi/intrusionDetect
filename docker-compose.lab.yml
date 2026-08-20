@@ -4,6 +4,7 @@ services:
     environment:
       IOT_IDS_SENSOR_TOKEN_HASH: "${IOT_IDS_SENSOR_TOKEN_HASH:?run scripts/labctl up}"
       IOT_IDS_ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
+      IOT_IDS_CORS_ORIGINS: "http://localhost:${IOT_IDS_FRONTEND_PORT:-5173},http://127.0.0.1:${IOT_IDS_FRONTEND_PORT:-5173}"
 
   migration:
     image: iot-ids-lab-backend:0.1.0

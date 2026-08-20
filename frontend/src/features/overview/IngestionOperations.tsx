@@ -22,6 +22,7 @@ function toIso(value: string) {
 
 export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: boolean; refreshKey?: string }) {
   const auth = useAuth();
+  const connected = !fixtureMode && auth.authenticated;
   const [tab, setTab] = useState<OperationsTab>("jobs");
   const [jobPage, setJobPage] = useState<CursorPage<IngestionJob> | null>(null);
   const [outboxPage, setOutboxPage] = useState<CursorPage<OutboxEvent> | null>(null);
@@ -29,7 +30,7 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
   const [appliedOutbox, setAppliedOutbox] = useState<OutboxFilterValues>({ ...emptyOutboxFilters });
   const [cursor, setCursor] = useState<string | undefined>();
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
-  const [loading, setLoading] = useState(!fixtureMode);
+  const [loading, setLoading] = useState(connected);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<IngestionJobDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -39,7 +40,10 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
   const detailTrigger = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (fixtureMode) return;
+    if (!connected) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -56,7 +60,7 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [appliedJobs, appliedOutbox, cursor, fixtureMode, localRefresh, refreshKey, tab]);
+  }, [appliedJobs, appliedOutbox, connected, cursor, localRefresh, refreshKey, tab]);
 
   const applyJobFilters = (filters: JobFilterValues) => {
     setAppliedJobs(filters); setCursor(undefined); setCursorHistory([]); setSelected(null);
@@ -122,7 +126,7 @@ export function IngestionOperations({ fixtureMode, refreshKey }: { fixtureMode: 
   return (
     <section className="panel operations-panel" aria-label="Ingestion operations">
       <PanelHeading eyebrow="Operational evidence" title="Ingestion operations" description="Investigate durable jobs and committed publication. Authenticated operators can safely redrive eligible dead letters after review."/>
-      {fixtureMode ? <div className="data-state" role="note">Fixture preview contains no operational queue evidence.</div> : (
+      {fixtureMode ? <div className="data-state" role="note">Fixture preview contains no operational queue evidence.</div> : !auth.authenticated ? <div className="data-state" role="note"><span>Sign in to inspect protected job and outbox evidence.</span><button type="button" className="secondary-button" onClick={auth.openLogin}>Operator sign in</button></div> : (
         <>
           <TabList
             baseId="ingestion-evidence"

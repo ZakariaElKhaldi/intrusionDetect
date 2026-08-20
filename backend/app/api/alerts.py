@@ -152,6 +152,7 @@ def page_alerts(
                     Prediction.attack_class.ilike(pattern, escape="\\"),
                     Alert.signature.ilike(pattern, escape="\\"),
                     Alert.sensor_id.ilike(pattern, escape="\\"),
+                    cast(Alert.network_context, String).ilike(pattern, escape="\\"),
                     cast(Observation.network_context, String).ilike(
                         pattern, escape="\\"
                     ),

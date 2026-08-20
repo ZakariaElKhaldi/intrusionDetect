@@ -38,6 +38,18 @@ describe("SystemHealthPanel", () => {
     expect(screen.getAllByText(/Heartbeat is stale/).length).toBeGreaterThan(0);
   });
 
+  it("does not report an online sensor as a component concern", () => {
+    const withSensor: HealthInfo = {
+      ...ready,
+      components: {
+        ...ready.components,
+        sensor: { status: "online", reason: "Passive sensor is reporting" },
+      },
+    };
+    render(<SystemHealthPanel health={withSensor} socketState="live" lastUpdate={null} fixtureMode={false} />);
+    expect(screen.queryByText(/component needs review/i)).not.toBeInTheDocument();
+  });
+
   it("does not invent connected health in fixture mode", () => {
     render(<SystemHealthPanel health={null} socketState="offline" lastUpdate={null} fixtureMode />);
     expect(screen.getByRole("status")).toHaveTextContent("fixture");

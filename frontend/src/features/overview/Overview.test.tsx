@@ -31,7 +31,7 @@ describe("Overview", () => {
     const onTimeBucket = vi.fn();
     renderOverview({ onTimeBucket });
 
-    expect(screen.getByRole("img", { name: /8 alert intervals.*peak 8 alerts/i })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /stacked alert counts across 8 persisted time buckets/i })).toBeInTheDocument();
     await user.click(screen.getByText("Inspect and open exact intervals"));
     const table = screen.getByRole("table", { name: /Persisted alert counts by 60-minute interval/ });
     const firstAction = within(table).getAllByRole("button")[0];

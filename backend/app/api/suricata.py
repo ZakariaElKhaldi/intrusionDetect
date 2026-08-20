@@ -284,7 +284,9 @@ def ingest_suricata(batch: SuricataBatch, request: Request) -> SuricataReceipt:
         if latest_event:
             state.last_event_at = latest_event
         if latest_stats is not None:
-            state.packets = _nested_int(latest_stats, "capture", "kernel_packets") or state.packets
+            packets = _nested_int(latest_stats, "capture", "kernel_packets")
+            if packets is not None:
+                state.packets = packets
             state.capture_drops = _nested_int(latest_stats, "capture", "kernel_drops") or 0
         state.alerts_accepted += accepted
         session.commit()

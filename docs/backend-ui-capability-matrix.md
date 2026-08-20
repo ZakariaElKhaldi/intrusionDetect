@@ -30,7 +30,7 @@ browser controls.
 | `GET /alerts/{alert_id}` | `getAlert` | Refreshes exact alert detail; investigation exposes event, cascade, route, capture, interface, extractor, feature, model, latency, and feedback evidence | Covered |
 | `GET /alerts/{alert_id}/explanation` | `getAlertExplanation` | Retryable stage-aware explanation with interpretation boundary, additive check, summarized waterfall, and every exact signed contribution | Covered |
 | `POST /alerts/{alert_id}/feedback` | `submitAlertFeedback` | All backend disposition states, authenticated identity, required reasoning for terminal decisions, review/confirmation, and visible immutable history | Covered |
-| `GET /dashboard/summary` | `getDashboardSummary` | Independently loaded persisted range with exact provenance/window, reconciled totals, prediction and alert workload, median score, severity/status/family/protocol composition, summarized chronology, exact actionable interval table, stale preservation, and retry | Covered |
+| `GET /dashboard/summary` | `getDashboardSummary` | Independently loaded persisted range on alert observation time, with exact provenance/window, reconciled totals, model families plus sensor signatures, unified protocols, D3 severity chronology, exact actionable interval table, WebSocket-triggered refresh, stale preservation, and retry | Covered |
 | `GET /models` | `getModels` | Runtime detector/classifier identity, active state, schema, calibration meaning, and artifact registration | Covered |
 | `GET /evaluation` | `getEvaluation` | Protocol-first detector/classifier workspace with split/seeds, validation selection, held-out test, latency, support, threshold, and cascade evidence | Covered |
 | `POST /replay/start` (dataset) | `startReplay` | Exact scenario/family, zero-based pre-filter source offset, 1–1,000,000 row bound, 0.01–100× speed, duration/persistence preview, pending state, and accepted server receipt | Covered |
@@ -48,8 +48,8 @@ browser controls.
 | `GET /model-health/cohorts` | `getModelHealthCohorts` | Deployment/cohort selector | Covered |
 | `GET /model-health` | `getModelHealth` | Fast/slow snapshot, state/reason, trend and exact evidence | Covered |
 | `GET /model-health/history` | `getModelHealthHistory` | Recent cohort history and exact checks | Covered |
-| `GET /sensors/status` | `getSensorStatus` | Passive sensor heartbeat, interface, rules, packet/drop counters, and accepted live alerts | Covered |
-| `WS /live` | `socketUrl`, `socketAuthenticationMessage`, `isLiveConnectionMessage`, `isLivePongMessage`, `liveEventFromSocketMessage` | Authenticated connection acknowledgement, heartbeat/watchdog recovery, live prediction count, alert queue, last-event and stream state | Covered |
+| `GET /sensors/status` | `getSensorStatus` | Passive sensor heartbeat, interface, rules, packet/drop counters, accepted live alerts, and a D3 rolling packet/drop-rate chart derived from consecutive authoritative counters | Covered |
+| `WS /live` | `socketUrl`, `socketAuthenticationMessage`, `isLiveConnectionMessage`, `isLivePongMessage`, `liveEventFromSocketMessage` | Authenticated connection acknowledgement, heartbeat/watchdog recovery, live prediction count, page-aware alert queue, persisted-summary refresh, last-event and stream state | Covered |
 | `POST /ingestion/offline-pcap/events` | Local offline-PCAP command | Server-owned ingestion channel requiring local capture/extraction workflow | Server-owned |
 | `POST /sensors/suricata/events` | EVE ingestion agent | Machine-owned authenticated EVE delivery with checkpointing and deduplication | Machine-owned |
 | `GET /livez` | Container/orchestrator probe | Process liveness; not an analyst decision surface | Machine-owned |
@@ -80,3 +80,6 @@ browser controls.
 - Exact health component evidence comes from `/health`; liveness, readiness,
   and Prometheus routes retain their machine contracts rather than being
   imitated as browser actions.
+- Connected workspaces do not call protected list, evaluation, health, or
+  operations routes before operator authentication. Public health remains
+  visible, and each protected workspace provides an explicit sign-in handoff.

@@ -404,6 +404,12 @@ def create_app(
                 "sensor": (
                     {
                         **sensor_health,
+                        "sensor_status": sensor_health["status"],
+                        "status": (
+                            "ready"
+                            if sensor_health["status"] == "online"
+                            else "degraded"
+                        ),
                         "reason": (
                             "a passive Suricata sensor is reporting live traffic"
                             if sensor_health["status"] == "online"

@@ -100,6 +100,7 @@ def test_frontend_gateway_enforces_same_origin_and_browser_security_policy() -> 
 
 def test_compose_has_no_default_database_password_or_cross_origin_browser_url() -> None:
     compose = (REPOSITORY / "docker-compose.yml").read_text(encoding="utf-8")
+    lab_compose = (REPOSITORY / "docker-compose.lab.yml").read_text(encoding="utf-8")
     env_example = (REPOSITORY / ".env.example").read_text(encoding="utf-8")
     assert "POSTGRES_PASSWORD: iot_ids" not in compose
     assert re.search(
@@ -113,6 +114,10 @@ def test_compose_has_no_default_database_password_or_cross_origin_browser_url() 
     assert "condition: service_healthy" in compose
     assert '"${IOT_IDS_FRONTEND_PORT:-5173}:8080"' in compose
     assert '"127.0.0.1:${IOT_IDS_BACKEND_PORT:-8000}:8000"' in compose
+    assert (
+        'IOT_IDS_CORS_ORIGINS: "http://localhost:${IOT_IDS_FRONTEND_PORT:-5173},'
+        'http://127.0.0.1:${IOT_IDS_FRONTEND_PORT:-5173}"'
+    ) in lab_compose
     assert 'FORWARDED_ALLOW_IPS: "*"' in compose
     assert '\n      - "8000:8000"' not in compose
     assert "read_only: true" in compose

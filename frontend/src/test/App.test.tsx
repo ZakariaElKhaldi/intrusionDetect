@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { AuthProvider } from "../auth";
+import { connectedDashboardSummary } from "../features/overview/overviewFixtures";
 
 describe("dashboard", () => {
   beforeEach(() => {
@@ -109,6 +110,80 @@ describe("dashboard", () => {
       type: "authenticate",
       token: "restored-token",
     })));
+  });
+
+  it("refreshes the persisted summary when a live alert is delivered", async () => {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    sessionStorage.setItem("iot-ids-auth-session", JSON.stringify({
+      access_token: "restored-token",
+      token_type: "bearer",
+      expires_in: 60,
+      expires_at: expiresAt,
+      username: "admin",
+    }));
+    let summaryRequests = 0;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      const body = path.endsWith("/auth/status") ? { enabled: true }
+        : path.endsWith("/auth/me") ? { username: "admin", role: "admin" }
+          : path.endsWith("/health") ? { status: "ok", model_version: "m1", schema_version: "v1", live_connections: 0 }
+            : path.includes("/dashboard/summary") ? (summaryRequests += 1, connectedDashboardSummary)
+              : path.includes("/sensors/status") ? { status: "online", checked_at: "2026-08-20T12:00:00Z", aggregate: { packets: 100, capture_drops: 0, events_seen: 0, alerts_accepted: 0 }, sensors: [] }
+                : path.includes("/alerts/page") ? { items: [], total: 0, limit: 50, offset: 0, has_more: false, filters: {} }
+                : path.endsWith("/alerts") || path.endsWith("/models") ? []
+                  : {};
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    let activeSocket: LiveSummarySocket | undefined;
+    class LiveSummarySocket {
+      static OPEN = 1;
+      readyState = LiveSummarySocket.OPEN;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      constructor(_url: string) {
+        activeSocket = this;
+        setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+      send() {}
+      close() {}
+    }
+    vi.stubGlobal("WebSocket", LiveSummarySocket);
+
+    render(<AuthProvider><App /></AuthProvider>);
+    await waitFor(() => expect(summaryRequests).toBe(1));
+    act(() => activeSocket?.onmessage?.(new MessageEvent("message", { data: JSON.stringify({
+      type: "alert.created",
+      data: {
+        alert_id: "live-alert-1",
+        event_id: null,
+        severity: "critical",
+        reasons: ["Live rule match"],
+        top_features: [],
+        status: "new",
+        created_at: "2026-08-20T12:00:05Z",
+      },
+    }) })));
+
+    await waitFor(() => expect(summaryRequests).toBe(2));
+    expect(await screen.findByText("Live rule match")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("link", { name: "Triage alerts" }));
+    await screen.findByRole("heading", { name: "Security alerts" });
+    act(() => activeSocket?.onmessage?.(new MessageEvent("message", { data: JSON.stringify({
+      type: "alert.created",
+      data: {
+        alert_id: "live-alert-2",
+        event_id: null,
+        severity: "high",
+        reasons: ["Second live rule match"],
+        top_features: [],
+        status: "new",
+        created_at: "2026-08-20T12:00:10Z",
+      },
+    }) })));
+    expect(await screen.findByRole("button", { name: /1 new alert received/i })).toBeInTheDocument();
   });
 
   it("navigates between the investigation pages", async () => {

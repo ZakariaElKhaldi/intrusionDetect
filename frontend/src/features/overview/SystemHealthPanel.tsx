@@ -4,7 +4,7 @@ import { formatTime } from "../../utils";
 
 type SocketState = "connecting" | "live" | "offline";
 
-const acceptableStates = new Set(["ready", "healthy", "ok", "idle"]);
+const acceptableStates = new Set(["ready", "healthy", "ok", "idle", "online"]);
 
 function normalizedState(value: string | undefined) {
   return (value ?? "not_reported").toLowerCase();
@@ -16,7 +16,7 @@ function stateLabel(value: string | undefined) {
 
 function coreState(value: string | undefined) {
   const normalized = normalizedState(value);
-  if (["ready", "healthy", "ok", "live"].includes(normalized)) return "healthy";
+  if (["ready", "healthy", "ok", "live", "online"].includes(normalized)) return "healthy";
   if (["degraded", "warning", "connecting", "idle"].includes(normalized)) return "warning";
   return ["blocked", "offline", "failed", "invalid", "unavailable"].includes(normalized) ? "critical" : "neutral";
 }

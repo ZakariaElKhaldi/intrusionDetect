@@ -17,7 +17,7 @@ export function SensorStatusPanel({ status, loading, error, fixtureMode, onRetry
   const primary = status?.sensors[0];
   return <section className={`panel sensor-status sensor-status--${online ? "online" : "offline"}`} aria-labelledby="sensor-status-title">
     <header className="sensor-status-header">
-      <div><span className="eyebrow">Live packet evidence</span><h2 id="sensor-status-title">Passive network sensor</h2></div>
+      <h2 id="sensor-status-title">Passive network sensor</h2>
       <span className={`sensor-state sensor-state--${online ? "online" : "offline"}`} role="status"><i aria-hidden="true" />{fixtureMode ? "Preview" : online ? "Online" : loading ? "Checking" : "Offline"}</span>
     </header>
     {error ? <div className="sensor-status-error" role="alert"><TriangleAlert aria-hidden="true"/><span><strong>Sensor status is unavailable</strong>{error}</span><button className="secondary-button" type="button" onClick={onRetry}><RefreshCw aria-hidden="true"/>Retry</button></div> : null}
